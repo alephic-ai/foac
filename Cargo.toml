@@ -1,0 +1,12 @@
+[package]
+name = "foac"
+version = "0.1.0"
+edition = "2024"
+description = "foac, the Father Of All CLIs"
+license = "GPL-3.0-or-later"
+authors = ["Laurent Raufaste <analogue@glop.org>"]
+repository = "https://github.com/lra/foac"
+readme = "README.md"
+
+[dependencies]
+clap = { version = "4.6.6", features = ["derive"] }
