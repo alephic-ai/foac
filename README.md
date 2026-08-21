@@ -44,7 +44,10 @@ If `$HOME/bin` is not on your `PATH`, add it.
 foac
 foac --help
 foac --version
+foac update
 ```
+
+`foac update` downloads the latest GitHub release for this platform and replaces the running binary.
 
 ## From source
 
