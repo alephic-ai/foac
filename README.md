@@ -63,6 +63,15 @@ foac linear --help
 The vendored schema in `graphql/linear/schema.graphql` can be refreshed from
 <https://raw.githubusercontent.com/linear/linear/master/packages/sdk/src/schema.graphql>.
 
+## Agents
+
+`foac skill` prints an agent skill explaining how the CLI is structured and its
+conventions. To install it for Claude Code:
+
+```sh
+mkdir -p ~/.claude/skills/foac && foac skill > ~/.claude/skills/foac/SKILL.md
+```
+
 ## From source
 
 ```sh
