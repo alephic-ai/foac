@@ -77,7 +77,7 @@ jobs:
           fi
           new="${major}.${minor}.${patch}"
           sed -i "s/^version = \"${version}\"/version = \"${new}\"/" Cargo.toml
-          cargo update --offline --package foac
+          cargo update --package foac
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "Release ${new}"
