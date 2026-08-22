@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 use self_update::cargo_crate_version;
 
+mod linear;
+
 #[derive(Parser)]
 #[command(version, about)]
 struct Cli {
@@ -9,7 +11,12 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+// One short-lived value on the stack; boxing the variant isn't worth it.
+#[allow(clippy::large_enum_variant)]
 enum Command {
+    /// Interact with Linear (linear.app), requires LINEAR_API_KEY
+    #[command(subcommand)]
+    Linear(linear::Cmd),
     /// Download and replace this binary with the latest GitHub release
     Update,
 }
@@ -23,6 +30,7 @@ fn main() {
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     match Cli::parse().command {
+        Some(Command::Linear(cmd)) => linear::run(cmd),
         Some(Command::Update) => update(),
         None => {
             println!("{}", env!("CARGO_PKG_DESCRIPTION"));
