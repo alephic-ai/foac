@@ -43,7 +43,7 @@ If `$HOME/bin` is not on your `PATH`, add it.
 ```sh
 foac
 foac --help
-foac --version
+foac version
 foac update
 ```
 

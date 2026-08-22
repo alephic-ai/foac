@@ -4,7 +4,7 @@ use self_update::cargo_crate_version;
 mod linear;
 
 #[derive(Parser)]
-#[command(version, about)]
+#[command(about)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
@@ -19,6 +19,8 @@ enum Command {
     Linear(linear::Cmd),
     /// Download and replace this binary with the latest GitHub release
     Update,
+    /// Print the version
+    Version,
 }
 
 fn main() {
@@ -32,6 +34,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     match Cli::parse().command {
         Some(Command::Linear(cmd)) => linear::run(cmd),
         Some(Command::Update) => update(),
+        Some(Command::Version) => {
+            println!("{}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
         None => {
             println!("{}", env!("CARGO_PKG_DESCRIPTION"));
             Ok(())
