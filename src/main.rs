@@ -46,6 +46,24 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn update() -> Result<(), Box<dyn std::error::Error>> {
+    let token = std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.is_empty());
+    // Ask /releases/latest for the tag to install: that endpoint never returns
+    // draft or prerelease releases, unlike the /releases listing self_update
+    // walks by default, which includes in-progress drafts when authenticated.
+    let mut request = reqwest::blocking::Client::new()
+        .get("https://api.github.com/repos/lra/foac/releases/latest")
+        .header("User-Agent", "foac");
+    if let Some(token) = &token {
+        request = request.bearer_auth(token);
+    }
+    let latest: serde_json::Value = request.send()?.error_for_status()?.json()?;
+    let tag = latest["tag_name"]
+        .as_str()
+        .ok_or("no tag_name in the latest GitHub release")?;
+    if tag == format!("v{}", cargo_crate_version!()) {
+        println!("Already up to date ({})", cargo_crate_version!());
+        return Ok(());
+    }
     let mut builder = self_update::backends::github::Update::configure();
     builder
         .repo_owner("lra")
@@ -53,10 +71,9 @@ fn update() -> Result<(), Box<dyn std::error::Error>> {
         .bin_name("foac")
         .show_download_progress(true)
         .no_confirm(true)
+        .release_tag(tag)
         .current_version(cargo_crate_version!());
-    if let Ok(token) = std::env::var("GITHUB_TOKEN")
-        && !token.is_empty()
-    {
+    if let Some(token) = token {
         builder.auth_token(token);
     }
     let status = builder.build()?.update()?;
