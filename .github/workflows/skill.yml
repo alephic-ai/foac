@@ -18,11 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Install skref
-        run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/alephic-ai/skref/releases/latest/download/skref-installer.sh | sh
       # The spec wants the directory named after the skill, which only applies
       # once installed; stage the source file accordingly before validating.
       - run: |
-          mkdir -p "$RUNNER_TEMP/foac"
-          cp docs/SKILL.md "$RUNNER_TEMP/foac/"
-          skref validate "$RUNNER_TEMP/foac"
+          mkdir -p "$RUNNER_TEMP/skills/foac"
+          cp docs/SKILL.md "$RUNNER_TEMP/skills/foac/"
+      - uses: alephic-ai/skref@v1
+        with:
+          path: ${{ runner.temp }}/skills
