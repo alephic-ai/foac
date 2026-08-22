@@ -78,6 +78,10 @@ fn update() -> Result<(), Box<dyn std::error::Error>> {
         .show_download_progress(true)
         .no_confirm(true)
         .release_tag(tag)
+        // Assets pair an archive with a .sha256 file per target, and
+        // self_update takes the first name containing the target — which is
+        // the checksum, alphabetically. Require the archive extension.
+        .asset_identifier(if cfg!(windows) { ".zip" } else { ".tar.gz" })
         .current_version(cargo_crate_version!());
     if let Some(token) = token {
         builder.auth_token(token);
