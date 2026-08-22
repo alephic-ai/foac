@@ -1,0 +1,652 @@
+fragment PageFields on PageInfo {
+  hasNextPage
+  endCursor
+}
+
+fragment IssueFields on Issue {
+  id
+  identifier
+  title
+  url
+  priority
+  estimate
+  dueDate
+  createdAt
+  updatedAt
+  state {
+    id
+    name
+    type
+  }
+  assignee {
+    id
+    displayName
+  }
+  team {
+    id
+    key
+  }
+  project {
+    id
+    name
+  }
+  labels {
+    nodes {
+      id
+      name
+    }
+  }
+}
+
+fragment ProjectFields on Project {
+  id
+  name
+  description
+  url
+  startDate
+  targetDate
+  priority
+  status {
+    id
+    name
+    type
+  }
+  lead {
+    id
+    displayName
+  }
+  teams {
+    nodes {
+      id
+      key
+    }
+  }
+  createdAt
+  updatedAt
+}
+
+fragment CommentFields on Comment {
+  id
+  body
+  url
+  createdAt
+  updatedAt
+  user {
+    id
+    displayName
+  }
+}
+
+fragment MilestoneFields on ProjectMilestone {
+  id
+  name
+  description
+  targetDate
+  project {
+    id
+    name
+  }
+}
+
+fragment DocumentFields on Document {
+  id
+  title
+  url
+  createdAt
+  updatedAt
+  project {
+    id
+    name
+  }
+  initiative {
+    id
+    name
+  }
+  creator {
+    id
+    displayName
+  }
+}
+
+fragment InitiativeFields on Initiative {
+  id
+  name
+  description
+  targetDate
+  url
+  status
+  owner {
+    id
+    displayName
+  }
+  createdAt
+  updatedAt
+}
+
+fragment StateFields on WorkflowState {
+  id
+  name
+  type
+  position
+  color
+  team {
+    id
+    key
+  }
+}
+
+fragment LabelFields on IssueLabel {
+  id
+  name
+  color
+  description
+  isGroup
+  team {
+    id
+    key
+  }
+  parent {
+    id
+    name
+  }
+}
+
+fragment ProjectUpdateFields on ProjectUpdate {
+  id
+  body
+  health
+  url
+  createdAt
+  user {
+    id
+    displayName
+  }
+  project {
+    id
+    name
+  }
+}
+
+fragment InitiativeUpdateFields on InitiativeUpdate {
+  id
+  body
+  health
+  url
+  createdAt
+  user {
+    id
+    displayName
+  }
+  initiative {
+    id
+    name
+  }
+}
+
+fragment AttachmentFields on Attachment {
+  id
+  title
+  subtitle
+  url
+  createdAt
+  issue {
+    id
+    identifier
+  }
+}
+
+query WorkspaceGet {
+  organization {
+    id
+    name
+    urlKey
+    createdAt
+  }
+  viewer {
+    id
+    name
+    displayName
+    email
+  }
+}
+
+query IssueList($first: Int, $after: String, $filter: IssueFilter) {
+  issues(first: $first, after: $after, filter: $filter) {
+    nodes {
+      ...IssueFields
+    }
+    pageInfo {
+      ...PageFields
+    }
+  }
+}
+
+query IssueGet($id: String!) {
+  issue(id: $id) {
+    ...IssueFields
+    description
+    parent {
+      id
+      identifier
+    }
+    cycle {
+      id
+      name
+      number
+    }
+    creator {
+      id
+      displayName
+    }
+  }
+}
+
+mutation IssueCreate($input: IssueCreateInput!) {
+  issueCreate(input: $input) {
+    success
+    issue {
+      ...IssueFields
+    }
+  }
+}
+
+mutation IssueUpdate($id: String!, $input: IssueUpdateInput!) {
+  issueUpdate(id: $id, input: $input) {
+    success
+    issue {
+      ...IssueFields
+    }
+  }
+}
+
+query CommentList($issueId: String!, $first: Int, $after: String) {
+  issue(id: $issueId) {
+    id
+    identifier
+    comments(first: $first, after: $after) {
+      nodes {
+        ...CommentFields
+      }
+      pageInfo {
+        ...PageFields
+      }
+    }
+  }
+}
+
+mutation CommentCreate($input: CommentCreateInput!) {
+  commentCreate(input: $input) {
+    success
+    comment {
+      ...CommentFields
+    }
+  }
+}
+
+mutation CommentUpdate($id: String!, $input: CommentUpdateInput!) {
+  commentUpdate(id: $id, input: $input) {
+    success
+    comment {
+      ...CommentFields
+    }
+  }
+}
+
+mutation CommentDelete($id: String!) {
+  commentDelete(id: $id) {
+    success
+  }
+}
+
+query ProjectList($first: Int, $after: String, $filter: ProjectFilter) {
+  projects(first: $first, after: $after, filter: $filter) {
+    nodes {
+      ...ProjectFields
+    }
+    pageInfo {
+      ...PageFields
+    }
+  }
+}
+
+query ProjectGet($id: String!) {
+  project(id: $id) {
+    ...ProjectFields
+    content
+  }
+}
+
+mutation ProjectCreate($input: ProjectCreateInput!) {
+  projectCreate(input: $input) {
+    success
+    project {
+      ...ProjectFields
+    }
+  }
+}
+
+mutation ProjectModify($id: String!, $input: ProjectUpdateInput!) {
+  projectUpdate(id: $id, input: $input) {
+    success
+    project {
+      ...ProjectFields
+    }
+  }
+}
+
+query TeamList($first: Int, $after: String) {
+  teams(first: $first, after: $after) {
+    nodes {
+      id
+      key
+      name
+      description
+    }
+    pageInfo {
+      ...PageFields
+    }
+  }
+}
+
+query TeamGet($id: String!) {
+  team(id: $id) {
+    id
+    key
+    name
+    description
+    timezone
+    members {
+      nodes {
+        id
+        displayName
+      }
+    }
+  }
+}
+
+query UserList($first: Int, $after: String) {
+  users(first: $first, after: $after) {
+    nodes {
+      id
+      name
+      displayName
+      email
+      active
+    }
+    pageInfo {
+      ...PageFields
+    }
+  }
+}
+
+query UserGet($id: String!) {
+  user(id: $id) {
+    id
+    name
+    displayName
+    email
+    active
+    admin
+    createdAt
+  }
+}
+
+query CycleList($teamId: String!, $first: Int, $after: String) {
+  team(id: $teamId) {
+    id
+    key
+    cycles(first: $first, after: $after) {
+      nodes {
+        id
+        number
+        name
+        startsAt
+        endsAt
+        progress
+      }
+      pageInfo {
+        ...PageFields
+      }
+    }
+  }
+}
+
+query LabelList($first: Int, $after: String, $filter: IssueLabelFilter) {
+  issueLabels(first: $first, after: $after, filter: $filter) {
+    nodes {
+      ...LabelFields
+    }
+    pageInfo {
+      ...PageFields
+    }
+  }
+}
+
+mutation LabelCreate($input: IssueLabelCreateInput!) {
+  issueLabelCreate(input: $input) {
+    success
+    issueLabel {
+      ...LabelFields
+    }
+  }
+}
+
+query StatusList($first: Int, $after: String, $filter: WorkflowStateFilter) {
+  workflowStates(first: $first, after: $after, filter: $filter) {
+    nodes {
+      ...StateFields
+    }
+    pageInfo {
+      ...PageFields
+    }
+  }
+}
+
+query StatusGet($id: String!) {
+  workflowState(id: $id) {
+    ...StateFields
+    description
+  }
+}
+
+query DocumentList($first: Int, $after: String, $filter: DocumentFilter) {
+  documents(first: $first, after: $after, filter: $filter) {
+    nodes {
+      ...DocumentFields
+    }
+    pageInfo {
+      ...PageFields
+    }
+  }
+}
+
+query DocumentGet($id: String!) {
+  document(id: $id) {
+    ...DocumentFields
+    content
+  }
+}
+
+mutation DocumentCreate($input: DocumentCreateInput!) {
+  documentCreate(input: $input) {
+    success
+    document {
+      ...DocumentFields
+    }
+  }
+}
+
+mutation DocumentUpdate($id: String!, $input: DocumentUpdateInput!) {
+  documentUpdate(id: $id, input: $input) {
+    success
+    document {
+      ...DocumentFields
+    }
+  }
+}
+
+query InitiativeList($first: Int, $after: String) {
+  initiatives(first: $first, after: $after) {
+    nodes {
+      ...InitiativeFields
+    }
+    pageInfo {
+      ...PageFields
+    }
+  }
+}
+
+query InitiativeGet($id: String!) {
+  initiative(id: $id) {
+    ...InitiativeFields
+    content
+  }
+}
+
+mutation InitiativeCreate($input: InitiativeCreateInput!) {
+  initiativeCreate(input: $input) {
+    success
+    initiative {
+      ...InitiativeFields
+    }
+  }
+}
+
+mutation InitiativeModify($id: String!, $input: InitiativeUpdateInput!) {
+  initiativeUpdate(id: $id, input: $input) {
+    success
+    initiative {
+      ...InitiativeFields
+    }
+  }
+}
+
+query MilestoneList($first: Int, $after: String, $filter: ProjectMilestoneFilter) {
+  projectMilestones(first: $first, after: $after, filter: $filter) {
+    nodes {
+      ...MilestoneFields
+    }
+    pageInfo {
+      ...PageFields
+    }
+  }
+}
+
+query MilestoneGet($id: String!) {
+  projectMilestone(id: $id) {
+    ...MilestoneFields
+  }
+}
+
+mutation MilestoneCreate($input: ProjectMilestoneCreateInput!) {
+  projectMilestoneCreate(input: $input) {
+    success
+    projectMilestone {
+      ...MilestoneFields
+    }
+  }
+}
+
+mutation MilestoneUpdate($id: String!, $input: ProjectMilestoneUpdateInput!) {
+  projectMilestoneUpdate(id: $id, input: $input) {
+    success
+    projectMilestone {
+      ...MilestoneFields
+    }
+  }
+}
+
+query ProjectLabelList($first: Int, $after: String) {
+  projectLabels(first: $first, after: $after) {
+    nodes {
+      id
+      name
+      color
+      description
+    }
+    pageInfo {
+      ...PageFields
+    }
+  }
+}
+
+query StatusUpdateGet($id: String!) {
+  projectUpdate(id: $id) {
+    ...ProjectUpdateFields
+  }
+}
+
+query InitiativeStatusUpdateGet($id: String!) {
+  initiativeUpdate(id: $id) {
+    ...InitiativeUpdateFields
+  }
+}
+
+mutation StatusUpdateCreate($input: ProjectUpdateCreateInput!) {
+  projectUpdateCreate(input: $input) {
+    success
+    projectUpdate {
+      ...ProjectUpdateFields
+    }
+  }
+}
+
+mutation InitiativeStatusUpdateCreate($input: InitiativeUpdateCreateInput!) {
+  initiativeUpdateCreate(input: $input) {
+    success
+    initiativeUpdate {
+      ...InitiativeUpdateFields
+    }
+  }
+}
+
+mutation StatusUpdateModify($id: String!, $input: ProjectUpdateUpdateInput!) {
+  projectUpdateUpdate(id: $id, input: $input) {
+    success
+    projectUpdate {
+      ...ProjectUpdateFields
+    }
+  }
+}
+
+mutation InitiativeStatusUpdateModify($id: String!, $input: InitiativeUpdateUpdateInput!) {
+  initiativeUpdateUpdate(id: $id, input: $input) {
+    success
+    initiativeUpdate {
+      ...InitiativeUpdateFields
+    }
+  }
+}
+
+mutation StatusUpdateArchive($id: String!) {
+  projectUpdateArchive(id: $id) {
+    success
+  }
+}
+
+mutation InitiativeStatusUpdateArchive($id: String!) {
+  initiativeUpdateArchive(id: $id) {
+    success
+  }
+}
+
+query AttachmentGet($id: String!) {
+  attachment(id: $id) {
+    ...AttachmentFields
+  }
+}
+
+mutation AttachmentCreate($input: AttachmentCreateInput!) {
+  attachmentCreate(input: $input) {
+    success
+    attachment {
+      ...AttachmentFields
+    }
+  }
+}
+
+mutation AttachmentDelete($id: String!) {
+  attachmentDelete(id: $id) {
+    success
+  }
+}
