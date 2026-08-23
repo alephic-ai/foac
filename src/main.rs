@@ -3,6 +3,7 @@ use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 mod auth;
 mod github;
 mod linear;
+mod provider;
 mod update;
 
 #[derive(Parser)]
@@ -17,15 +18,13 @@ const SKILL_MD: &str = include_str!("../doc/SKILL.md");
 #[derive(Clone, Copy)]
 struct Provider {
     name: &'static str,
-    authenticated: bool,
+    /// Authenticated and enabled; inactive providers are hidden from discovery.
+    active: bool,
 }
 
 impl Provider {
-    const fn new(name: &'static str, authenticated: bool) -> Self {
-        Self {
-            name,
-            authenticated,
-        }
+    const fn new(name: &'static str, active: bool) -> Self {
+        Self { name, active }
     }
 }
 
@@ -40,6 +39,9 @@ enum Command {
     /// Interact with Linear (linear.app)
     #[command(subcommand)]
     Linear(linear::Cmd),
+    /// Enable or disable providers
+    #[command(subcommand, arg_required_else_help = true)]
+    Provider(provider::Cmd),
     /// Manage the agent skill (SKILL.md) describing how to use this CLI
     #[command(subcommand, arg_required_else_help = true)]
     Skill(SkillCmd),
@@ -73,8 +75,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let skip_check = matches!(command, Command::Update);
     let result = match command {
         Command::Auth(cmd) => auth::run(cmd),
-        Command::Github(cmd) => github::run(cmd),
-        Command::Linear(cmd) => linear::run(cmd),
+        Command::Github(cmd) => {
+            provider::ensure_enabled(&provider::load(), "github")?;
+            github::run(cmd)
+        }
+        Command::Linear(cmd) => {
+            provider::ensure_enabled(&provider::load(), "linear")?;
+            linear::run(cmd)
+        }
+        Command::Provider(cmd) => provider::run(cmd),
         Command::Skill(cmd) => {
             let skill = render_skill(&providers());
             match cmd {
@@ -106,16 +115,24 @@ enum SkillCmd {
 }
 
 fn providers() -> [Provider; 2] {
+    let config = provider::load();
     [
-        Provider::new("github", github::authenticated()),
-        Provider::new("linear", linear::authenticated()),
+        // Config first: short-circuit skips the keychain/`gh` probe when disabled.
+        Provider::new(
+            "github",
+            config.enabled("github") && github::authenticated(),
+        ),
+        Provider::new(
+            "linear",
+            config.enabled("linear") && linear::authenticated(),
+        ),
     ]
 }
 
 fn cli_command(providers: &[Provider]) -> clap::Command {
     providers.iter().fold(Cli::command(), |command, provider| {
         command.mut_subcommand(provider.name, |subcommand| {
-            subcommand.hide(!provider.authenticated)
+            subcommand.hide(!provider.active)
         })
     })
 }
@@ -146,7 +163,7 @@ fn remove_hidden_provider_suggestions(error: &mut clap::Error, providers: &[Prov
         providers
             .iter()
             .find(|provider| provider.name == suggestion)
-            .is_none_or(|provider| provider.authenticated)
+            .is_none_or(|provider| provider.active)
     });
     if !suggestions.is_empty() {
         error.insert(
@@ -170,12 +187,12 @@ fn render_skill(providers: &[Provider]) -> String {
                 provider_block.is_none(),
                 "provider skill blocks cannot nest"
             );
-            let authenticated = providers
+            let active = providers
                 .iter()
                 .find(|provider| provider.name == name)
                 .unwrap_or_else(|| panic!("unknown provider skill block: {name}"))
-                .authenticated;
-            provider_block = Some((name, authenticated));
+                .active;
+            provider_block = Some((name, active));
             continue;
         }
         if let Some(name) = marker
@@ -186,7 +203,7 @@ fn render_skill(providers: &[Provider]) -> String {
             provider_block = None;
             continue;
         }
-        if provider_block.is_none_or(|(_, authenticated)| authenticated) {
+        if provider_block.is_none_or(|(_, active)| active) {
             rendered.push_str(line);
         }
     }
@@ -270,7 +287,7 @@ mod tests {
                 for name in ["github", "linear"] {
                     assert_eq!(help_lists(&help, name), expected.contains(&name));
                 }
-                for name in ["auth", "skill", "update", "version", "help"] {
+                for name in ["auth", "provider", "skill", "update", "version", "help"] {
                     assert!(help_lists(&help, name));
                 }
             }
@@ -317,7 +334,9 @@ mod tests {
             assert_eq!(skill.contains("foac linear issue list"), linear);
             assert_eq!(skill.contains("foac github issue list"), github);
             assert!(!skill.contains("<!-- foac-provider:"));
-            assert!(skill.contains("top-level `--help` lists only authenticated providers"));
+            assert!(
+                skill.contains("top-level `--help` lists only authenticated, enabled providers")
+            );
         }
     }
 
@@ -352,6 +371,28 @@ mod tests {
         ] {
             Cli::try_parse_from(args).unwrap();
         }
+    }
+
+    #[test]
+    fn parses_provider_commands() {
+        for args in [
+            vec!["foac", "provider", "list"],
+            vec!["foac", "provider", "enable", "github"],
+            vec!["foac", "provider", "enable", "linear"],
+            vec!["foac", "provider", "disable", "github"],
+            vec!["foac", "provider", "disable", "linear"],
+        ] {
+            Cli::try_parse_from(args).unwrap();
+        }
+        assert!(Cli::try_parse_from(["foac", "provider", "enable", "nope"]).is_err());
+        let error = match Cli::try_parse_from(["foac", "provider"]) {
+            Ok(_) => panic!("bare provider command should display help"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.kind(),
+            ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+        );
     }
 
     #[test]
