@@ -1,6 +1,6 @@
 ---
 name: foac
-description: Use the foac CLI to interact with Linear and GitHub from the shell. Linear covers issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, and attachments. GitHub covers repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, and collaborators. Only authenticated providers are exposed.
+description: Use the foac CLI to interact with Linear and GitHub from the shell. Linear covers issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, and attachments. GitHub covers repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, and collaborators. Only authenticated, enabled providers are exposed.
 ---
 
 # foac
@@ -19,7 +19,7 @@ foac <provider> <resource> <verb> [flags]
 ```
 
 - A provider is the external product or API named by the first command segment.
-  The top-level `--help` lists only authenticated providers.
+  The top-level `--help` lists only authenticated, enabled providers.
 <!-- foac-provider:linear -->
 - `linear`: issues, projects, teams, users, cycles, labels, workflow states,
   documents, initiatives, milestones, status updates, and attachments.
@@ -41,6 +41,10 @@ foac <provider> <resource> <verb> [flags]
   validates a token before saving it in the OS secret store; when stdin is
   redirected, it reads the token from stdin. Logout removes only foac's stored
   credential. Use `foac auth --help` to list auth targets.
+- **Provider toggles**: `foac provider <enable|disable> <name>` turns a provider
+  on or off (state kept in `~/.config/foac/config.json`); `foac provider list`
+  shows each provider's state. Disabled providers are hidden from discovery and
+  their commands refuse to run.
 <!-- foac-provider:linear -->
 - **Linear auth precedence**: `LINEAR_API_KEY`, then the OS secret store.
 <!-- /foac-provider:linear -->
@@ -63,7 +67,8 @@ foac <provider> <resource> <verb> [flags]
   success output renders as a table sized to the terminal when stdout is an
   interactive TTY and `CI` is not set, so agents parsing stdout must pass
   `--format json` or set `FOAC_FORMAT=json`; pipes and CI always get JSON.
-  `auth`, `version`, `update`, and `skill` ignore `--format`. Failures print
+  `auth`, `provider`, `version`, `update`, and `skill` ignore `--format`.
+  Failures print
   the API's error JSON on stderr and exit non-zero.
 <!-- foac-provider:linear -->
 - **Linear pagination**: `list` verbs take `--limit N` (default 50) and

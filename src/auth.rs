@@ -41,8 +41,8 @@ enum ProviderAction {
     Logout,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Provider {
+#[derive(Clone, Copy, Debug, Eq, PartialEq, clap::ValueEnum)]
+pub(crate) enum Provider {
     Linear,
     Github,
 }
@@ -128,7 +128,7 @@ impl fmt::Display for ResolveError {
 impl std::error::Error for ResolveError {}
 
 impl Provider {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Linear => "linear",
             Self::Github => "github",
