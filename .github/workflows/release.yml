@@ -8,7 +8,7 @@ on:
     paths:
       - "src/**"
       - "graphql/**"
-      - "docs/SKILL.md"
+      - "doc/SKILL.md"
       - Cargo.toml
       - Cargo.lock
   # Escape hatch: run by hand, e.g. to resume after a workflow fix.

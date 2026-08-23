@@ -10,7 +10,7 @@ struct Cli {
     command: Option<Command>,
 }
 
-const SKILL_MD: &str = include_str!("../docs/SKILL.md");
+const SKILL_MD: &str = include_str!("../doc/SKILL.md");
 
 #[derive(Subcommand)]
 // One short-lived value on the stack; boxing the variant isn't worth it.
