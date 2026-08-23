@@ -4,10 +4,10 @@ use self_update::cargo_crate_version;
 mod linear;
 
 #[derive(Parser)]
-#[command(about, arg_required_else_help = true)]
+#[command(about)]
 struct Cli {
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 const SKILL_MD: &str = include_str!("../doc/SKILL.md");
@@ -39,12 +39,12 @@ fn main() {
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     match Cli::parse().command {
-        Command::Linear(cmd) => linear::run(cmd),
-        Command::Skill { command: None } => {
+        Some(Command::Linear(cmd)) => linear::run(cmd),
+        Some(Command::Skill { command: None }) => {
             print!("{SKILL_MD}");
             Ok(())
         }
-        Command::Skill { command: Some(SkillCmd::Install) } => {
+        Some(Command::Skill { command: Some(SkillCmd::Install) }) => {
             let home = std::env::home_dir().ok_or("could not determine the home directory")?;
             let installed = skill_install(&home)?;
             if installed.is_empty() {
@@ -55,9 +55,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
             Ok(())
         }
-        Command::Update => update(),
-        Command::Version => {
+        Some(Command::Update) => update(),
+        Some(Command::Version) => {
             println!("{}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
+        None => {
+            println!("{}", env!("CARGO_PKG_DESCRIPTION"));
             Ok(())
         }
     }
