@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 
+mod auth;
 mod github;
 mod linear;
 mod update;
@@ -17,9 +18,11 @@ const SKILL_MD: &str = include_str!("../doc/SKILL.md");
 // One short-lived value on the stack; boxing the variant isn't worth it.
 #[allow(clippy::large_enum_variant)]
 enum Command {
-    /// Interact with GitHub, requires GITHUB_TOKEN or an authenticated gh CLI
+    /// Check and configure provider authentication
+    Auth(auth::Cmd),
+    /// Interact with GitHub
     Github(github::Cmd),
-    /// Interact with Linear (linear.app), requires LINEAR_API_KEY
+    /// Interact with Linear (linear.app)
     #[command(subcommand)]
     Linear(linear::Cmd),
     /// Print an agent skill (SKILL.md) describing how to use this CLI
@@ -44,6 +47,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let command = Cli::parse().command;
     let skip_check = matches!(command, Command::Update);
     let result = match command {
+        Command::Auth(cmd) => auth::run(cmd),
         Command::Github(cmd) => github::run(cmd),
         Command::Linear(cmd) => linear::run(cmd),
         Command::Skill { command: None } => {
@@ -119,13 +123,46 @@ fn skill_install(
 
 #[cfg(test)]
 mod tests {
-    use clap::CommandFactory;
+    use clap::{CommandFactory, error::ErrorKind};
 
     use super::*;
 
     #[test]
     fn verify_cli() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn bare_auth_commands_display_help() {
+        for args in [
+            vec!["foac", "auth"],
+            vec!["foac", "auth", "linear"],
+            vec!["foac", "auth", "github"],
+        ] {
+            let error = match Cli::try_parse_from(args) {
+                Ok(_) => panic!("bare auth command should display help"),
+                Err(error) => error,
+            };
+            assert_eq!(
+                error.kind(),
+                ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+            );
+        }
+    }
+
+    #[test]
+    fn parses_auth_commands() {
+        for args in [
+            vec!["foac", "auth", "status"],
+            vec!["foac", "auth", "linear", "status"],
+            vec!["foac", "auth", "linear", "login"],
+            vec!["foac", "auth", "linear", "logout"],
+            vec!["foac", "auth", "github", "status"],
+            vec!["foac", "auth", "github", "login"],
+            vec!["foac", "auth", "github", "logout"],
+        ] {
+            Cli::try_parse_from(args).unwrap();
+        }
     }
 
     #[test]

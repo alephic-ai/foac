@@ -7,7 +7,9 @@ description: Use the foac CLI to interact with Linear and GitHub from the shell.
 
 foac wraps external provider APIs as CLI subcommands, designed for LLM agents:
 every command prints compact JSON on stdout, errors go to stderr with exit
-code 1, and nothing is interactive.
+code 1, and provider API commands are non-interactive. Auth login is the
+explicit exception: it securely prompts on a TTY or reads a token from
+redirected stdin.
 
 ## Structure
 
@@ -25,8 +27,17 @@ foac <provider> <resource> <verb> [flags]
 
 ## Conventions
 
-- **Auth**: Linear needs `LINEAR_API_KEY`. GitHub uses `GITHUB_TOKEN`, then
-  falls back to `gh auth token` when the GitHub CLI is authenticated.
+- **Auth commands**: Use `foac auth status` for all providers, or
+  `foac auth <linear|github> <status|login|logout>` for one. Login securely
+  reads and validates a token before saving it in the OS secret store; when
+  stdin is redirected, it reads the token from stdin. Logout removes only
+  foac's stored credential.
+- **Auth precedence**: Linear uses `LINEAR_API_KEY`, then the OS secret store.
+  GitHub uses `GITHUB_TOKEN`, then the OS secret store, then `gh auth token`.
+- **Auth status**: Status commands perform live validation and print
+  `authenticated`, `unauthenticated`, or `error` as JSON, including the
+  credential source and safe account identity when available. They exit zero
+  after printing the report; inspect the JSON status values.
 - **GitHub permissions**: classic tokens need `repo` for private repositories.
   Fine-grained tokens need Metadata read plus read or write access, as used, to
   Issues, Pull requests, Actions, Checks, Commit statuses, Contents, and
@@ -78,6 +89,9 @@ then use `review submit`.
 ## Examples
 
 ```sh
+foac auth status
+foac auth linear login
+foac auth github status
 foac linear issue list --team ENG --state "In Progress"
 foac linear issue create --team <TEAM_UUID> --title "Fix login" --description "..."
 foac linear comment create --issue ENG-123 --body "Done, see PR #42"
