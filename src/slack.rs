@@ -23,7 +23,7 @@ enum Resource {
     /// Workspace users
     #[command(subcommand)]
     User(UserCmd),
-    /// Search workspace messages (requires SLACK_USER_TOKEN)
+    /// Search workspace messages (requires a Slack user credential)
     Search {
         /// Slack search query, e.g. `"deployment in:eng from:@alice"`
         query: String,

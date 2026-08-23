@@ -448,6 +448,18 @@ mod tests {
     }
 
     #[test]
+    fn slack_login_help_describes_both_token_inputs() {
+        let error = match Cli::try_parse_from(["foac", "auth", "slack", "login", "--help"]) {
+            Ok(_) => panic!("--help should stop parsing"),
+            Err(error) => error,
+        };
+        let help = error.to_string();
+        assert!(help.contains("bot token, then the user token"));
+        assert!(help.contains("two lines in the same order"));
+        assert!(help.contains("either token may be blank"));
+    }
+
+    #[test]
     fn parses_provider_commands() {
         for args in [
             vec!["foac", "provider", "list"],

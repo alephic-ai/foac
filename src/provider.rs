@@ -217,6 +217,16 @@ mod tests {
         assert_eq!(config.credential("github"), None);
 
         let mut config = config;
+        config.set_credential("slack_bot", "xoxb-bot".into());
+        config.set_credential("slack_user", "xoxp-user".into());
+        write(&path, &config).unwrap();
+        let config = read(&path).unwrap();
+        assert_eq!(config.credential("slack_bot"), Some("xoxb-bot"));
+        assert_eq!(config.credential("slack_user"), Some("xoxp-user"));
+
+        let mut config = config;
+        assert!(config.remove_credential("slack_bot"));
+        assert!(config.remove_credential("slack_user"));
         assert!(config.remove_credential("linear"));
         assert!(!config.remove_credential("linear"));
         write(&path, &config).unwrap();

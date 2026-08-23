@@ -21,7 +21,7 @@ enum AuthCmd {
     /// Configure GitHub authentication
     Github(ProviderCmd),
     /// Configure Slack authentication
-    Slack(ProviderCmd),
+    Slack(SlackCmd),
     /// Configure Sentry authentication
     Sentry(SentryCmd),
 }
@@ -40,6 +40,26 @@ enum ProviderAction {
     /// Validate and save a token in foac's config file
     Login,
     /// Remove foac's token from the config file
+    Logout,
+}
+
+#[derive(Args)]
+#[command(arg_required_else_help = true)]
+struct SlackCmd {
+    #[command(subcommand)]
+    command: SlackAction,
+}
+
+#[derive(Subcommand)]
+enum SlackAction {
+    /// Check Slack authentication
+    Status,
+    /// Validate and save optional bot and user tokens
+    ///
+    /// Prompts for the bot token, then the user token. Redirected input uses
+    /// two lines in the same order; either token may be blank.
+    Login,
+    /// Remove foac's stored bot and user tokens
     Logout,
 }
 
@@ -98,10 +118,14 @@ struct ResolvedCredential {
     source: CredentialSource,
 }
 
+const SLACK_BOT_CREDENTIAL: &str = "slack_bot";
+const SLACK_USER_CREDENTIAL: &str = "slack_user";
+const LEGACY_SLACK_CREDENTIAL: &str = "slack";
+
 trait SecretStore {
-    fn get(&self, provider: Provider) -> Result<Option<String>, String>;
-    fn set(&self, provider: Provider, token: &str) -> Result<(), String>;
-    fn delete(&self, provider: Provider) -> Result<bool, String>;
+    fn get(&self, name: &str) -> Result<Option<String>, String>;
+    fn set_many(&self, credentials: &[(&str, &str)]) -> Result<(), String>;
+    fn delete_many(&self, names: &[&str]) -> Result<bool, String>;
 }
 
 struct ConfigFileStore;
@@ -115,7 +139,7 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
         }
         AuthCmd::Linear(cmd) => run_provider(Provider::Linear, cmd.command, &store, format),
         AuthCmd::Github(cmd) => run_provider(Provider::Github, cmd.command, &store, format),
-        AuthCmd::Slack(cmd) => run_provider(Provider::Slack, cmd.command, &store, format),
+        AuthCmd::Slack(cmd) => run_slack(cmd.command, &store, format),
         AuthCmd::Sentry(cmd) => match cmd.command {
             SentryAction::Status => {
                 print_status(Provider::Sentry, &store, format);
@@ -158,7 +182,7 @@ pub(crate) fn slack_token() -> Result<String, Box<dyn std::error::Error>> {
 }
 
 pub(crate) fn slack_user_token() -> Result<String, Box<dyn std::error::Error>> {
-    resolve_slack_user(environment_slack_user_token())
+    resolve_slack_user(environment_slack_user_token(), &ConfigFileStore)
         .map(|credential| credential.token)
         .map_err(Into::into)
 }
@@ -233,22 +257,27 @@ impl CredentialSource {
 }
 
 impl SecretStore for ConfigFileStore {
-    fn get(&self, provider: Provider) -> Result<Option<String>, String> {
+    fn get(&self, name: &str) -> Result<Option<String>, String> {
         Ok(crate::provider::load()
-            .credential(provider.as_str())
+            .credential(name)
             .filter(|token| !token.is_empty())
             .map(str::to_owned))
     }
 
-    fn set(&self, provider: Provider, token: &str) -> Result<(), String> {
+    fn set_many(&self, credentials: &[(&str, &str)]) -> Result<(), String> {
         let mut config = crate::provider::load();
-        config.set_credential(provider.as_str(), token.to_owned());
+        for (name, token) in credentials {
+            config.set_credential(name, (*token).to_owned());
+        }
         crate::provider::save(&config).map_err(|error| error.to_string())
     }
 
-    fn delete(&self, provider: Provider) -> Result<bool, String> {
+    fn delete_many(&self, names: &[&str]) -> Result<bool, String> {
         let mut config = crate::provider::load();
-        let removed = config.remove_credential(provider.as_str());
+        let mut removed = false;
+        for name in names {
+            removed = config.remove_credential(name) || removed;
+        }
         if removed {
             crate::provider::save(&config).map_err(|error| error.to_string())?;
         }
@@ -272,13 +301,38 @@ fn run_provider(
     }
 }
 
+fn run_slack(
+    action: SlackAction,
+    store: &dyn SecretStore,
+    format: crate::output::Format,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match action {
+        SlackAction::Status => {
+            print_status(Provider::Slack, store, format);
+            Ok(())
+        }
+        SlackAction::Login => slack_login(store, format),
+        SlackAction::Logout => logout(Provider::Slack, store, format),
+    }
+}
+
 fn logout(
     provider: Provider,
     store: &dyn SecretStore,
     format: crate::output::Format,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let provider_name = provider.as_str();
+    let names: &[&str] = if provider == Provider::Slack {
+        &[
+            SLACK_BOT_CREDENTIAL,
+            SLACK_USER_CREDENTIAL,
+            LEGACY_SLACK_CREDENTIAL,
+        ]
+    } else {
+        &[provider_name]
+    };
     let removed = store
-        .delete(provider)
+        .delete_many(names)
         .map_err(|error| format!("could not delete {} credential: {error}", provider.as_str()))?;
     let report = logout_report(provider, removed);
     crate::output::print_text(&logout_summary(removed), &report, format);
@@ -301,13 +355,7 @@ fn login(
     if token.is_empty() {
         return Err("token cannot be empty".into());
     }
-    if provider == Provider::Slack && !crate::slack::is_bot_token(&token) {
-        return Err(
-            "foac auth slack login stores bot credentials; set user tokens through SLACK_USER_TOKEN"
-                .into(),
-        );
-    }
-    let account = validate_and_store(provider, &token, store, |token| {
+    let account = validate_and_store(provider, provider.as_str(), &token, store, |token| {
         validate(provider, token, url.as_deref())
     })?;
     if let Some(url) = &url {
@@ -331,6 +379,136 @@ fn login(
         format,
     );
     Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct SlackTokens {
+    bot: Option<String>,
+    user: Option<String>,
+}
+
+fn slack_login(
+    store: &dyn SecretStore,
+    format: crate::output::Format,
+) -> Result<(), Box<dyn std::error::Error>> {
+    print_login_help(Provider::Slack, None);
+    let tokens = read_slack_tokens()?;
+    let (bot_account, user_account) =
+        validate_and_store_slack(&tokens, store, validate_slack_login_token)?;
+    let mut stored = Vec::with_capacity(2);
+    if tokens.bot.is_some() {
+        stored.push("bot");
+    }
+    if tokens.user.is_some() {
+        stored.push("user");
+    }
+
+    if tokens.bot.is_some() && environment_token(Provider::Slack).is_some() {
+        eprintln!(
+            "Warning: SLACK_BOT_TOKEN is set and takes precedence over the stored credential."
+        );
+    }
+    if tokens.user.is_some() && environment_slack_user_token().is_some() {
+        eprintln!(
+            "Warning: SLACK_USER_TOKEN is set and takes precedence over the stored credential."
+        );
+    }
+
+    let account = bot_account
+        .or(user_account)
+        .expect("at least one Slack token");
+    let mut report = login_report(Provider::Slack, account);
+    report[Provider::Slack.as_str()]["stored"] = json!(stored);
+    crate::output::print_text(
+        &status_summary(Provider::Slack, &report[Provider::Slack.as_str()]),
+        &report,
+        format,
+    );
+    Ok(())
+}
+
+fn validate_slack_login_token(token: &str, bot: bool) -> Result<Value, ValidationError> {
+    let valid_form = if bot {
+        crate::slack::is_bot_token(token)
+    } else {
+        crate::slack::is_user_token(token)
+    };
+    if !valid_form {
+        let expected = if bot { "xoxb- bot" } else { "xoxp- user" };
+        return Err(ValidationError::Rejected(format!(
+            "Slack {expected} token required"
+        )));
+    }
+    validate(Provider::Slack, token, None)
+}
+
+fn validate_and_store_slack<F>(
+    tokens: &SlackTokens,
+    store: &dyn SecretStore,
+    mut validate: F,
+) -> Result<(Option<Value>, Option<Value>), Box<dyn std::error::Error>>
+where
+    F: FnMut(&str, bool) -> Result<Value, ValidationError>,
+{
+    let bot_account = tokens
+        .bot
+        .as_deref()
+        .map(|token| validate(token, true))
+        .transpose()?;
+    let user_account = tokens
+        .user
+        .as_deref()
+        .map(|token| validate(token, false))
+        .transpose()?;
+
+    let mut credentials = Vec::with_capacity(2);
+    if let Some(token) = tokens.bot.as_deref() {
+        credentials.push((SLACK_BOT_CREDENTIAL, token));
+    }
+    if let Some(token) = tokens.user.as_deref() {
+        credentials.push((SLACK_USER_CREDENTIAL, token));
+    }
+    store
+        .set_many(&credentials)
+        .map_err(|error| format!("could not store Slack credentials: {error}"))?;
+    Ok((bot_account, user_account))
+}
+
+fn read_slack_tokens() -> Result<SlackTokens, Box<dyn std::error::Error>> {
+    if std::io::stdin().is_terminal() {
+        return require_slack_token(SlackTokens {
+            bot: nonempty_token(rpassword::prompt_password("Bot token (optional): ")?),
+            user: nonempty_token(rpassword::prompt_password("User token (optional): ")?),
+        });
+    }
+    let mut input = String::new();
+    std::io::stdin().read_to_string(&mut input)?;
+    parse_slack_tokens(&input).map_err(Into::into)
+}
+
+fn parse_slack_tokens(input: &str) -> Result<SlackTokens, String> {
+    let mut lines = input.lines();
+    let tokens = SlackTokens {
+        bot: lines.next().map(str::to_owned).and_then(nonempty_token),
+        user: lines.next().map(str::to_owned).and_then(nonempty_token),
+    };
+    if lines.any(|line| !line.trim().is_empty()) {
+        return Err("Slack login input must contain two lines: bot token, then user token".into());
+    }
+    require_slack_token(tokens).map_err(|error| error.to_string())
+}
+
+fn require_slack_token(tokens: SlackTokens) -> Result<SlackTokens, Box<dyn std::error::Error>> {
+    if tokens.bot.is_none() && tokens.user.is_none() {
+        Err("at least one Slack token is required".into())
+    } else {
+        Ok(tokens)
+    }
+}
+
+fn nonempty_token(token: String) -> Option<String> {
+    let token = token.trim().to_owned();
+    (!token.is_empty()).then_some(token)
 }
 
 fn print_all_statuses(store: &dyn SecretStore, format: crate::output::Format) {
@@ -528,6 +706,7 @@ fn all_provider_statuses(store: &dyn SecretStore) -> Value {
 
 fn validate_and_store<F>(
     provider: Provider,
+    credential_name: &str,
     token: &str,
     store: &dyn SecretStore,
     validate: F,
@@ -537,7 +716,7 @@ where
 {
     let account = validate(token)?;
     store
-        .set(provider, token)
+        .set_many(&[(credential_name, token)])
         .map_err(|error| format!("could not store {} credential: {error}", provider.as_str()))?;
     Ok(account)
 }
@@ -593,7 +772,7 @@ fn resolve_stored(
             source: CredentialSource::Environment,
         });
     }
-    match store.get(provider) {
+    match store.get(provider.as_str()) {
         Ok(Some(token)) => Ok(ResolvedCredential {
             token,
             source: CredentialSource::ConfigFile,
@@ -617,10 +796,10 @@ fn resolve_slack(
 ) -> Result<ResolvedCredential, ResolveError> {
     match resolve_slack_bot(bot_environment, store) {
         Ok(credential) => Ok(credential),
-        Err(ResolveError::Missing(_)) => match resolve_slack_user(user_environment) {
+        Err(ResolveError::Missing(_)) => match resolve_slack_user(user_environment, store) {
             Ok(credential) => Ok(credential),
             Err(ResolveError::Missing(_)) => Err(ResolveError::Missing(
-                "SLACK_BOT_TOKEN and SLACK_USER_TOKEN are not set and no Slack bot credential is stored"
+                "SLACK_BOT_TOKEN and SLACK_USER_TOKEN are not set and no Slack credential is stored"
                     .into(),
             )),
             Err(error) => Err(error),
@@ -633,7 +812,13 @@ fn resolve_slack_bot(
     environment: Option<String>,
     store: &dyn SecretStore,
 ) -> Result<ResolvedCredential, ResolveError> {
-    let credential = resolve_stored(Provider::Slack, environment, store)?;
+    let credential = resolve_named_stored(
+        environment,
+        &[SLACK_BOT_CREDENTIAL, LEGACY_SLACK_CREDENTIAL],
+        "SLACK_BOT_TOKEN is not set and no Slack bot credential is stored",
+        "Slack bot",
+        store,
+    )?;
     if !crate::slack::is_bot_token(&credential.token) {
         return Err(ResolveError::Failed(
             "SLACK_BOT_TOKEN and stored Slack credentials must be xoxb- bot tokens".into(),
@@ -642,22 +827,55 @@ fn resolve_slack_bot(
     Ok(credential)
 }
 
-fn resolve_slack_user(environment: Option<String>) -> Result<ResolvedCredential, ResolveError> {
-    let token = environment.ok_or_else(|| {
-        ResolveError::Missing(
-            "SLACK_USER_TOKEN is not set; Slack search requires a user token with search:read"
-                .into(),
-        )
-    })?;
-    if !crate::slack::is_user_token(&token) {
+fn resolve_slack_user(
+    environment: Option<String>,
+    store: &dyn SecretStore,
+) -> Result<ResolvedCredential, ResolveError> {
+    let credential = resolve_named_stored(
+        environment,
+        &[SLACK_USER_CREDENTIAL],
+        "SLACK_USER_TOKEN is not set and no Slack user credential is stored; Slack search requires a user token with search:read",
+        "Slack user",
+        store,
+    )?;
+    if !crate::slack::is_user_token(&credential.token) {
         return Err(ResolveError::Failed(
-            "SLACK_USER_TOKEN must be an xoxp- user token".into(),
+            "SLACK_USER_TOKEN and stored Slack user credentials must be xoxp- user tokens".into(),
         ));
     }
-    Ok(ResolvedCredential {
-        token,
-        source: CredentialSource::Environment,
-    })
+    Ok(credential)
+}
+
+fn resolve_named_stored(
+    environment: Option<String>,
+    stored_names: &[&str],
+    missing: &str,
+    display_name: &str,
+    store: &dyn SecretStore,
+) -> Result<ResolvedCredential, ResolveError> {
+    if let Some(token) = environment {
+        return Ok(ResolvedCredential {
+            token,
+            source: CredentialSource::Environment,
+        });
+    }
+    for name in stored_names {
+        match store.get(name) {
+            Ok(Some(token)) => {
+                return Ok(ResolvedCredential {
+                    token,
+                    source: CredentialSource::ConfigFile,
+                });
+            }
+            Ok(None) => {}
+            Err(error) => {
+                return Err(ResolveError::Failed(format!(
+                    "could not read {display_name} credential from the config file: {error}"
+                )));
+            }
+        }
+    }
+    Err(ResolveError::Missing(missing.into()))
 }
 
 fn resolve_github<F>(
@@ -674,7 +892,7 @@ where
             source: CredentialSource::Environment,
         });
     }
-    let store_error = match store.get(Provider::Github) {
+    let store_error = match store.get(Provider::Github.as_str()) {
         Ok(Some(token)) => {
             return Ok(ResolvedCredential {
                 token,
@@ -837,7 +1055,7 @@ fn print_login_help(provider: Provider, sentry_url: Option<&str>) {
             "Create a fine-grained personal access token at https://github.com/settings/personal-access-tokens/new and grant the repository permissions needed by your foac commands."
         ),
         Provider::Slack => eprintln!(
-            "Create or install a Slack app with the bot scopes needed by your foac commands, then copy its Bot User OAuth Token (xoxb-)."
+            "Create or install a Slack app, then enter its Bot User OAuth Token (xoxb-) and User OAuth Token (xoxp-). Leave either prompt blank if that token type is not needed."
         ),
         Provider::Sentry => eprintln!(
             "Create a user auth token at {}/settings/account/api/auth-tokens/ and grant the scopes needed by your foac commands.",
@@ -855,38 +1073,40 @@ mod tests {
 
     #[derive(Default)]
     struct MemoryStore {
-        credentials: RefCell<HashMap<&'static str, String>>,
+        credentials: RefCell<HashMap<String, String>>,
         get_error: Option<String>,
     }
 
     impl SecretStore for MemoryStore {
-        fn get(&self, provider: Provider) -> Result<Option<String>, String> {
+        fn get(&self, name: &str) -> Result<Option<String>, String> {
             if let Some(error) = &self.get_error {
                 return Err(error.clone());
             }
-            Ok(self.credentials.borrow().get(provider.as_str()).cloned())
+            Ok(self.credentials.borrow().get(name).cloned())
         }
 
-        fn set(&self, provider: Provider, token: &str) -> Result<(), String> {
-            self.credentials
-                .borrow_mut()
-                .insert(provider.as_str(), token.to_owned());
+        fn set_many(&self, credentials: &[(&str, &str)]) -> Result<(), String> {
+            let mut stored = self.credentials.borrow_mut();
+            for (name, token) in credentials {
+                stored.insert((*name).to_owned(), (*token).to_owned());
+            }
             Ok(())
         }
 
-        fn delete(&self, provider: Provider) -> Result<bool, String> {
-            Ok(self
-                .credentials
-                .borrow_mut()
-                .remove(provider.as_str())
-                .is_some())
+        fn delete_many(&self, names: &[&str]) -> Result<bool, String> {
+            let mut stored = self.credentials.borrow_mut();
+            let mut removed = false;
+            for name in names {
+                removed = stored.remove(*name).is_some() || removed;
+            }
+            Ok(removed)
         }
     }
 
     #[test]
     fn linear_credentials_prefer_environment_then_secret_store() {
         let store = MemoryStore::default();
-        store.set(Provider::Linear, "stored").unwrap();
+        store.set_many(&[("linear", "stored")]).unwrap();
         let resolved =
             resolve_stored(Provider::Linear, Some("environment".into()), &store).unwrap();
         assert_eq!(resolved.token, "environment");
@@ -955,12 +1175,26 @@ mod tests {
         )
         .unwrap();
         assert_eq!(bot.token, "xoxb-environment");
+
+        let stored_user = MemoryStore::default();
+        stored_user
+            .set_many(&[(SLACK_USER_CREDENTIAL, "xoxp-stored-user")])
+            .unwrap();
+        let user = resolve_slack(None, None, &stored_user).unwrap();
+        assert_eq!(user.token, "xoxp-stored-user");
+        assert_eq!(user.source, CredentialSource::ConfigFile);
+        assert_eq!(
+            resolve_slack_user(None, &stored_user).unwrap().token,
+            "xoxp-stored-user"
+        );
     }
 
     #[test]
     fn slack_stored_bot_precedes_user_and_invalid_tokens_fail() {
         let store = MemoryStore::default();
-        store.set(Provider::Slack, "xoxb-stored").unwrap();
+        store
+            .set_many(&[(SLACK_BOT_CREDENTIAL, "xoxb-stored")])
+            .unwrap();
         let resolved = resolve_slack(None, Some("xoxp-user".into()), &store).unwrap();
         assert_eq!(resolved.token, "xoxb-stored");
         assert_eq!(resolved.source, CredentialSource::ConfigFile);
@@ -974,17 +1208,192 @@ mod tests {
         assert!(matches!(error, ResolveError::Failed(_)));
         assert!(error.to_string().contains("xoxb-"));
 
-        let error = resolve_slack_user(Some("not-a-user-token".into())).unwrap_err();
+        let error = resolve_slack_user(Some("not-a-user-token".into()), &store).unwrap_err();
         assert!(matches!(error, ResolveError::Failed(_)));
         assert!(error.to_string().contains("xoxp-"));
     }
 
     #[test]
+    fn slack_stored_tokens_have_independent_environment_precedence() {
+        let store = MemoryStore::default();
+        store
+            .set_many(&[
+                (SLACK_BOT_CREDENTIAL, "xoxb-stored"),
+                (SLACK_USER_CREDENTIAL, "xoxp-stored"),
+            ])
+            .unwrap();
+
+        assert_eq!(
+            resolve_slack(None, None, &store).unwrap().token,
+            "xoxb-stored"
+        );
+        assert_eq!(
+            resolve_slack_user(None, &store).unwrap().token,
+            "xoxp-stored"
+        );
+        assert_eq!(
+            resolve_slack(Some("xoxb-env".into()), None, &store)
+                .unwrap()
+                .token,
+            "xoxb-env"
+        );
+        assert_eq!(
+            resolve_slack_user(Some("xoxp-env".into()), &store)
+                .unwrap()
+                .token,
+            "xoxp-env"
+        );
+    }
+
+    #[test]
+    fn slack_bot_resolution_reads_the_legacy_storage_key() {
+        let store = MemoryStore::default();
+        store
+            .set_many(&[(LEGACY_SLACK_CREDENTIAL, "xoxb-legacy")])
+            .unwrap();
+        assert_eq!(
+            resolve_slack(None, None, &store).unwrap().token,
+            "xoxb-legacy"
+        );
+    }
+
+    #[test]
+    fn parses_slack_login_tokens_in_bot_then_user_order() {
+        assert_eq!(
+            parse_slack_tokens("xoxb-bot\nxoxp-user\n").unwrap(),
+            SlackTokens {
+                bot: Some("xoxb-bot".into()),
+                user: Some("xoxp-user".into()),
+            }
+        );
+        assert_eq!(
+            parse_slack_tokens("\nxoxp-user\n").unwrap(),
+            SlackTokens {
+                bot: None,
+                user: Some("xoxp-user".into()),
+            }
+        );
+        assert!(parse_slack_tokens("\n\n").is_err());
+        assert!(parse_slack_tokens("bot\nuser\nextra").is_err());
+    }
+
+    #[test]
+    fn slack_login_validates_both_tokens_before_storing_either() {
+        let store = MemoryStore::default();
+        store
+            .set_many(&[
+                (SLACK_BOT_CREDENTIAL, "xoxb-existing"),
+                (SLACK_USER_CREDENTIAL, "xoxp-existing"),
+            ])
+            .unwrap();
+        let tokens = SlackTokens {
+            bot: Some("xoxb-new".into()),
+            user: Some("xoxp-bad".into()),
+        };
+        let result = validate_and_store_slack(&tokens, &store, |token, _| {
+            if token == "xoxp-bad" {
+                Err(ValidationError::Rejected("rejected".into()))
+            } else {
+                Ok(json!({"user": "foac"}))
+            }
+        });
+        assert!(result.is_err());
+        assert_eq!(
+            store.get(SLACK_BOT_CREDENTIAL).unwrap().as_deref(),
+            Some("xoxb-existing")
+        );
+        assert_eq!(
+            store.get(SLACK_USER_CREDENTIAL).unwrap().as_deref(),
+            Some("xoxp-existing")
+        );
+
+        let result = validate_and_store_slack(&tokens, &store, |token, bot| {
+            Ok(json!({
+                "user": token,
+                "token_type": if bot { "bot" } else { "user" },
+            }))
+        })
+        .unwrap();
+        assert_eq!(result.0.unwrap()["token_type"], "bot");
+        assert_eq!(result.1.unwrap()["token_type"], "user");
+        assert_eq!(
+            store.get(SLACK_BOT_CREDENTIAL).unwrap().as_deref(),
+            Some("xoxb-new")
+        );
+        assert_eq!(
+            store.get(SLACK_USER_CREDENTIAL).unwrap().as_deref(),
+            Some("xoxp-bad")
+        );
+    }
+
+    #[test]
+    fn slack_login_partial_updates_preserve_the_other_token() {
+        let store = MemoryStore::default();
+        store
+            .set_many(&[
+                (SLACK_BOT_CREDENTIAL, "xoxb-existing"),
+                (SLACK_USER_CREDENTIAL, "xoxp-existing"),
+            ])
+            .unwrap();
+        let validate = |token: &str, _| Ok(json!({"user": token}));
+
+        validate_and_store_slack(
+            &SlackTokens {
+                bot: Some("xoxb-new".into()),
+                user: None,
+            },
+            &store,
+            validate,
+        )
+        .unwrap();
+        assert_eq!(
+            store.get(SLACK_BOT_CREDENTIAL).unwrap().as_deref(),
+            Some("xoxb-new")
+        );
+        assert_eq!(
+            store.get(SLACK_USER_CREDENTIAL).unwrap().as_deref(),
+            Some("xoxp-existing")
+        );
+
+        validate_and_store_slack(
+            &SlackTokens {
+                bot: None,
+                user: Some("xoxp-new".into()),
+            },
+            &store,
+            validate,
+        )
+        .unwrap();
+        assert_eq!(
+            store.get(SLACK_BOT_CREDENTIAL).unwrap().as_deref(),
+            Some("xoxb-new")
+        );
+        assert_eq!(
+            store.get(SLACK_USER_CREDENTIAL).unwrap().as_deref(),
+            Some("xoxp-new")
+        );
+    }
+
+    #[test]
+    fn slack_logout_removes_both_tokens_and_the_legacy_key() {
+        let store = MemoryStore::default();
+        store
+            .set_many(&[
+                (SLACK_BOT_CREDENTIAL, "xoxb-bot"),
+                (SLACK_USER_CREDENTIAL, "xoxp-user"),
+                (LEGACY_SLACK_CREDENTIAL, "xoxb-legacy"),
+            ])
+            .unwrap();
+        logout(Provider::Slack, &store, crate::output::Format::Json).unwrap();
+        assert!(store.credentials.borrow().is_empty());
+    }
+
+    #[test]
     fn memory_store_logout_is_idempotent() {
         let store = MemoryStore::default();
-        store.set(Provider::Github, "token").unwrap();
-        assert!(store.delete(Provider::Github).unwrap());
-        assert!(!store.delete(Provider::Github).unwrap());
+        store.set_many(&[("github", "token")]).unwrap();
+        assert!(store.delete_many(&["github"]).unwrap());
+        assert!(!store.delete_many(&["github"]).unwrap());
     }
 
     #[test]
@@ -1240,26 +1649,23 @@ mod tests {
     #[test]
     fn login_validates_before_replacing_a_stored_credential() {
         let store = MemoryStore::default();
-        store.set(Provider::Linear, "existing-token").unwrap();
+        store.set_many(&[("linear", "existing-token")]).unwrap();
 
-        let result = validate_and_store(Provider::Linear, "bad-token", &store, |_| {
+        let result = validate_and_store(Provider::Linear, "linear", "bad-token", &store, |_| {
             Err(ValidationError::Rejected("rejected".into()))
         });
         assert!(result.is_err());
         assert_eq!(
-            store.get(Provider::Linear).unwrap().as_deref(),
+            store.get("linear").unwrap().as_deref(),
             Some("existing-token")
         );
 
         let account = json!({ "id": "user-id" });
-        let result = validate_and_store(Provider::Linear, "new-token", &store, |_| {
+        let result = validate_and_store(Provider::Linear, "linear", "new-token", &store, |_| {
             Ok(account.clone())
         })
         .unwrap();
         assert_eq!(result, account);
-        assert_eq!(
-            store.get(Provider::Linear).unwrap().as_deref(),
-            Some("new-token")
-        );
+        assert_eq!(store.get("linear").unwrap().as_deref(), Some("new-token"));
     }
 }
