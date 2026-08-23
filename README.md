@@ -79,6 +79,9 @@ foac auth github logout
 foac auth sentry status
 foac auth sentry login
 foac auth sentry logout
+foac auth slack status
+foac auth slack login
+foac auth slack logout
 ```
 
 `login` prints a link and permission guidance, securely prompts for a personal
@@ -159,6 +162,28 @@ foac sentry --help
 Sentry list commands print `{"items":[...],"pageInfo":{...}}` and paginate
 with `--cursor` using `pageInfo.nextCursor`. Releases are read-only; release
 creation and sourcemap upload stay with `sentry-cli`.
+
+## Slack
+
+`foac slack` talks to Slack's Web API. Most commands use `SLACK_BOT_TOKEN` or
+a credential saved by `foac auth slack login`. Message search requires a user
+token with `search:read` supplied separately as `SLACK_USER_TOKEN`.
+Conversation arguments accept IDs or names such as `#eng`; `user get` accepts
+an ID, `@name`, display name, or email.
+
+```sh
+export SLACK_BOT_TOKEN=xoxb-...
+export SLACK_USER_TOKEN=xoxp-...
+foac slack conversation list
+foac slack message create '#eng' --body "PR is up"
+foac slack message list '#eng' --thread-ts 1724432400.123456
+foac slack search 'deployment in:eng'
+foac slack --help
+```
+
+Slack list and search commands print `{"items":[...],"pageInfo":{...}}` and
+paginate with `--limit`/`--after` using `pageInfo.endCursor`. Long message text
+accepts either `--body` or `--body-file`.
 
 ## Agents
 

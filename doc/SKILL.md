@@ -1,6 +1,6 @@
 ---
 name: foac
-description: Use the foac CLI to interact with Linear, GitHub, and Sentry from the shell. Linear covers issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, and attachments. GitHub covers repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, and collaborators. Sentry covers organizations, projects, issues, error events, and releases. Only authenticated, enabled providers are exposed.
+description: Use the foac CLI to interact with Linear, GitHub, Sentry, and Slack from the shell. Linear covers issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, and attachments. GitHub covers repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, and collaborators. Sentry covers organizations, projects, issues, error events, and releases. Slack covers conversations, messages, threads, users, search, and reactions. Only authenticated, enabled providers are exposed.
 ---
 
 # foac
@@ -31,6 +31,9 @@ foac <provider> <resource> <verb> [flags]
 <!-- foac-provider:sentry -->
 - `sentry`: organizations, projects, issues, error events, and releases.
 <!-- /foac-provider:sentry -->
+<!-- foac-provider:slack -->
+- `slack`: conversations, messages, threads, users, message search, and reactions.
+<!-- /foac-provider:slack -->
 - Resources are nouns (`issue`, `project`, `team`, `user`, ...), verbs are
   `list`, `get`, `create`, `update`, `delete`.
 - `--help` at any level is the ground truth for what exists and which flags
@@ -58,6 +61,11 @@ foac <provider> <resource> <verb> [flags]
 <!-- foac-provider:sentry -->
 - **Sentry auth precedence**: `SENTRY_AUTH_TOKEN`, then the foac config file.
 <!-- /foac-provider:sentry -->
+<!-- foac-provider:slack -->
+- **Slack auth precedence**: `SLACK_BOT_TOKEN` (`xoxb-`), then the foac config
+  file. `slack search` is the exception: Slack requires a user token, supplied
+  separately through `SLACK_USER_TOKEN` (`xoxp-`), with `search:read`.
+<!-- /foac-provider:slack -->
 - **Auth status**: Status commands perform live validation and print
   `authenticated`, `unauthenticated`, or `error`, including the
   credential source and safe account identity when available. `foac auth status`
@@ -127,6 +135,21 @@ foac <provider> <resource> <verb> [flags]
   `is:unresolved release:1.2.0`. Releases are read-only; use `sentry-cli` to
   create releases and upload sourcemaps.
 <!-- /foac-provider:sentry -->
+<!-- foac-provider:slack -->
+- **Slack pagination**: list and search commands take `--limit N` (default 100)
+  and `--after CURSOR`; output is
+  `{"items":[...],"pageInfo":{"hasNextPage":...,"endCursor":...}}`.
+  Follow `endCursor` while `hasNextPage` is true.
+- **Slack names**: conversation arguments accept an ID or a channel name such
+  as `#eng`; user get accepts an ID, `@name`, display name, or email. Name
+  resolution pages through the visible workspace directory. Email lookup
+  requires `users:read.email`.
+- **Slack messages**: `message list/get/create` accept `--thread-ts`; list reads
+  replies and create posts a reply. Message text uses mutually exclusive
+  `--body` and `--body-file`. Update and delete work only on messages posted by
+  the authenticated bot. Pass reaction names with or without surrounding
+  colons.
+<!-- /foac-provider:slack -->
 
 <!-- foac-provider:github -->
 ## GitHub resources
@@ -144,6 +167,21 @@ returns both. Review creation accepts inline comments as a GitHub-native JSON
 array through `--comments-json`; omit `--event` to create a pending review,
 then use `review submit`.
 <!-- /foac-provider:github -->
+
+<!-- foac-provider:slack -->
+## Slack resources
+
+- Conversations: `conversation list|get`.
+- Messages: `message list|get|create|update|delete`, including threads.
+- Directory and discovery: `user list|get` and `search`.
+- Reactions: `reaction add|remove`.
+
+Use `foac slack <resource> --help` for flags and required arguments. Typical bot
+scopes are `channels:history`, `channels:read`, `chat:write`, `groups:history`,
+`groups:read`, `im:history`, `im:read`, `mpim:history`, `mpim:read`,
+`reactions:write`, `users:read`, and `users:read.email`; only grant scopes for
+the commands the app needs. Search uses `SLACK_USER_TOKEN`, not the bot token.
+<!-- /foac-provider:slack -->
 
 ## Examples
 
@@ -181,6 +219,19 @@ foac sentry issue update PROJ-123 --org acme --status resolved
 ```
 
 <!-- /foac-provider:sentry -->
+
+<!-- foac-provider:slack -->
+
+```sh
+foac slack conversation get '#eng'
+foac slack message list '#eng' --limit 50
+foac slack message create '#eng' --body "PR is up: https://github.com/owner/repo/pull/42"
+foac slack message create '#eng' --thread-ts 1724432400.123456 --body-file /tmp/reply.md
+foac slack search 'deployment in:eng' --sort timestamp --direction desc
+foac slack reaction add '#eng' 1724432400.123456 eyes
+```
+
+<!-- /foac-provider:slack -->
 
 ## Maintenance
 

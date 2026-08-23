@@ -7,7 +7,7 @@ use serde_json::json;
 
 use crate::auth::Provider;
 
-const PROVIDERS: [&str; 3] = ["github", "linear", "sentry"];
+const PROVIDERS: [&str; 4] = ["github", "linear", "sentry", "slack"];
 
 #[derive(Subcommand)]
 pub enum Cmd {
@@ -256,6 +256,7 @@ mod tests {
                 "github": {"enabled": true},
                 "linear": {"enabled": true},
                 "sentry": {"enabled": false},
+                "slack": {"enabled": true},
             })
         );
     }

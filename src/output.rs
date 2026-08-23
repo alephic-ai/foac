@@ -1,4 +1,4 @@
-//! Shared success-output printer for the Linear and GitHub providers: compact
+//! Shared success-output printer for provider commands: compact
 //! JSON for machines, tables sized to the terminal for humans.
 
 use std::io::IsTerminal;

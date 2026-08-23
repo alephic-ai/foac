@@ -20,6 +20,8 @@ enum AuthCmd {
     Linear(ProviderCmd),
     /// Configure GitHub authentication
     Github(ProviderCmd),
+    /// Configure Slack authentication
+    Slack(ProviderCmd),
     /// Configure Sentry authentication
     Sentry(SentryCmd),
 }
@@ -67,6 +69,7 @@ enum SentryAction {
 pub enum Provider {
     Linear,
     Github,
+    Slack,
     Sentry,
 }
 
@@ -111,6 +114,7 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
         }
         AuthCmd::Linear(cmd) => run_provider(Provider::Linear, cmd.command, &store, format),
         AuthCmd::Github(cmd) => run_provider(Provider::Github, cmd.command, &store, format),
+        AuthCmd::Slack(cmd) => run_provider(Provider::Slack, cmd.command, &store, format),
         AuthCmd::Sentry(cmd) => match cmd.command {
             SentryAction::Status => {
                 print_status(Provider::Sentry, &store, format);
@@ -140,6 +144,33 @@ pub(crate) fn sentry_token() -> Result<String, Box<dyn std::error::Error>> {
     )
     .map(|credential| credential.token)
     .map_err(Into::into)
+}
+
+pub(crate) fn slack_token() -> Result<String, Box<dyn std::error::Error>> {
+    let token = resolve_stored(
+        Provider::Slack,
+        environment_token(Provider::Slack),
+        &ConfigFileStore,
+    )
+    .map(|credential| credential.token)
+    .map_err(Box::<dyn std::error::Error>::from)?;
+    if !crate::slack::is_bot_token(&token) {
+        return Err(
+            "Slack commands require an xoxb- bot token in SLACK_BOT_TOKEN or foac's config file"
+                .into(),
+        );
+    }
+    Ok(token)
+}
+
+pub(crate) fn slack_user_token() -> Result<String, Box<dyn std::error::Error>> {
+    std::env::var("SLACK_USER_TOKEN")
+        .ok()
+        .filter(|token| !token.is_empty())
+        .ok_or_else(|| {
+            "SLACK_USER_TOKEN is not set; Slack search requires a user token with search:read"
+                .into()
+        })
 }
 
 pub(crate) fn github_token() -> Result<String, Box<dyn std::error::Error>> {
@@ -177,6 +208,7 @@ impl Provider {
         match self {
             Self::Linear => "linear",
             Self::Github => "github",
+            Self::Slack => "slack",
             Self::Sentry => "sentry",
         }
     }
@@ -185,6 +217,7 @@ impl Provider {
         match self {
             Self::Linear => "Linear",
             Self::Github => "GitHub",
+            Self::Slack => "Slack",
             Self::Sentry => "Sentry",
         }
     }
@@ -193,6 +226,7 @@ impl Provider {
         match self {
             Self::Linear => "LINEAR_API_KEY",
             Self::Github => "GITHUB_TOKEN",
+            Self::Slack => "SLACK_BOT_TOKEN",
             Self::Sentry => "SENTRY_AUTH_TOKEN",
         }
     }
@@ -349,7 +383,12 @@ fn flatten_accounts_for_table(statuses: &Value) -> Value {
         return statuses.clone();
     };
     let mut out = map.clone();
-    for provider in [Provider::Linear, Provider::Github, Provider::Sentry] {
+    for provider in [
+        Provider::Linear,
+        Provider::Github,
+        Provider::Slack,
+        Provider::Sentry,
+    ] {
         let Some(obj) = out
             .get_mut(provider.as_str())
             .and_then(Value::as_object_mut)
@@ -400,6 +439,7 @@ fn account_identity(provider: Provider, account: &Value) -> String {
     match provider {
         Provider::Linear => linear_identity(account),
         Provider::Github => github_identity(account),
+        Provider::Slack => slack_identity(account),
         Provider::Sentry => sentry_identity(account),
     }
 }
@@ -448,6 +488,17 @@ fn sentry_identity(account: &Value) -> String {
         .join(", ")
 }
 
+fn slack_identity(account: &Value) -> String {
+    let user = text_field(account, "user");
+    let team = text_field(account, "team");
+    match (user, team) {
+        (Some(user), Some(team)) => format!("{user}  {team}"),
+        (Some(user), None) => user.to_owned(),
+        (None, Some(team)) => team.to_owned(),
+        (None, None) => String::new(),
+    }
+}
+
 fn text_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
     value
         .get(key)
@@ -457,7 +508,7 @@ fn text_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
 
 fn provider_status(provider: Provider, store: &dyn SecretStore) -> Value {
     let resolved = match provider {
-        Provider::Linear | Provider::Sentry => {
+        Provider::Linear | Provider::Slack | Provider::Sentry => {
             resolve_stored(provider, environment_token(provider), store)
         }
         Provider::Github => resolve_github(environment_token(provider), store, github_cli_token),
@@ -469,6 +520,7 @@ fn all_provider_statuses(store: &dyn SecretStore) -> Value {
     json!({
         "linear": provider_status(Provider::Linear, store),
         "github": provider_status(Provider::Github, store),
+        "slack": provider_status(Provider::Slack, store),
         "sentry": provider_status(Provider::Sentry, store),
     })
 }
@@ -611,6 +663,7 @@ fn validate(
     match provider {
         Provider::Linear => crate::linear::auth_identity(token).map(linear_account),
         Provider::Github => crate::github::auth_identity(token).map(github_account),
+        Provider::Slack => crate::slack::auth_identity(token).map(slack_account),
         Provider::Sentry => crate::sentry::auth_identity(token, sentry_url).map(sentry_account),
     }
 }
@@ -656,6 +709,16 @@ fn sentry_account(identity: Value) -> Value {
         })
         .unwrap_or_default();
     json!({ "organizations": organizations })
+}
+
+fn slack_account(identity: Value) -> Value {
+    json!({
+        "team_id": identity["team_id"],
+        "team": identity["team"],
+        "user_id": identity["user_id"],
+        "user": identity["user"],
+        "bot_id": identity["bot_id"],
+    })
 }
 
 fn environment_token(provider: Provider) -> Option<String> {
@@ -710,6 +773,9 @@ fn print_login_help(provider: Provider, sentry_url: Option<&str>) {
         ),
         Provider::Github => eprintln!(
             "Create a fine-grained personal access token at https://github.com/settings/personal-access-tokens/new and grant the repository permissions needed by your foac commands."
+        ),
+        Provider::Slack => eprintln!(
+            "Create or install a Slack app with the bot scopes needed by your foac commands, then copy its Bot User OAuth Token (xoxb-)."
         ),
         Provider::Sentry => eprintln!(
             "Create a user auth token at {}/settings/account/api/auth-tokens/ and grant the scopes needed by your foac commands.",
@@ -846,6 +912,26 @@ mod tests {
                 "name": "The Octocat",
             })
         );
+
+        let slack = slack_account(json!({
+            "ok": true,
+            "team_id": "T1",
+            "team": "Acme",
+            "user_id": "U1",
+            "user": "foac",
+            "bot_id": "B1",
+            "url": "https://acme.slack.com/",
+        }));
+        assert_eq!(
+            slack,
+            json!({
+                "team_id": "T1",
+                "team": "Acme",
+                "user_id": "U1",
+                "user": "foac",
+                "bot_id": "B1",
+            })
+        );
     }
 
     #[test]
@@ -905,6 +991,15 @@ mod tests {
             ),
             "octocat"
         );
+
+        let slack = slack_account(json!({
+            "team_id": "T1",
+            "team": "Acme",
+            "user_id": "U1",
+            "user": "foac",
+            "bot_id": "B1",
+        }));
+        assert_eq!(account_identity(Provider::Slack, &slack), "foac  Acme");
 
         let sentry = sentry_account(json!([
             { "id": "1", "slug": "acme", "name": "Acme" },

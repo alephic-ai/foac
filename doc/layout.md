@@ -5,7 +5,8 @@ live in a library target (`src/lib.rs`) so that `tests/cli.rs` (end-to-end
 runs of the compiled binary) and doc tests can link against the crate; unit
 tests stay inline in each module's `#[cfg(test)]` block. Provider commands are
 colocated by provider: `src/linear.rs` contains Linear, `src/github.rs`
-contains GitHub, and `src/sentry.rs` contains Sentry.
+contains GitHub, `src/sentry.rs` contains Sentry, and `src/slack.rs` contains
+Slack.
 `src/update.rs` talks to GitHub Releases for `foac update` and
 the once-a-day version check. Linear queries live in
 `graphql/linear/queries.graphql`, and `graphql_client` generates their Rust
@@ -33,3 +34,7 @@ Sentry follows the same REST pattern with cursor pagination from its Link
 header; its base URL comes from `SENTRY_URL`, then the host saved by
 `foac auth sentry login` (its prompt or `--host`; default
 `https://sentry.io`), and every request path needs a trailing slash.
+Slack uses its Web API's HTTP-200 `ok` envelope and cursor pagination. Bot
+commands resolve conversation and user names by paging through the relevant
+list method; message search uses the separate `SLACK_USER_TOKEN` because Slack
+does not permit bot tokens for `search.messages`.
