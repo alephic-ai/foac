@@ -866,15 +866,15 @@ mod tests {
         let linear = linear_account(json!({
             "viewer": {
                 "id": "user-id",
-                "name": "Laurent Raufaste",
-                "displayName": "laurent",
-                "email": "laurent@alephic.com",
+                "name": "User",
+                "displayName": "Display",
+                "email": "user@example.com",
             },
-            "organization": { "id": "ws", "name": "Alephic", "urlKey": "alephic" },
+            "organization": { "id": "ws", "name": "Workspace", "urlKey": "workspace" },
         }));
         assert_eq!(
             account_identity(&linear),
-            "Laurent Raufaste <laurent@alephic.com>  Alephic"
+            "User <user@example.com>  Workspace"
         );
 
         let github = github_account(json!({
@@ -892,9 +892,9 @@ mod tests {
 
         let sentry = sentry_account(json!([
             { "id": "1", "slug": "acme", "name": "Acme" },
-            { "id": "2", "slug": "alephic", "name": "Alephic" },
+            { "id": "2", "slug": "globex", "name": "Globex" },
         ]));
-        assert_eq!(account_identity(&sentry), "acme, alephic");
+        assert_eq!(account_identity(&sentry), "acme, globex");
         assert_eq!(account_identity(&sentry_account(json!([]))), "");
     }
 
@@ -905,12 +905,12 @@ mod tests {
                 "status": "authenticated",
                 "source": "environment",
                 "account": {
-                    "name": "Laurent Raufaste",
-                    "email": "laurent@alephic.com",
-                    "workspace": { "name": "Alephic" },
+                    "name": "User",
+                    "email": "user@example.com",
+                    "workspace": { "name": "Workspace" },
                 },
             })),
-            "authenticated via environment\nLaurent Raufaste <laurent@alephic.com>  Alephic\n"
+            "authenticated via environment\nUser <user@example.com>  Workspace\n"
         );
         assert_eq!(
             status_summary(&json!({
@@ -943,9 +943,9 @@ mod tests {
                 "status": "authenticated",
                 "source": "environment",
                 "account": {
-                    "name": "Laurent Raufaste",
-                    "email": "laurent@alephic.com",
-                    "workspace": { "name": "Alephic" },
+                    "name": "User",
+                    "email": "user@example.com",
+                    "workspace": { "name": "Workspace" },
                 },
             },
             "github": {
@@ -957,12 +957,12 @@ mod tests {
         let table = flatten_accounts_for_table(&statuses);
         assert_eq!(
             table["linear"]["account"],
-            "Laurent Raufaste <laurent@alephic.com>  Alephic"
+            "User <user@example.com>  Workspace"
         );
         assert!(table["github"].get("account").is_none());
         assert_eq!(
             statuses["linear"]["account"]["email"],
-            "laurent@alephic.com"
+            "user@example.com"
         );
     }
 

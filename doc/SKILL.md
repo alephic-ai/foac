@@ -164,10 +164,10 @@ foac linear comment create --issue ENG-123 --body "Done, see PR #42"
 <!-- foac-provider:github -->
 
 ```sh
-foac github issue list --repo alephic-ai/example --state open
-foac github pull create --repo alephic-ai/example --head feature --base main --title "Add feature" --body-file /tmp/pr.md
-foac github review create --repo alephic-ai/example --pull 42 --event approve --body "Looks good"
-foac github run rerun --repo alephic-ai/example 123456 --failed
+foac github issue list --repo owner/repo --state open
+foac github pull create --repo owner/repo --head feature --base main --title "Add feature" --body-file /tmp/pr.md
+foac github review create --repo owner/repo --pull 42 --event approve --body "Looks good"
+foac github run rerun --repo owner/repo 123456 --failed
 ```
 
 <!-- /foac-provider:github -->
