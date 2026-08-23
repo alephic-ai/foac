@@ -60,9 +60,6 @@ foac linear issue create --team <TEAM_UUID> --title "Fix the flux capacitor"
 foac linear --help
 ```
 
-The vendored schema in `graphql/linear/schema.graphql` can be refreshed from
-<https://raw.githubusercontent.com/linear/linear/master/packages/sdk/src/schema.graphql>.
-
 ## Agents
 
 `foac skill` prints an agent skill explaining how the CLI is structured and its
@@ -71,8 +68,12 @@ agents found on the machine: `~/.claude/skills/` for Claude Code, and the
 cross-agent standard `~/.agents/skills/` read by Cursor, Codex, Gemini CLI,
 GitHub Copilot, OpenCode, Amp, and others.
 
-## From source
+## Hacking
 
 ```sh
 cargo run -- --help
+cargo test --locked
 ```
+
+[AGENTS.md](AGENTS.md) has the code layout, the add-a-command recipe, and the
+conventions.
