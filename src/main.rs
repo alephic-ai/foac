@@ -10,6 +10,8 @@ struct Cli {
     command: Option<Command>,
 }
 
+const SKILL_MD: &str = include_str!("../docs/SKILL.md");
+
 #[derive(Subcommand)]
 // One short-lived value on the stack; boxing the variant isn't worth it.
 #[allow(clippy::large_enum_variant)]
@@ -18,7 +20,10 @@ enum Command {
     #[command(subcommand)]
     Linear(linear::Cmd),
     /// Print an agent skill (SKILL.md) describing how to use this CLI
-    Skill,
+    Skill {
+        #[command(subcommand)]
+        command: Option<SkillCmd>,
+    },
     /// Download and replace this binary with the latest GitHub release
     Update,
     /// Print the version
@@ -35,8 +40,19 @@ fn main() {
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     match Cli::parse().command {
         Some(Command::Linear(cmd)) => linear::run(cmd),
-        Some(Command::Skill) => {
-            print!("{}", include_str!("../docs/SKILL.md"));
+        Some(Command::Skill { command: None }) => {
+            print!("{SKILL_MD}");
+            Ok(())
+        }
+        Some(Command::Skill { command: Some(SkillCmd::Install) }) => {
+            let home = std::env::home_dir().ok_or("could not determine the home directory")?;
+            let installed = skill_install(&home)?;
+            if installed.is_empty() {
+                return Err("no supported agent found; install manually with: foac skill > <agent skills dir>/foac/SKILL.md".into());
+            }
+            for path in installed {
+                println!("Installed {}", path.display());
+            }
             Ok(())
         }
         Some(Command::Update) => update(),
@@ -49,6 +65,44 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
     }
+}
+
+#[derive(Subcommand)]
+enum SkillCmd {
+    /// Install the skill for every supported agent found on this machine
+    Install,
+}
+
+/// Write the skill into the skill folders of the agents present under `home`.
+/// Claude Code only reads its own folder; every other major agent (Cursor,
+/// Codex, Gemini CLI, Copilot, OpenCode, Amp, Cline, ...) reads the
+/// cross-agent standard ~/.agents/skills, so two writes cover them all.
+fn skill_install(home: &std::path::Path) -> Result<Vec<std::path::PathBuf>, Box<dyn std::error::Error>> {
+    let shared_agent_roots = [
+        ".agents",
+        ".cursor",
+        ".codex",
+        ".gemini",
+        ".copilot",
+        ".config/opencode",
+        ".config/amp",
+    ];
+    let mut targets = Vec::new();
+    if home.join(".claude").is_dir() {
+        targets.push(home.join(".claude/skills"));
+    }
+    if shared_agent_roots.iter().any(|r| home.join(r).is_dir()) {
+        targets.push(home.join(".agents/skills"));
+    }
+    let mut installed = Vec::new();
+    for skills_dir in targets {
+        let dir = skills_dir.join("foac");
+        std::fs::create_dir_all(&dir)?;
+        let path = dir.join("SKILL.md");
+        std::fs::write(&path, SKILL_MD)?;
+        installed.push(path);
+    }
+    Ok(installed)
 }
 
 fn update() -> Result<(), Box<dyn std::error::Error>> {
@@ -104,5 +158,22 @@ mod tests {
     #[test]
     fn verify_cli() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn skill_install_targets_detected_agents() {
+        let home = std::env::temp_dir().join(format!("foac-test-{}", std::process::id()));
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        std::fs::create_dir_all(home.join(".cursor")).unwrap();
+        let installed = skill_install(&home).unwrap();
+        assert_eq!(
+            installed,
+            vec![
+                home.join(".claude/skills/foac/SKILL.md"),
+                home.join(".agents/skills/foac/SKILL.md"),
+            ]
+        );
+        assert_eq!(std::fs::read_to_string(&installed[0]).unwrap(), SKILL_MD);
+        std::fs::remove_dir_all(&home).unwrap();
     }
 }
