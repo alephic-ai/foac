@@ -45,7 +45,7 @@ enum Command {
     /// Enable or disable providers
     #[command(subcommand, arg_required_else_help = true)]
     Provider(provider::Cmd),
-    /// Manage the agent skill (SKILL.md) describing how to use this CLI
+    /// Manage the per-provider agent skills describing how to use this CLI
     #[command(subcommand, arg_required_else_help = true)]
     Skill(SkillCmd),
     /// Download and replace this binary with the latest GitHub release
@@ -102,16 +102,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             slack::run(cmd, format)
         }
         Command::Provider(cmd) => provider::run(cmd, format),
-        Command::Skill(cmd) => {
-            let skill = render_skill(&providers());
-            match cmd {
-                SkillCmd::Print => {
-                    print!("{skill}");
-                    Ok(())
-                }
-                SkillCmd::Install => skill_install_cmd(&skill),
+        Command::Skill(cmd) => match cmd {
+            SkillCmd::Print { provider } => {
+                print!("{}", render_provider_skill(&provider));
+                Ok(())
             }
-        }
+            SkillCmd::Install => skill_install_cmd(),
+        },
         Command::Update => update::run(),
         Command::Version => {
             println!("{}", env!("CARGO_PKG_VERSION"));
@@ -126,9 +123,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 #[derive(Subcommand)]
 enum SkillCmd {
-    /// Print the skill to stdout
-    Print,
-    /// Install the skill for every supported agent found on this machine
+    /// Print one provider's skill to stdout
+    Print {
+        #[arg(value_parser = clap::builder::PossibleValuesParser::new(provider::PROVIDERS))]
+        provider: String,
+    },
+    /// Install one skill per active provider for every supported agent found
+    /// on this machine, removing the skills of inactive providers
     Install,
 }
 
@@ -202,6 +203,10 @@ fn render_skill(providers: &[Provider]) -> String {
 
     for line in SKILL_MD.split_inclusive('\n') {
         let marker = line.trim();
+        // Lint pragmas are for the source file, not the rendered skill.
+        if marker.starts_with("<!-- rumdl-") {
+            continue;
+        }
         if let Some(name) = marker
             .strip_prefix("<!-- foac-provider:")
             .and_then(|marker| marker.strip_suffix(" -->"))
@@ -238,11 +243,25 @@ fn render_skill(providers: &[Provider]) -> String {
     rendered
 }
 
-fn skill_install_cmd(skill: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn render_provider_skill(name: &str) -> String {
+    render_skill(&provider::PROVIDERS.map(|p| Provider::new(p, p == name)))
+}
+
+fn skill_install_cmd() -> Result<(), Box<dyn std::error::Error>> {
+    let active: Vec<&str> = providers()
+        .iter()
+        .filter(|provider| provider.active)
+        .map(|provider| provider.name)
+        .collect();
+    if active.is_empty() {
+        return Err(
+            "no authenticated, enabled providers; authenticate with `foac auth <provider> login` and retry".into(),
+        );
+    }
     let home = std::env::home_dir().ok_or("could not determine the home directory")?;
-    let installed = skill_install(&home, skill)?;
+    let installed = skill_install(&home, &active)?;
     if installed.is_empty() {
-        return Err("no supported agent found; install manually with: foac skill print > <agent skills dir>/foac/SKILL.md".into());
+        return Err("no supported agent found; install manually with: foac skill print <provider> > <agent skills dir>/foac-<provider>/SKILL.md".into());
     }
     for path in installed {
         println!("Installed {}", path.display());
@@ -250,13 +269,14 @@ fn skill_install_cmd(skill: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Write the skill into the skill folders of the agents present under `home`.
+/// Write one skill per active provider into the skill folders of the agents
+/// present under `home`, and remove the skills of inactive providers.
 /// Claude Code only reads its own folder; every other major agent (Cursor,
 /// Codex, Gemini CLI, Copilot, OpenCode, Amp, Cline, ...) reads the
-/// cross-agent standard ~/.agents/skills, so two writes cover them all.
+/// cross-agent standard ~/.agents/skills, so two targets cover them all.
 fn skill_install(
     home: &std::path::Path,
-    skill: &str,
+    active: &[&str],
 ) -> Result<Vec<std::path::PathBuf>, Box<dyn std::error::Error>> {
     let shared_agent_roots = [
         ".agents",
@@ -276,11 +296,19 @@ fn skill_install(
     }
     let mut installed = Vec::new();
     for skills_dir in targets {
-        let dir = skills_dir.join("foac");
-        std::fs::create_dir_all(&dir)?;
-        let path = dir.join("SKILL.md");
-        std::fs::write(&path, skill)?;
-        installed.push(path);
+        for name in provider::PROVIDERS {
+            let dir = skills_dir.join(format!("foac-{name}"));
+            if active.contains(&name) {
+                std::fs::create_dir_all(&dir)?;
+                let path = dir.join("SKILL.md");
+                std::fs::write(&path, render_provider_skill(name))?;
+                installed.push(path);
+            } else if let Err(err) = std::fs::remove_dir_all(&dir)
+                && err.kind() != std::io::ErrorKind::NotFound
+            {
+                return Err(err.into());
+            }
+        }
     }
     Ok(installed)
 }
@@ -371,21 +399,23 @@ mod tests {
     }
 
     #[test]
-    fn skill_only_documents_authenticated_providers() {
-        for (linear, github, sentry, slack) in [
-            (false, false, false, false),
-            (true, false, false, false),
-            (false, true, false, false),
-            (false, false, true, false),
-            (false, false, false, true),
-            (true, true, true, true),
-        ] {
-            let skill = render_skill(&test_providers(linear, github, sentry, slack));
-            assert_eq!(skill.contains("foac linear issue list"), linear);
-            assert_eq!(skill.contains("foac github issue list"), github);
-            assert_eq!(skill.contains("foac sentry issue list"), sentry);
-            assert_eq!(skill.contains("foac slack search"), slack);
+    fn skill_documents_one_provider() {
+        let examples = [
+            ("github", "foac github issue list"),
+            ("linear", "foac linear issue list"),
+            ("sentry", "foac sentry issue list"),
+            ("slack", "foac slack search"),
+        ];
+        for (name, _) in examples {
+            let skill = render_provider_skill(name);
+            assert!(skill.starts_with(&format!("---\nname: foac-{name}\ndescription:")));
+            assert_eq!(skill.matches("name: foac-").count(), 1);
+            assert!(skill.contains(&format!("# foac-{name}")));
+            for (other, other_example) in examples {
+                assert_eq!(skill.contains(other_example), other == name);
+            }
             assert!(!skill.contains("<!-- foac-provider:"));
+            assert!(!skill.contains("rumdl"));
             assert!(
                 skill.contains("top-level `--help` lists only authenticated, enabled providers")
             );
@@ -558,11 +588,19 @@ mod tests {
     #[test]
     fn skill_requires_subcommand() {
         assert!(Cli::try_parse_from(["foac", "skill"]).is_err());
+        assert!(Cli::try_parse_from(["foac", "skill", "print"]).is_err());
+        assert!(Cli::try_parse_from(["foac", "skill", "print", "nope"]).is_err());
         assert!(matches!(
-            Cli::try_parse_from(["foac", "skill", "print"])
+            Cli::try_parse_from(["foac", "skill", "print", "linear"])
                 .unwrap()
                 .command,
-            Command::Skill(SkillCmd::Print)
+            Command::Skill(SkillCmd::Print { .. })
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["foac", "skill", "install"])
+                .unwrap()
+                .command,
+            Command::Skill(SkillCmd::Install)
         ));
     }
 
@@ -571,17 +609,34 @@ mod tests {
         let home = std::env::temp_dir().join(format!("foac-test-{}", std::process::id()));
         std::fs::create_dir_all(home.join(".claude")).unwrap();
         std::fs::create_dir_all(home.join(".cursor")).unwrap();
-        let skill = render_skill(&test_providers(true, false, false, false));
-        let installed = skill_install(&home, &skill).unwrap();
+        let stale = home.join(".agents/skills/foac-sentry");
+        std::fs::create_dir_all(&stale).unwrap();
+        std::fs::write(stale.join("SKILL.md"), "stale").unwrap();
+        let installed = skill_install(&home, &["github", "linear"]).unwrap();
         assert_eq!(
             installed,
             vec![
-                home.join(".claude/skills/foac/SKILL.md"),
-                home.join(".agents/skills/foac/SKILL.md"),
+                home.join(".claude/skills/foac-github/SKILL.md"),
+                home.join(".claude/skills/foac-linear/SKILL.md"),
+                home.join(".agents/skills/foac-github/SKILL.md"),
+                home.join(".agents/skills/foac-linear/SKILL.md"),
             ]
         );
-        assert_eq!(std::fs::read_to_string(&installed[0]).unwrap(), skill);
-        assert_eq!(std::fs::read_to_string(&installed[1]).unwrap(), skill);
+        for path in &installed {
+            let name = path
+                .parent()
+                .unwrap()
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap();
+            let provider = name.strip_prefix("foac-").unwrap();
+            assert_eq!(
+                std::fs::read_to_string(path).unwrap(),
+                render_provider_skill(provider)
+            );
+        }
+        assert!(!stale.exists());
         std::fs::remove_dir_all(&home).unwrap();
     }
 
