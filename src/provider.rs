@@ -93,10 +93,7 @@ fn set_enabled(
     Ok(())
 }
 
-pub fn ensure_enabled(
-    config: &Config,
-    name: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn ensure_enabled(config: &Config, name: &str) -> Result<(), Box<dyn std::error::Error>> {
     if config.enabled(name) {
         Ok(())
     } else {
