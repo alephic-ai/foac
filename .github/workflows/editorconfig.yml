@@ -1,0 +1,24 @@
+name: EditorConfig
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: editorconfig-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check EditorConfig compliance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up editorconfig-checker
+        uses: editorconfig-checker/action-editorconfig-checker@v2.2.0
+      - name: Check files
+        run: editorconfig-checker -format github-actions
