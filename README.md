@@ -55,6 +55,15 @@ foac update
 
 Other commands check GitHub for a newer release at most once a day, and print a notice on stderr while one exists. They never auto-install. Set `FOAC_NO_UPDATE_CHECK` (or `CI`) to skip the check.
 
+## Output
+
+Linear and GitHub commands print the provider's response as compact JSON on
+stdout. At an interactive terminal, foac renders it as a table sized to the
+terminal width instead. Pick a format explicitly with `--format json|table|auto`
+or the `FOAC_FORMAT` environment variable; pipes and CI (`CI` set) always get
+JSON. Errors stay on stderr as JSON with exit code 1, and `auth`, `version`,
+`update`, and `skill` ignore `--format`.
+
 ## Authentication
 
 foac can validate every provider at once or manage each provider separately:
