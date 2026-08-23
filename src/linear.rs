@@ -80,12 +80,18 @@ macro_rules! eq_filter {
         let v: String = $v;
         if is_uuid(&v) {
             $m::$f {
-                id: Some($m::$idc { eq: Some(v), ..Default::default() }),
+                id: Some($m::$idc {
+                    eq: Some(v),
+                    ..Default::default()
+                }),
                 ..Default::default()
             }
         } else {
             $m::$f {
-                $alt: Some($m::StringComparator { eq: Some(v), ..Default::default() }),
+                $alt: Some($m::StringComparator {
+                    eq: Some(v),
+                    ..Default::default()
+                }),
                 ..Default::default()
             }
         }
@@ -546,7 +552,11 @@ pub enum StatusUpdateCmd {
     /// Post a status update on a project or an initiative
     Create {
         /// Project UUID
-        #[arg(long, conflicts_with = "initiative", required_unless_present = "initiative")]
+        #[arg(
+            long,
+            conflicts_with = "initiative",
+            required_unless_present = "initiative"
+        )]
         project: Option<String>,
         /// Initiative UUID
         #[arg(long)]
@@ -616,22 +626,48 @@ fn issue_filter(
         assignee: Box::new(assignee.map(|v| {
             if v.contains('@') {
                 NullableUserFilter {
-                    email: Some(StringComparator { eq: Some(v), ..Default::default() }),
+                    email: Some(StringComparator {
+                        eq: Some(v),
+                        ..Default::default()
+                    }),
                     ..Default::default()
                 }
             } else {
-                eq_filter!(issue_list, NullableUserFilter, IDComparator, display_name, v)
+                eq_filter!(
+                    issue_list,
+                    NullableUserFilter,
+                    IDComparator,
+                    display_name,
+                    v
+                )
             }
         })),
-        state: Box::new(state.map(|v| eq_filter!(issue_list, WorkflowStateFilter, IDComparator, name, v))),
-        project: Box::new(
-            project.map(|v| eq_filter!(issue_list, NullableProjectFilter, EntityIdentifierIDComparator, name, v)),
+        state: Box::new(
+            state.map(|v| eq_filter!(issue_list, WorkflowStateFilter, IDComparator, name, v)),
         ),
+        project: Box::new(project.map(|v| {
+            eq_filter!(
+                issue_list,
+                NullableProjectFilter,
+                EntityIdentifierIDComparator,
+                name,
+                v
+            )
+        })),
         labels: Box::new(label.map(|v| IssueLabelCollectionFilter {
-            some: Box::new(Some(eq_filter!(issue_list, IssueLabelFilter, IDComparator, name, v))),
+            some: Box::new(Some(eq_filter!(
+                issue_list,
+                IssueLabelFilter,
+                IDComparator,
+                name,
+                v
+            ))),
             ..Default::default()
         })),
-        searchable_content: query.map(|v| ContentComparator { contains: Some(v), ..Default::default() }),
+        searchable_content: query.map(|v| ContentComparator {
+            contains: Some(v),
+            ..Default::default()
+        }),
         ..Default::default()
     }
 }
@@ -639,13 +675,19 @@ fn issue_filter(
 pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
         Cmd::Issue(cmd) => match cmd {
-            IssueCmd::List { team, assignee, state, project, label, query, page } => {
-                exec::<IssueList>(issue_list::Variables {
-                    first: Some(page.limit),
-                    after: page.after,
-                    filter: Some(issue_filter(team, assignee, state, project, label, query)),
-                })
-            }
+            IssueCmd::List {
+                team,
+                assignee,
+                state,
+                project,
+                label,
+                query,
+                page,
+            } => exec::<IssueList>(issue_list::Variables {
+                first: Some(page.limit),
+                after: page.after,
+                filter: Some(issue_filter(team, assignee, state, project, label, query)),
+            }),
             IssueCmd::Get { id } => exec::<IssueGet>(issue_get::Variables { id }),
             IssueCmd::Create { team, title, opts } => {
                 use issue_create::*;
@@ -694,7 +736,11 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
                 first: Some(page.limit),
                 after: page.after,
             }),
-            CommentCmd::Create { issue, body, parent } => {
+            CommentCmd::Create {
+                issue,
+                body,
+                parent,
+            } => {
                 use comment_create::*;
                 exec::<CommentCreate>(Variables {
                     input: CommentCreateInput {
@@ -709,7 +755,10 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
                 use comment_update::*;
                 exec::<CommentUpdate>(Variables {
                     id,
-                    input: CommentUpdateInput { body: Some(body), ..Default::default() },
+                    input: CommentUpdateInput {
+                        body: Some(body),
+                        ..Default::default()
+                    },
                 })
             }
             CommentCmd::Delete { id } => exec::<CommentDelete>(comment_delete::Variables { id }),
@@ -719,11 +768,19 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
                 use project_list::*;
                 let filter = ProjectFilter {
                     accessible_teams: Box::new(team.map(|v| TeamCollectionFilter {
-                        some: Box::new(Some(eq_filter!(project_list, TeamFilter, IDComparator, key, v))),
+                        some: Box::new(Some(eq_filter!(
+                            project_list,
+                            TeamFilter,
+                            IDComparator,
+                            key,
+                            v
+                        ))),
                         ..Default::default()
                     })),
-                    searchable_content: query
-                        .map(|v| ContentComparator { contains: Some(v), ..Default::default() }),
+                    searchable_content: query.map(|v| ContentComparator {
+                        contains: Some(v),
+                        ..Default::default()
+                    }),
                     ..Default::default()
                 };
                 exec::<ProjectList>(Variables {
@@ -733,7 +790,15 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
                 })
             }
             ProjectCmd::Get { id } => exec::<ProjectGet>(project_get::Variables { id }),
-            ProjectCmd::Create { name, teams, description, lead, status, start_date, target_date } => {
+            ProjectCmd::Create {
+                name,
+                teams,
+                description,
+                lead,
+                status,
+                start_date,
+                target_date,
+            } => {
                 use project_create::*;
                 exec::<ProjectCreate>(Variables {
                     input: ProjectCreateInput {
@@ -748,7 +813,15 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
                     },
                 })
             }
-            ProjectCmd::Update { id, name, description, lead, status, start_date, target_date } => {
+            ProjectCmd::Update {
+                id,
+                name,
+                description,
+                lead,
+                status,
+                start_date,
+                target_date,
+            } => {
                 use project_modify::*;
                 exec::<ProjectModify>(Variables {
                     id,
@@ -765,15 +838,17 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
             }
         },
         Cmd::Team(cmd) => match cmd {
-            TeamCmd::List { page } => {
-                exec::<TeamList>(team_list::Variables { first: Some(page.limit), after: page.after })
-            }
+            TeamCmd::List { page } => exec::<TeamList>(team_list::Variables {
+                first: Some(page.limit),
+                after: page.after,
+            }),
             TeamCmd::Get { id } => exec::<TeamGet>(team_get::Variables { id }),
         },
         Cmd::User(cmd) => match cmd {
-            UserCmd::List { page } => {
-                exec::<UserList>(user_list::Variables { first: Some(page.limit), after: page.after })
-            }
+            UserCmd::List { page } => exec::<UserList>(user_list::Variables {
+                first: Some(page.limit),
+                after: page.after,
+            }),
             UserCmd::Get { id } => exec::<UserGet>(user_get::Variables { id }),
         },
         Cmd::Workspace(WorkspaceCmd::Get) => exec::<WorkspaceGet>(workspace_get::Variables {}),
@@ -786,12 +861,27 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
             LabelCmd::List { team, page } => {
                 use label_list::*;
                 let filter = team.map(|v| IssueLabelFilter {
-                    team: Box::new(Some(eq_filter!(label_list, NullableTeamFilter, IDComparator, key, v))),
+                    team: Box::new(Some(eq_filter!(
+                        label_list,
+                        NullableTeamFilter,
+                        IDComparator,
+                        key,
+                        v
+                    ))),
                     ..Default::default()
                 });
-                exec::<LabelList>(Variables { first: Some(page.limit), after: page.after, filter })
+                exec::<LabelList>(Variables {
+                    first: Some(page.limit),
+                    after: page.after,
+                    filter,
+                })
             }
-            LabelCmd::Create { name, team, color, description } => {
+            LabelCmd::Create {
+                name,
+                team,
+                color,
+                description,
+            } => {
                 use label_create::*;
                 exec::<LabelCreate>(Variables {
                     input: IssueLabelCreateInput {
@@ -808,23 +898,49 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
             StatusCmd::List { team, page } => {
                 use status_list::*;
                 let filter = team.map(|v| WorkflowStateFilter {
-                    team: Box::new(Some(eq_filter!(status_list, TeamFilter, IDComparator, key, v))),
+                    team: Box::new(Some(eq_filter!(
+                        status_list,
+                        TeamFilter,
+                        IDComparator,
+                        key,
+                        v
+                    ))),
                     ..Default::default()
                 });
-                exec::<StatusList>(Variables { first: Some(page.limit), after: page.after, filter })
+                exec::<StatusList>(Variables {
+                    first: Some(page.limit),
+                    after: page.after,
+                    filter,
+                })
             }
             StatusCmd::Get { id } => exec::<StatusGet>(status_get::Variables { id }),
         },
         Cmd::Document(cmd) => match cmd {
-            DocumentCmd::List { project, initiative, page } => {
+            DocumentCmd::List {
+                project,
+                initiative,
+                page,
+            } => {
                 use document_list::*;
                 let filter = DocumentFilter {
-                    project: Box::new(
-                        project.map(|v| eq_filter!(document_list, ProjectFilter, EntityIdentifierIDComparator, name, v)),
-                    ),
-                    initiative: Box::new(
-                        initiative.map(|v| eq_filter!(document_list, InitiativeFilter, EntityIdentifierIDComparator, name, v)),
-                    ),
+                    project: Box::new(project.map(|v| {
+                        eq_filter!(
+                            document_list,
+                            ProjectFilter,
+                            EntityIdentifierIDComparator,
+                            name,
+                            v
+                        )
+                    })),
+                    initiative: Box::new(initiative.map(|v| {
+                        eq_filter!(
+                            document_list,
+                            InitiativeFilter,
+                            EntityIdentifierIDComparator,
+                            name,
+                            v
+                        )
+                    })),
                     ..Default::default()
                 };
                 exec::<DocumentList>(Variables {
@@ -834,7 +950,12 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
                 })
             }
             DocumentCmd::Get { id } => exec::<DocumentGet>(document_get::Variables { id }),
-            DocumentCmd::Create { title, content, project, initiative } => {
+            DocumentCmd::Create {
+                title,
+                content,
+                project,
+                initiative,
+            } => {
                 use document_create::*;
                 exec::<DocumentCreate>(Variables {
                     input: DocumentCreateInput {
@@ -850,19 +971,25 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
                 use document_update::*;
                 exec::<DocumentUpdate>(Variables {
                     id,
-                    input: DocumentUpdateInput { title, content, ..Default::default() },
+                    input: DocumentUpdateInput {
+                        title,
+                        content,
+                        ..Default::default()
+                    },
                 })
             }
         },
         Cmd::Initiative(cmd) => match cmd {
-            InitiativeCmd::List { page } => {
-                exec::<InitiativeList>(initiative_list::Variables {
-                    first: Some(page.limit),
-                    after: page.after,
-                })
-            }
+            InitiativeCmd::List { page } => exec::<InitiativeList>(initiative_list::Variables {
+                first: Some(page.limit),
+                after: page.after,
+            }),
             InitiativeCmd::Get { id } => exec::<InitiativeGet>(initiative_get::Variables { id }),
-            InitiativeCmd::Create { name, description, target_date } => {
+            InitiativeCmd::Create {
+                name,
+                description,
+                target_date,
+            } => {
                 use initiative_create::*;
                 exec::<InitiativeCreate>(Variables {
                     input: InitiativeCreateInput {
@@ -873,7 +1000,12 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
                     },
                 })
             }
-            InitiativeCmd::Update { id, name, description, target_date } => {
+            InitiativeCmd::Update {
+                id,
+                name,
+                description,
+                target_date,
+            } => {
                 use initiative_modify::*;
                 exec::<InitiativeModify>(Variables {
                     id,
@@ -890,15 +1022,28 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
             MilestoneCmd::List { project, page } => {
                 use milestone_list::*;
                 let filter = project.map(|v| ProjectMilestoneFilter {
-                    project: Box::new(Some(
-                        eq_filter!(milestone_list, NullableProjectFilter, EntityIdentifierIDComparator, name, v),
-                    )),
+                    project: Box::new(Some(eq_filter!(
+                        milestone_list,
+                        NullableProjectFilter,
+                        EntityIdentifierIDComparator,
+                        name,
+                        v
+                    ))),
                     ..Default::default()
                 });
-                exec::<MilestoneList>(Variables { first: Some(page.limit), after: page.after, filter })
+                exec::<MilestoneList>(Variables {
+                    first: Some(page.limit),
+                    after: page.after,
+                    filter,
+                })
             }
             MilestoneCmd::Get { id } => exec::<MilestoneGet>(milestone_get::Variables { id }),
-            MilestoneCmd::Create { project, name, description, target_date } => {
+            MilestoneCmd::Create {
+                project,
+                name,
+                description,
+                target_date,
+            } => {
                 use milestone_create::*;
                 exec::<MilestoneCreate>(Variables {
                     input: ProjectMilestoneCreateInput {
@@ -910,7 +1055,12 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
                     },
                 })
             }
-            MilestoneCmd::Update { id, name, description, target_date } => {
+            MilestoneCmd::Update {
+                id,
+                name,
+                description,
+                target_date,
+            } => {
                 use milestone_update::*;
                 exec::<MilestoneUpdate>(Variables {
                     id,
@@ -930,13 +1080,20 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
             })
         }
         Cmd::StatusUpdate(cmd) => match cmd {
-            StatusUpdateCmd::Get { id, initiative: false } => {
-                exec::<StatusUpdateGet>(status_update_get::Variables { id })
-            }
-            StatusUpdateCmd::Get { id, initiative: true } => {
-                exec::<InitiativeStatusUpdateGet>(initiative_status_update_get::Variables { id })
-            }
-            StatusUpdateCmd::Create { project: Some(project), initiative: None, body, health } => {
+            StatusUpdateCmd::Get {
+                id,
+                initiative: false,
+            } => exec::<StatusUpdateGet>(status_update_get::Variables { id }),
+            StatusUpdateCmd::Get {
+                id,
+                initiative: true,
+            } => exec::<InitiativeStatusUpdateGet>(initiative_status_update_get::Variables { id }),
+            StatusUpdateCmd::Create {
+                project: Some(project),
+                initiative: None,
+                body,
+                health,
+            } => {
                 use status_update_create::*;
                 exec::<StatusUpdateCreate>(Variables {
                     input: ProjectUpdateCreateInput {
@@ -947,7 +1104,12 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
                     },
                 })
             }
-            StatusUpdateCmd::Create { initiative: Some(initiative), body, health, .. } => {
+            StatusUpdateCmd::Create {
+                initiative: Some(initiative),
+                body,
+                health,
+                ..
+            } => {
                 use initiative_status_update_create::*;
                 exec::<InitiativeStatusUpdateCreate>(Variables {
                     input: InitiativeUpdateCreateInput {
@@ -958,8 +1120,15 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
                     },
                 })
             }
-            StatusUpdateCmd::Create { .. } => unreachable!("clap enforces --project xor --initiative"),
-            StatusUpdateCmd::Update { id, initiative: false, body, health } => {
+            StatusUpdateCmd::Create { .. } => {
+                unreachable!("clap enforces --project xor --initiative")
+            }
+            StatusUpdateCmd::Update {
+                id,
+                initiative: false,
+                body,
+                health,
+            } => {
                 use status_update_modify::*;
                 exec::<StatusUpdateModify>(Variables {
                     id,
@@ -970,7 +1139,12 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
                     },
                 })
             }
-            StatusUpdateCmd::Update { id, initiative: true, body, health } => {
+            StatusUpdateCmd::Update {
+                id,
+                initiative: true,
+                body,
+                health,
+            } => {
                 use initiative_status_update_modify::*;
                 exec::<InitiativeStatusUpdateModify>(Variables {
                     id,
@@ -981,16 +1155,27 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
                     },
                 })
             }
-            StatusUpdateCmd::Delete { id, initiative: false } => {
-                exec::<StatusUpdateArchive>(status_update_archive::Variables { id })
-            }
-            StatusUpdateCmd::Delete { id, initiative: true } => {
-                exec::<InitiativeStatusUpdateArchive>(initiative_status_update_archive::Variables { id })
+            StatusUpdateCmd::Delete {
+                id,
+                initiative: false,
+            } => exec::<StatusUpdateArchive>(status_update_archive::Variables { id }),
+            StatusUpdateCmd::Delete {
+                id,
+                initiative: true,
+            } => {
+                exec::<InitiativeStatusUpdateArchive>(initiative_status_update_archive::Variables {
+                    id,
+                })
             }
         },
         Cmd::Attachment(cmd) => match cmd {
             AttachmentCmd::Get { id } => exec::<AttachmentGet>(attachment_get::Variables { id }),
-            AttachmentCmd::Create { issue, url, title, subtitle } => {
+            AttachmentCmd::Create {
+                issue,
+                url,
+                title,
+                subtitle,
+            } => {
                 use attachment_create::*;
                 exec::<AttachmentCreate>(Variables {
                     input: AttachmentCreateInput {
@@ -1002,7 +1187,9 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
                     },
                 })
             }
-            AttachmentCmd::Delete { id } => exec::<AttachmentDelete>(attachment_delete::Variables { id }),
+            AttachmentCmd::Delete { id } => {
+                exec::<AttachmentDelete>(attachment_delete::Variables { id })
+            }
         },
     }
 }
