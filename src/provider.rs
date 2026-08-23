@@ -62,7 +62,7 @@ impl Config {
     }
 }
 
-pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
         Cmd::List => {
             let config = load();
@@ -70,21 +70,25 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
                 .iter()
                 .map(|name| (name.to_string(), json!({"enabled": config.enabled(name)})))
                 .collect();
-            println!("{}", serde_json::Value::Object(statuses));
+            crate::output::print(&serde_json::Value::Object(statuses), format);
             Ok(())
         }
-        Cmd::Enable { provider } => set_enabled(provider, true),
-        Cmd::Disable { provider } => set_enabled(provider, false),
+        Cmd::Enable { provider } => set_enabled(provider, true, format),
+        Cmd::Disable { provider } => set_enabled(provider, false, format),
     }
 }
 
-fn set_enabled(provider: Provider, enabled: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn set_enabled(
+    provider: Provider,
+    enabled: bool,
+    format: crate::output::Format,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = load();
     config.set_enabled(provider.as_str(), enabled);
     save(&config)?;
-    println!(
-        "{}",
-        json!({"provider": provider.as_str(), "enabled": enabled})
+    crate::output::print(
+        &json!({"provider": provider.as_str(), "enabled": enabled}),
+        format,
     );
     Ok(())
 }

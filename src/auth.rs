@@ -102,22 +102,22 @@ trait SecretStore {
 
 struct ConfigFileStore;
 
-pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
     let store = ConfigFileStore;
     match cmd.command {
         AuthCmd::Status => {
-            println!("{}", all_provider_statuses(&store));
+            crate::output::print(&all_provider_statuses(&store), format);
             Ok(())
         }
-        AuthCmd::Linear(cmd) => run_provider(Provider::Linear, cmd.command, &store),
-        AuthCmd::Github(cmd) => run_provider(Provider::Github, cmd.command, &store),
+        AuthCmd::Linear(cmd) => run_provider(Provider::Linear, cmd.command, &store, format),
+        AuthCmd::Github(cmd) => run_provider(Provider::Github, cmd.command, &store, format),
         AuthCmd::Sentry(cmd) => match cmd.command {
             SentryAction::Status => {
-                println!("{}", provider_status(Provider::Sentry, &store));
+                crate::output::print(&provider_status(Provider::Sentry, &store), format);
                 Ok(())
             }
-            SentryAction::Login { host } => login(Provider::Sentry, host, &store),
-            SentryAction::Logout => logout(Provider::Sentry, &store),
+            SentryAction::Login { host } => login(Provider::Sentry, host, &store, format),
+            SentryAction::Logout => logout(Provider::Sentry, &store, format),
         },
     }
 }
@@ -236,24 +236,29 @@ fn run_provider(
     provider: Provider,
     action: ProviderAction,
     store: &dyn SecretStore,
+    format: crate::output::Format,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match action {
         ProviderAction::Status => {
-            println!("{}", provider_status(provider, store));
+            crate::output::print(&provider_status(provider, store), format);
             Ok(())
         }
-        ProviderAction::Login => login(provider, None, store),
-        ProviderAction::Logout => logout(provider, store),
+        ProviderAction::Login => login(provider, None, store, format),
+        ProviderAction::Logout => logout(provider, store, format),
     }
 }
 
-fn logout(provider: Provider, store: &dyn SecretStore) -> Result<(), Box<dyn std::error::Error>> {
+fn logout(
+    provider: Provider,
+    store: &dyn SecretStore,
+    format: crate::output::Format,
+) -> Result<(), Box<dyn std::error::Error>> {
     let removed = store
         .delete(provider)
         .map_err(|error| format!("could not delete {} credential: {error}", provider.as_str()))?;
-    println!(
-        "{}",
-        json!({ "provider": provider.as_str(), "removed": removed })
+    crate::output::print(
+        &json!({ "provider": provider.as_str(), "removed": removed }),
+        format,
     );
     Ok(())
 }
@@ -262,6 +267,7 @@ fn login(
     provider: Provider,
     host: Option<String>,
     store: &dyn SecretStore,
+    format: crate::output::Format,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let url = match (provider, host) {
         (Provider::Sentry, Some(host)) => Some(crate::sentry::normalize_host(&host)),
@@ -290,14 +296,14 @@ fn login(
             provider.environment_variable()
         );
     }
-    println!(
-        "{}",
-        json!({
+    crate::output::print(
+        &json!({
             "provider": provider.as_str(),
             "status": "authenticated",
             "source": CredentialSource::ConfigFile.as_str(),
             "account": account,
-        })
+        }),
+        format,
     );
     Ok(())
 }

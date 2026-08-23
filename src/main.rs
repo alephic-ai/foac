@@ -11,7 +11,7 @@ mod update;
 #[derive(Parser)]
 #[command(about, arg_required_else_help = true)]
 struct Cli {
-    /// Output format for provider API responses (other commands ignore it)
+    /// Output format for JSON command output (version, update, and skill ignore it)
     #[arg(long, global = true, value_enum, default_value = "auto")]
     format: output::FormatArg,
     #[command(subcommand)]
@@ -88,7 +88,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let command = cli.command;
     let skip_check = matches!(command, Command::Update);
     let result = match command {
-        Command::Auth(cmd) => auth::run(cmd),
+        Command::Auth(cmd) => auth::run(cmd, format),
         Command::Github(cmd) => {
             provider::ensure_enabled(&provider::load(), "github")?;
             github::run(cmd, format)
@@ -101,7 +101,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             provider::ensure_enabled(&provider::load(), "sentry")?;
             sentry::run(cmd, format)
         }
-        Command::Provider(cmd) => provider::run(cmd),
+        Command::Provider(cmd) => provider::run(cmd, format),
         Command::Skill(cmd) => {
             let skill = render_skill(&providers());
             match cmd {

@@ -69,11 +69,12 @@ foac <provider> <resource> <verb> [flags]
   Administration. Branch protection and collaborator changes need
   Administration write.
 <!-- /foac-provider:github -->
-- **Output**: the raw API response as JSON on stdout. Provider
-  success output renders as a table sized to the terminal when stdout is an
-  interactive TTY and `CI` is not set, so agents parsing stdout must pass
+- **Output**: the raw API response as JSON on stdout. JSON
+  success output (including `auth` and `provider`) renders as a table sized to
+  the terminal when stdout is an interactive TTY and `CI` is not set, so agents
+  parsing stdout must pass
   `--format json` or set `FOAC_FORMAT=json`; pipes and CI always get JSON.
-  `auth`, `provider`, `version`, `update`, and `skill` ignore `--format`.
+  `version`, `update`, and `skill` ignore `--format`.
   Failures print
   the API's error JSON on stderr and exit non-zero.
 <!-- foac-provider:linear -->
