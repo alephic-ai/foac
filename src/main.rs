@@ -57,17 +57,26 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let providers = providers();
-    let command = try_parse_from(&providers, std::env::args_os())
-        .unwrap_or_else(|error| error.exit())
-        .command;
+    // Probing auth (keychain reads, possible `gh` subprocess) is only needed to
+    // hide providers in help/error output and to render the skill, so parse
+    // with the plain command first and probe only on those cold paths.
+    let command = match Cli::try_parse_from(std::env::args_os()) {
+        Ok(cli) => cli.command,
+        Err(_) => {
+            let providers = providers();
+            match try_parse_from(&providers, std::env::args_os()) {
+                Ok(cli) => cli.command,
+                Err(error) => error.exit(),
+            }
+        }
+    };
     let skip_check = matches!(command, Command::Update);
     let result = match command {
         Command::Auth(cmd) => auth::run(cmd),
         Command::Github(cmd) => github::run(cmd),
         Command::Linear(cmd) => linear::run(cmd),
         Command::Skill(cmd) => {
-            let skill = render_skill(&providers);
+            let skill = render_skill(&providers());
             match cmd {
                 SkillCmd::Print => {
                     print!("{skill}");

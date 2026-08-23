@@ -1,6 +1,6 @@
 ---
 name: foac
-description: Use the foac CLI to interact with authenticated external provider APIs from the shell.
+description: Use the foac CLI to interact with Linear and GitHub from the shell. Linear covers issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, and attachments. GitHub covers repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, and collaborators. Only authenticated providers are exposed.
 ---
 
 # foac
