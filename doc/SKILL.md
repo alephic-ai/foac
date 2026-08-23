@@ -1,6 +1,6 @@
 ---
 name: foac
-description: Use the foac CLI to interact with Linear and GitHub from the shell. Linear covers issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, and attachments. GitHub covers repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, and collaborators. Only authenticated, enabled providers are exposed.
+description: Use the foac CLI to interact with Linear, GitHub, and Sentry from the shell. Linear covers issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, and attachments. GitHub covers repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, and collaborators. Sentry covers organizations, projects, issues, error events, and releases. Only authenticated, enabled providers are exposed.
 ---
 
 # foac
@@ -28,6 +28,9 @@ foac <provider> <resource> <verb> [flags]
 - `github`: repositories, issues, pull requests, reviews, Actions, branches,
   commits, checks, releases, labels, artifacts, and collaborators.
 <!-- /foac-provider:github -->
+<!-- foac-provider:sentry -->
+- `sentry`: organizations, projects, issues, error events, and releases.
+<!-- /foac-provider:sentry -->
 - Resources are nouns (`issue`, `project`, `team`, `user`, ...), verbs are
   `list`, `get`, `create`, `update`, `delete`.
 - `--help` at any level is the ground truth for what exists and which flags
@@ -52,6 +55,9 @@ foac <provider> <resource> <verb> [flags]
 - **GitHub auth precedence**: `GITHUB_TOKEN`, then the foac config file, then
   `gh auth token`.
 <!-- /foac-provider:github -->
+<!-- foac-provider:sentry -->
+- **Sentry auth precedence**: `SENTRY_AUTH_TOKEN`, then the foac config file.
+<!-- /foac-provider:sentry -->
 - **Auth status**: Status commands perform live validation and print
   `authenticated`, `unauthenticated`, or `error` as JSON, including the
   credential source and safe account identity when available. They exit zero
@@ -63,7 +69,7 @@ foac <provider> <resource> <verb> [flags]
   Administration. Branch protection and collaborator changes need
   Administration write.
 <!-- /foac-provider:github -->
-- **Output**: the raw API response as JSON on stdout. Linear and GitHub
+- **Output**: the raw API response as JSON on stdout. Provider
   success output renders as a table sized to the terminal when stdout is an
   interactive TTY and `CI` is not set, so agents parsing stdout must pass
   `--format json` or set `FOAC_FORMAT=json`; pipes and CI always get JSON.
@@ -99,6 +105,22 @@ foac <provider> <resource> <verb> [flags]
 - **Metadata only**: GitHub release assets, Actions artifacts, and run jobs are
   JSON metadata. Binary uploads/downloads and log streaming are not supported.
 <!-- /foac-provider:github -->
+<!-- foac-provider:sentry -->
+- **Sentry organization**: pass `--org SLUG` anywhere after `sentry`, or set
+  `SENTRY_ORG`; only `org list` works without it. On a TTY,
+  `foac auth sentry login` first asks for the Sentry hostname (default
+  `sentry.io`, always https) and saves it; with redirected stdin it reads only
+  the token, so pass `--host HOSTNAME` to save a self-hosted instance
+  non-interactively. `SENTRY_URL` overrides the saved host.
+- **Sentry pagination**: `list` verbs take `--cursor CURSOR`; output is
+  `{"items":[...],"pageInfo":{...}}`. Follow `nextCursor` while `hasNextPage`
+  is true.
+- **Sentry issues**: `issue` and `--issue` accept a numeric issue ID or a
+  short ID like `PROJ-123`. `issue list` searches the organization, or one
+  project with `--project SLUG`; `--query` takes Sentry search syntax such as
+  `is:unresolved release:1.2.0`. Releases are read-only; use `sentry-cli` to
+  create releases and upload sourcemaps.
+<!-- /foac-provider:sentry -->
 
 <!-- foac-provider:github -->
 ## GitHub resources
@@ -143,6 +165,16 @@ foac github run rerun --repo alephic-ai/example 123456 --failed
 ```
 
 <!-- /foac-provider:github -->
+
+<!-- foac-provider:sentry -->
+
+```sh
+foac sentry issue list --org acme --project backend --query "is:unresolved"
+foac sentry issue latest-event PROJ-123 --org acme
+foac sentry issue update PROJ-123 --org acme --status resolved
+```
+
+<!-- /foac-provider:sentry -->
 
 ## Maintenance
 

@@ -57,7 +57,7 @@ Other commands check GitHub for a newer release at most once a day, and print a 
 
 ## Output
 
-Linear and GitHub commands print the provider's response as compact JSON on
+Provider commands print the provider's response as compact JSON on
 stdout. At an interactive terminal, foac renders it as a table sized to the
 terminal width instead. Pick a format explicitly with `--format json|table|auto`
 or the `FOAC_FORMAT` environment variable; pipes and CI (`CI` set) always get
@@ -76,6 +76,9 @@ foac auth linear logout
 foac auth github status
 foac auth github login
 foac auth github logout
+foac auth sentry status
+foac auth sentry login
+foac auth sentry logout
 ```
 
 `login` prints a link and permission guidance, securely prompts for a personal
@@ -133,6 +136,29 @@ GitHub list commands print `{"items":[...],"pageInfo":{...}}` and accept
 `--limit`/`--page`. Commands with long Markdown fields accept either `--body`
 or `--body-file`. Asset and artifact commands return metadata only; binary
 transfer and Actions log retrieval are unsupported.
+
+## Sentry
+
+`foac sentry` talks to [Sentry's REST API](https://docs.sentry.io/api/). It
+uses `SENTRY_AUTH_TOKEN` or a credential saved by `foac auth sentry login`.
+Pass `--org SLUG` or set `SENTRY_ORG`. At an interactive terminal,
+`foac auth sentry login` first asks for the Sentry hostname (default
+`sentry.io`, always https — enter your own for a self-hosted instance) and
+saves it alongside the token; piped logins read only the token, so pass
+`--host sentry.example.com` to save a self-hosted instance non-interactively.
+`SENTRY_URL` overrides the saved host. Issue commands accept numeric IDs
+or short IDs like `PROJ-123`.
+
+```sh
+export SENTRY_AUTH_TOKEN=sntrys_...
+foac sentry issue list --org acme --project backend --query "is:unresolved"
+foac sentry issue latest-event PROJ-123 --org acme
+foac sentry --help
+```
+
+Sentry list commands print `{"items":[...],"pageInfo":{...}}` and paginate
+with `--cursor` using `pageInfo.nextCursor`. Releases are read-only; release
+creation and sourcemap upload stay with `sentry-cli`.
 
 ## Agents
 

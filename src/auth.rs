@@ -20,6 +20,8 @@ enum AuthCmd {
     Linear(ProviderCmd),
     /// Configure GitHub authentication
     Github(ProviderCmd),
+    /// Configure Sentry authentication
+    Sentry(SentryCmd),
 }
 
 #[derive(Args)]
@@ -39,10 +41,33 @@ enum ProviderAction {
     Logout,
 }
 
+#[derive(Args)]
+#[command(arg_required_else_help = true)]
+struct SentryCmd {
+    #[command(subcommand)]
+    command: SentryAction,
+}
+
+/// Same shape as [`ProviderAction`], plus the Sentry-only `--host` login flag.
+#[derive(Subcommand)]
+enum SentryAction {
+    /// Check authentication for this provider
+    Status,
+    /// Validate and save a token in foac's config file
+    Login {
+        /// Sentry hostname to log in to, skipping the prompt
+        #[arg(long)]
+        host: Option<String>,
+    },
+    /// Remove foac's token from the config file
+    Logout,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, clap::ValueEnum)]
 pub(crate) enum Provider {
     Linear,
     Github,
+    Sentry,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -86,13 +111,35 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
         }
         AuthCmd::Linear(cmd) => run_provider(Provider::Linear, cmd.command, &store),
         AuthCmd::Github(cmd) => run_provider(Provider::Github, cmd.command, &store),
+        AuthCmd::Sentry(cmd) => match cmd.command {
+            SentryAction::Status => {
+                println!("{}", provider_status(Provider::Sentry, &store));
+                Ok(())
+            }
+            SentryAction::Login { host } => login(Provider::Sentry, host, &store),
+            SentryAction::Logout => logout(Provider::Sentry, &store),
+        },
     }
 }
 
 pub(crate) fn linear_token() -> Result<String, Box<dyn std::error::Error>> {
-    resolve_linear(environment_token(Provider::Linear), &ConfigFileStore)
-        .map(|credential| credential.token)
-        .map_err(Into::into)
+    resolve_stored(
+        Provider::Linear,
+        environment_token(Provider::Linear),
+        &ConfigFileStore,
+    )
+    .map(|credential| credential.token)
+    .map_err(Into::into)
+}
+
+pub(crate) fn sentry_token() -> Result<String, Box<dyn std::error::Error>> {
+    resolve_stored(
+        Provider::Sentry,
+        environment_token(Provider::Sentry),
+        &ConfigFileStore,
+    )
+    .map(|credential| credential.token)
+    .map_err(Into::into)
 }
 
 pub(crate) fn github_token() -> Result<String, Box<dyn std::error::Error>> {
@@ -130,6 +177,15 @@ impl Provider {
         match self {
             Self::Linear => "linear",
             Self::Github => "github",
+            Self::Sentry => "sentry",
+        }
+    }
+
+    fn display_name(self) -> &'static str {
+        match self {
+            Self::Linear => "Linear",
+            Self::Github => "GitHub",
+            Self::Sentry => "Sentry",
         }
     }
 
@@ -137,6 +193,7 @@ impl Provider {
         match self {
             Self::Linear => "LINEAR_API_KEY",
             Self::Github => "GITHUB_TOKEN",
+            Self::Sentry => "SENTRY_AUTH_TOKEN",
         }
     }
 }
@@ -185,27 +242,48 @@ fn run_provider(
             println!("{}", provider_status(provider, store));
             Ok(())
         }
-        ProviderAction::Login => login(provider, store),
-        ProviderAction::Logout => {
-            let removed = store.delete(provider).map_err(|error| {
-                format!("could not delete {} credential: {error}", provider.as_str())
-            })?;
-            println!(
-                "{}",
-                json!({ "provider": provider.as_str(), "removed": removed })
-            );
-            Ok(())
-        }
+        ProviderAction::Login => login(provider, None, store),
+        ProviderAction::Logout => logout(provider, store),
     }
 }
 
-fn login(provider: Provider, store: &dyn SecretStore) -> Result<(), Box<dyn std::error::Error>> {
-    print_login_help(provider);
+fn logout(provider: Provider, store: &dyn SecretStore) -> Result<(), Box<dyn std::error::Error>> {
+    let removed = store
+        .delete(provider)
+        .map_err(|error| format!("could not delete {} credential: {error}", provider.as_str()))?;
+    println!(
+        "{}",
+        json!({ "provider": provider.as_str(), "removed": removed })
+    );
+    Ok(())
+}
+
+fn login(
+    provider: Provider,
+    host: Option<String>,
+    store: &dyn SecretStore,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let url = match (provider, host) {
+        (Provider::Sentry, Some(host)) => Some(crate::sentry::normalize_host(&host)),
+        (Provider::Sentry, None) => read_sentry_host()?,
+        _ => None,
+    };
+    print_login_help(provider, url.as_deref());
     let token = read_token()?;
     if token.is_empty() {
         return Err("token cannot be empty".into());
     }
-    let account = validate_and_store(provider, &token, store, |token| validate(provider, token))?;
+    let account = validate_and_store(provider, &token, store, |token| {
+        validate(provider, token, url.as_deref())
+    })?;
+    if let Some(url) = &url {
+        let mut config = crate::provider::load();
+        config.set_sentry_url(Some(url.clone()));
+        crate::provider::save(&config)?;
+        if std::env::var("SENTRY_URL").is_ok_and(|url| !url.is_empty()) {
+            eprintln!("Warning: SENTRY_URL is set and takes precedence over the stored URL.");
+        }
+    }
     if environment_token(provider).is_some() {
         eprintln!(
             "Warning: {} is set and takes precedence over the stored credential.",
@@ -226,16 +304,19 @@ fn login(provider: Provider, store: &dyn SecretStore) -> Result<(), Box<dyn std:
 
 fn provider_status(provider: Provider, store: &dyn SecretStore) -> Value {
     let resolved = match provider {
-        Provider::Linear => resolve_linear(environment_token(provider), store),
+        Provider::Linear | Provider::Sentry => {
+            resolve_stored(provider, environment_token(provider), store)
+        }
         Provider::Github => resolve_github(environment_token(provider), store, github_cli_token),
     };
-    credential_status(resolved, |token| validate(provider, token))
+    credential_status(resolved, |token| validate(provider, token, None))
 }
 
 fn all_provider_statuses(store: &dyn SecretStore) -> Value {
     json!({
         "linear": provider_status(Provider::Linear, store),
         "github": provider_status(Provider::Github, store),
+        "sentry": provider_status(Provider::Sentry, store),
     })
 }
 
@@ -295,7 +376,8 @@ where
     }
 }
 
-fn resolve_linear(
+fn resolve_stored(
+    provider: Provider,
     environment: Option<String>,
     store: &dyn SecretStore,
 ) -> Result<ResolvedCredential, ResolveError> {
@@ -305,16 +387,19 @@ fn resolve_linear(
             source: CredentialSource::Environment,
         });
     }
-    match store.get(Provider::Linear) {
+    match store.get(provider) {
         Ok(Some(token)) => Ok(ResolvedCredential {
             token,
             source: CredentialSource::ConfigFile,
         }),
-        Ok(None) => Err(ResolveError::Missing(
-            "LINEAR_API_KEY is not set and no Linear credential is stored".into(),
-        )),
+        Ok(None) => Err(ResolveError::Missing(format!(
+            "{} is not set and no {} credential is stored",
+            provider.environment_variable(),
+            provider.display_name(),
+        ))),
         Err(error) => Err(ResolveError::Failed(format!(
-            "could not read Linear credential from the config file: {error}"
+            "could not read {} credential from the config file: {error}",
+            provider.display_name(),
         ))),
     }
 }
@@ -365,10 +450,15 @@ where
     }
 }
 
-fn validate(provider: Provider, token: &str) -> Result<Value, ValidationError> {
+fn validate(
+    provider: Provider,
+    token: &str,
+    sentry_url: Option<&str>,
+) -> Result<Value, ValidationError> {
     match provider {
         Provider::Linear => crate::linear::auth_identity(token).map(linear_account),
         Provider::Github => crate::github::auth_identity(token).map(github_account),
+        Provider::Sentry => crate::sentry::auth_identity(token, sentry_url).map(sentry_account),
     }
 }
 
@@ -396,6 +486,25 @@ fn github_account(identity: Value) -> Value {
     })
 }
 
+fn sentry_account(identity: Value) -> Value {
+    let organizations: Vec<Value> = identity
+        .as_array()
+        .map(|organizations| {
+            organizations
+                .iter()
+                .map(|organization| {
+                    json!({
+                        "id": organization["id"],
+                        "slug": organization["slug"],
+                        "name": organization["name"],
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    json!({ "organizations": organizations })
+}
+
 fn environment_token(provider: Provider) -> Option<String> {
     std::env::var(provider.environment_variable())
         .ok()
@@ -419,6 +528,19 @@ fn github_cli_token() -> Result<Option<String>, String> {
         })
 }
 
+/// Ask which Sentry host to log in to, defaulting to sentry.io. Skipped when
+/// stdin is redirected: piped input stays token-only, and the host falls back
+/// to `SENTRY_URL`, then the config file, then the default.
+fn read_sentry_host() -> Result<Option<String>, Box<dyn std::error::Error>> {
+    if !std::io::stdin().is_terminal() {
+        return Ok(None);
+    }
+    eprint!("Sentry host [{}]: ", crate::sentry::DEFAULT_HOST);
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line)?;
+    Ok(Some(crate::sentry::normalize_host(&line)))
+}
+
 fn read_token() -> Result<String, Box<dyn std::error::Error>> {
     if std::io::stdin().is_terminal() {
         return Ok(rpassword::prompt_password("Token: ")?);
@@ -428,13 +550,17 @@ fn read_token() -> Result<String, Box<dyn std::error::Error>> {
     Ok(token.trim_end_matches(['\r', '\n']).to_owned())
 }
 
-fn print_login_help(provider: Provider) {
+fn print_login_help(provider: Provider, sentry_url: Option<&str>) {
     match provider {
         Provider::Linear => eprintln!(
             "Create a personal API key at https://linear.app/settings/account/security and grant the permissions needed by your foac commands."
         ),
         Provider::Github => eprintln!(
             "Create a fine-grained personal access token at https://github.com/settings/personal-access-tokens/new and grant the repository permissions needed by your foac commands."
+        ),
+        Provider::Sentry => eprintln!(
+            "Create a user auth token at {}/settings/account/api/auth-tokens/ and grant the scopes needed by your foac commands.",
+            sentry_url.map_or_else(crate::sentry::base_url, str::to_owned)
         ),
     }
 }
@@ -480,11 +606,12 @@ mod tests {
     fn linear_credentials_prefer_environment_then_secret_store() {
         let store = MemoryStore::default();
         store.set(Provider::Linear, "stored").unwrap();
-        let resolved = resolve_linear(Some("environment".into()), &store).unwrap();
+        let resolved =
+            resolve_stored(Provider::Linear, Some("environment".into()), &store).unwrap();
         assert_eq!(resolved.token, "environment");
         assert_eq!(resolved.source, CredentialSource::Environment);
 
-        let resolved = resolve_linear(None, &store).unwrap();
+        let resolved = resolve_stored(Provider::Linear, None, &store).unwrap();
         assert_eq!(resolved.token, "stored");
         assert_eq!(resolved.source, CredentialSource::ConfigFile);
     }
@@ -503,15 +630,22 @@ mod tests {
     #[test]
     fn missing_credentials_are_distinct_from_store_errors() {
         assert!(matches!(
-            resolve_linear(None, &MemoryStore::default()),
+            resolve_stored(Provider::Linear, None, &MemoryStore::default()),
             Err(ResolveError::Missing(_))
         ));
+        let Err(sentry) = resolve_stored(Provider::Sentry, None, &MemoryStore::default()) else {
+            panic!("missing Sentry credential should not resolve");
+        };
+        assert_eq!(
+            sentry.to_string(),
+            "SENTRY_AUTH_TOKEN is not set and no Sentry credential is stored"
+        );
         let store = MemoryStore {
             get_error: Some("locked".into()),
             ..Default::default()
         };
         assert!(matches!(
-            resolve_linear(None, &store),
+            resolve_stored(Provider::Linear, None, &store),
             Err(ResolveError::Failed(_))
         ));
     }
