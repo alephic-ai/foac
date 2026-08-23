@@ -295,7 +295,11 @@ fn login(
         );
     }
     let report = login_report(provider, account);
-    crate::output::print_text(&status_summary(&report[provider.as_str()]), &report, format);
+    crate::output::print_text(
+        &status_summary(provider, &report[provider.as_str()]),
+        &report,
+        format,
+    );
     Ok(())
 }
 
@@ -310,7 +314,11 @@ fn print_all_statuses(store: &dyn SecretStore, format: crate::output::Format) {
 
 fn print_status(provider: Provider, store: &dyn SecretStore, format: crate::output::Format) {
     let report = keyed_provider_status(provider, store);
-    crate::output::print_text(&status_summary(&report[provider.as_str()]), &report, format);
+    crate::output::print_text(
+        &status_summary(provider, &report[provider.as_str()]),
+        &report,
+        format,
+    );
 }
 
 fn nest(provider: Provider, body: Value) -> Value {
@@ -341,18 +349,24 @@ fn flatten_accounts_for_table(statuses: &Value) -> Value {
         return statuses.clone();
     };
     let mut out = map.clone();
-    for row in out.values_mut() {
-        let Some(obj) = row.as_object_mut() else {
+    for provider in [Provider::Linear, Provider::Github, Provider::Sentry] {
+        let Some(obj) = out
+            .get_mut(provider.as_str())
+            .and_then(Value::as_object_mut)
+        else {
             continue;
         };
         if let Some(account) = obj.get("account").cloned().filter(Value::is_object) {
-            obj.insert("account".into(), json!(account_identity(&account)));
+            obj.insert(
+                "account".into(),
+                json!(account_identity(provider, &account)),
+            );
         }
     }
     Value::Object(out)
 }
 
-fn status_summary(body: &Value) -> String {
+fn status_summary(provider: Provider, body: &Value) -> String {
     let status = body["status"].as_str().unwrap_or("unknown");
     let line1 = match body["source"].as_str() {
         Some(source) => format!("{status} via {source}"),
@@ -360,7 +374,7 @@ fn status_summary(body: &Value) -> String {
     };
     let line2 = if status == "authenticated" {
         body.get("account")
-            .map(account_identity)
+            .map(|account| account_identity(provider, account))
             .filter(|identity| !identity.is_empty())
     } else {
         body["error"]
@@ -382,14 +396,12 @@ fn logout_summary(removed: bool) -> String {
     }
 }
 
-fn account_identity(account: &Value) -> String {
-    if account.get("organizations").is_some() {
-        return sentry_identity(account);
+fn account_identity(provider: Provider, account: &Value) -> String {
+    match provider {
+        Provider::Linear => linear_identity(account),
+        Provider::Github => github_identity(account),
+        Provider::Sentry => sentry_identity(account),
     }
-    if account.get("login").is_some() {
-        return github_identity(account);
-    }
-    linear_identity(account)
 }
 
 fn linear_identity(account: &Value) -> String {
@@ -873,7 +885,7 @@ mod tests {
             "organization": { "id": "ws", "name": "Alephic", "urlKey": "alephic" },
         }));
         assert_eq!(
-            account_identity(&linear),
+            account_identity(Provider::Linear, &linear),
             "Laurent Raufaste <laurent@alephic.com>  Alephic"
         );
 
@@ -882,11 +894,15 @@ mod tests {
             "login": "octocat",
             "name": "The Octocat",
         }));
-        assert_eq!(account_identity(&github), "octocat (The Octocat)");
         assert_eq!(
-            account_identity(&github_account(
-                json!({ "id": 1, "login": "octocat", "name": "octocat" })
-            )),
+            account_identity(Provider::Github, &github),
+            "octocat (The Octocat)"
+        );
+        assert_eq!(
+            account_identity(
+                Provider::Github,
+                &github_account(json!({ "id": 1, "login": "octocat", "name": "octocat" }))
+            ),
             "octocat"
         );
 
@@ -894,38 +910,50 @@ mod tests {
             { "id": "1", "slug": "acme", "name": "Acme" },
             { "id": "2", "slug": "alephic", "name": "Alephic" },
         ]));
-        assert_eq!(account_identity(&sentry), "acme, alephic");
-        assert_eq!(account_identity(&sentry_account(json!([]))), "");
+        assert_eq!(account_identity(Provider::Sentry, &sentry), "acme, alephic");
+        assert_eq!(
+            account_identity(Provider::Sentry, &sentry_account(json!([]))),
+            ""
+        );
     }
 
     #[test]
     fn status_summary_is_two_lines_when_there_is_detail() {
         assert_eq!(
-            status_summary(&json!({
-                "status": "authenticated",
-                "source": "environment",
-                "account": {
-                    "name": "Laurent Raufaste",
-                    "email": "laurent@alephic.com",
-                    "workspace": { "name": "Alephic" },
-                },
-            })),
+            status_summary(
+                Provider::Linear,
+                &json!({
+                    "status": "authenticated",
+                    "source": "environment",
+                    "account": {
+                        "name": "Laurent Raufaste",
+                        "email": "laurent@alephic.com",
+                        "workspace": { "name": "Alephic" },
+                    },
+                })
+            ),
             "authenticated via environment\nLaurent Raufaste <laurent@alephic.com>  Alephic\n"
         );
         assert_eq!(
-            status_summary(&json!({
-                "status": "unauthenticated",
-                "source": Value::Null,
-                "error": "LINEAR_API_KEY is not set and no Linear credential is stored",
-            })),
+            status_summary(
+                Provider::Linear,
+                &json!({
+                    "status": "unauthenticated",
+                    "source": Value::Null,
+                    "error": "LINEAR_API_KEY is not set and no Linear credential is stored",
+                })
+            ),
             "unauthenticated\nLINEAR_API_KEY is not set and no Linear credential is stored\n"
         );
         assert_eq!(
-            status_summary(&json!({
-                "status": "unauthenticated",
-                "source": "environment",
-                "error": "rejected",
-            })),
+            status_summary(
+                Provider::Linear,
+                &json!({
+                    "status": "unauthenticated",
+                    "source": "environment",
+                    "error": "rejected",
+                })
+            ),
             "unauthenticated via environment\nrejected\n"
         );
     }
