@@ -49,7 +49,7 @@ foac update
 
 `foac update` downloads the latest GitHub release for this platform and replaces the running binary.
 
-Once a day, other commands may print a notice on stderr if a newer release exists. They never auto-install. Set `FOAC_NO_UPDATE_CHECK` (or `CI`) to skip the check.
+Other commands check GitHub for a newer release at most once a day, and print a notice on stderr while one exists. They never auto-install. Set `FOAC_NO_UPDATE_CHECK` (or `CI`) to skip the check.
 
 ## Linear
 
