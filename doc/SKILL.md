@@ -53,5 +53,7 @@ foac linear comment create --issue ENG-123 --body "Done, see PR #42"
 ## Maintenance
 
 `foac update` replaces the binary with the latest release; `foac version`
-prints the installed version. Reinstall this skill with `foac skill install`
-after updating.
+prints the installed version. About once a day, foac may print a two-line
+notice on stderr when a newer GitHub release exists — it never auto-installs,
+and the notice is not JSON. Set `FOAC_NO_UPDATE_CHECK` to disable it.
+Reinstall this skill with `foac skill install` after updating.

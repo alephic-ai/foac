@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
-use self_update::cargo_crate_version;
 
 mod linear;
+mod update;
 
 #[derive(Parser)]
 #[command(about, arg_required_else_help = true)]
@@ -38,7 +38,9 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    match Cli::parse().command {
+    let command = Cli::parse().command;
+    let skip_check = matches!(command, Command::Update);
+    let result = match command {
         Command::Linear(cmd) => linear::run(cmd),
         Command::Skill { command: None } => {
             print!("{SKILL_MD}");
@@ -46,29 +48,35 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Command::Skill {
             command: Some(SkillCmd::Install),
-        } => {
-            let home = std::env::home_dir().ok_or("could not determine the home directory")?;
-            let installed = skill_install(&home)?;
-            if installed.is_empty() {
-                return Err("no supported agent found; install manually with: foac skill > <agent skills dir>/foac/SKILL.md".into());
-            }
-            for path in installed {
-                println!("Installed {}", path.display());
-            }
-            Ok(())
-        }
-        Command::Update => update(),
+        } => skill_install_cmd(),
+        Command::Update => update::run(),
         Command::Version => {
             println!("{}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
+    };
+    if !skip_check {
+        update::notify_if_outdated();
     }
+    result
 }
 
 #[derive(Subcommand)]
 enum SkillCmd {
     /// Install the skill for every supported agent found on this machine
     Install,
+}
+
+fn skill_install_cmd() -> Result<(), Box<dyn std::error::Error>> {
+    let home = std::env::home_dir().ok_or("could not determine the home directory")?;
+    let installed = skill_install(&home)?;
+    if installed.is_empty() {
+        return Err("no supported agent found; install manually with: foac skill > <agent skills dir>/foac/SKILL.md".into());
+    }
+    for path in installed {
+        println!("Installed {}", path.display());
+    }
+    Ok(())
 }
 
 /// Write the skill into the skill folders of the agents present under `home`.
@@ -103,50 +111,6 @@ fn skill_install(
         installed.push(path);
     }
     Ok(installed)
-}
-
-fn update() -> Result<(), Box<dyn std::error::Error>> {
-    let token = std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.is_empty());
-    // Ask /releases/latest for the tag to install: that endpoint never returns
-    // draft or prerelease releases, unlike the /releases listing self_update
-    // walks by default, which includes in-progress drafts when authenticated.
-    let mut request = reqwest::blocking::Client::new()
-        .get("https://api.github.com/repos/lra/foac/releases/latest")
-        .header("User-Agent", "foac");
-    if let Some(token) = &token {
-        request = request.bearer_auth(token);
-    }
-    let latest: serde_json::Value = request.send()?.error_for_status()?.json()?;
-    let tag = latest["tag_name"]
-        .as_str()
-        .ok_or("no tag_name in the latest GitHub release")?;
-    if tag == format!("v{}", cargo_crate_version!()) {
-        println!("Already up to date ({})", cargo_crate_version!());
-        return Ok(());
-    }
-    let mut builder = self_update::backends::github::Update::configure();
-    builder
-        .repo_owner("lra")
-        .repo_name("foac")
-        .bin_name("foac")
-        .show_download_progress(true)
-        .no_confirm(true)
-        .release_tag(tag)
-        // Assets pair an archive with a .sha256 file per target, and
-        // self_update takes the first name containing the target — which is
-        // the checksum, alphabetically. Require the archive extension.
-        .asset_identifier(if cfg!(windows) { ".zip" } else { ".tar.gz" })
-        .current_version(cargo_crate_version!());
-    if let Some(token) = token {
-        builder.auth_token(token);
-    }
-    let status = builder.build()?.update()?;
-    if status.is_updated() {
-        println!("Updated to {}", status.version());
-    } else {
-        println!("Already up to date ({})", status.version());
-    }
-    Ok(())
 }
 
 #[cfg(test)]
