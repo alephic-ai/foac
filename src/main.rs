@@ -44,7 +44,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             print!("{SKILL_MD}");
             Ok(())
         }
-        Command::Skill { command: Some(SkillCmd::Install) } => {
+        Command::Skill {
+            command: Some(SkillCmd::Install),
+        } => {
             let home = std::env::home_dir().ok_or("could not determine the home directory")?;
             let installed = skill_install(&home)?;
             if installed.is_empty() {
@@ -73,7 +75,9 @@ enum SkillCmd {
 /// Claude Code only reads its own folder; every other major agent (Cursor,
 /// Codex, Gemini CLI, Copilot, OpenCode, Amp, Cline, ...) reads the
 /// cross-agent standard ~/.agents/skills, so two writes cover them all.
-fn skill_install(home: &std::path::Path) -> Result<Vec<std::path::PathBuf>, Box<dyn std::error::Error>> {
+fn skill_install(
+    home: &std::path::Path,
+) -> Result<Vec<std::path::PathBuf>, Box<dyn std::error::Error>> {
     let shared_agent_roots = [
         ".agents",
         ".cursor",
