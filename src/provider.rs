@@ -7,7 +7,7 @@ use serde_json::json;
 
 use crate::auth::Provider;
 
-const PROVIDERS: [&str; 2] = ["github", "linear"];
+const PROVIDERS: [&str; 3] = ["github", "linear", "sentry"];
 
 #[derive(Subcommand)]
 pub enum Cmd {
@@ -25,6 +25,8 @@ pub(crate) struct Config {
     disabled_providers: Vec<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     credentials: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sentry_url: Option<String>,
 }
 
 impl Config {
@@ -49,6 +51,14 @@ impl Config {
 
     pub(crate) fn remove_credential(&mut self, name: &str) -> bool {
         self.credentials.remove(name).is_some()
+    }
+
+    pub(crate) fn sentry_url(&self) -> Option<&str> {
+        self.sentry_url.as_deref().filter(|url| !url.is_empty())
+    }
+
+    pub(crate) fn set_sentry_url(&mut self, url: Option<String>) {
+        self.sentry_url = url;
     }
 }
 
@@ -212,6 +222,12 @@ mod tests {
             std::fs::read_to_string(&path).unwrap(),
             r#"{"disabled_providers":[]}"#
         );
+
+        config.set_sentry_url(Some("https://sentry.example.com".into()));
+        write(&path, &config).unwrap();
+        let config = read(&path).unwrap();
+        assert_eq!(config.sentry_url(), Some("https://sentry.example.com"));
+        assert_eq!(Config::default().sentry_url(), None);
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

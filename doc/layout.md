@@ -1,8 +1,9 @@
 # Layout and conventions
 
 `src/main.rs` parses the top-level CLI and dispatches. Provider commands are
-colocated by provider: `src/linear.rs` contains Linear and `src/github.rs`
-contains GitHub. `src/update.rs` talks to GitHub Releases for `foac update` and
+colocated by provider: `src/linear.rs` contains Linear, `src/github.rs`
+contains GitHub, and `src/sentry.rs` contains Sentry.
+`src/update.rs` talks to GitHub Releases for `foac update` and
 the once-a-day version check. Linear queries live in
 `graphql/linear/queries.graphql`, and `graphql_client` generates their Rust
 types at compile time against the vendored `graphql/linear/schema.graphql`
@@ -20,3 +21,7 @@ require UUIDs.
 
 GitHub uses its versioned REST API. Successful object responses are raw JSON;
 list responses wrap API items with `pageInfo` derived from the Link header.
+Sentry follows the same REST pattern with cursor pagination from its Link
+header; its base URL comes from `SENTRY_URL`, then the host saved by
+`foac auth sentry login` (its prompt or `--host`; default
+`https://sentry.io`), and every request path needs a trailing slash.

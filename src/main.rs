@@ -5,12 +5,13 @@ mod github;
 mod linear;
 mod output;
 mod provider;
+mod sentry;
 mod update;
 
 #[derive(Parser)]
 #[command(about, arg_required_else_help = true)]
 struct Cli {
-    /// Output format for Linear and GitHub responses (other commands ignore it)
+    /// Output format for provider API responses (other commands ignore it)
     #[arg(long, global = true, value_enum, default_value = "auto")]
     format: output::FormatArg,
     #[command(subcommand)]
@@ -43,6 +44,8 @@ enum Command {
     /// Interact with Linear (linear.app)
     #[command(subcommand)]
     Linear(linear::Cmd),
+    /// Interact with Sentry
+    Sentry(sentry::Cmd),
     /// Enable or disable providers
     #[command(subcommand, arg_required_else_help = true)]
     Provider(provider::Cmd),
@@ -94,6 +97,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             provider::ensure_enabled(&provider::load(), "linear")?;
             linear::run(cmd, format)
         }
+        Command::Sentry(cmd) => {
+            provider::ensure_enabled(&provider::load(), "sentry")?;
+            sentry::run(cmd, format)
+        }
         Command::Provider(cmd) => provider::run(cmd),
         Command::Skill(cmd) => {
             let skill = render_skill(&providers());
@@ -125,7 +132,7 @@ enum SkillCmd {
     Install,
 }
 
-fn providers() -> [Provider; 2] {
+fn providers() -> [Provider; 3] {
     let config = provider::load();
     [
         // Config first: short-circuit skips the keychain/`gh` probe when disabled.
@@ -136,6 +143,10 @@ fn providers() -> [Provider; 2] {
         Provider::new(
             "linear",
             config.enabled("linear") && linear::authenticated(),
+        ),
+        Provider::new(
+            "sentry",
+            config.enabled("sentry") && sentry::authenticated(),
         ),
     ]
 }
@@ -286,16 +297,17 @@ mod tests {
 
     #[test]
     fn help_only_lists_authenticated_providers() {
-        for (linear, github, expected) in [
-            (false, false, vec![]),
-            (true, false, vec!["linear"]),
-            (false, true, vec!["github"]),
-            (true, true, vec!["github", "linear"]),
+        for (linear, github, sentry, expected) in [
+            (false, false, false, vec![]),
+            (true, false, false, vec!["linear"]),
+            (false, true, false, vec!["github"]),
+            (false, false, true, vec!["sentry"]),
+            (true, true, true, vec!["github", "linear", "sentry"]),
         ] {
-            let providers = test_providers(linear, github);
+            let providers = test_providers(linear, github, sentry);
             for args in [vec!["foac"], vec!["foac", "--help"]] {
                 let help = parse_error(&providers, args).to_string();
-                for name in ["github", "linear"] {
+                for name in ["github", "linear", "sentry"] {
                     assert_eq!(help_lists(&help, name), expected.contains(&name));
                 }
                 for name in ["auth", "provider", "skill", "update", "version", "help"] {
@@ -307,10 +319,11 @@ mod tests {
 
     #[test]
     fn hidden_providers_still_parse() {
-        let providers = test_providers(false, false);
+        let providers = test_providers(false, false, false);
         for args in [
             vec!["foac", "github", "issue", "list", "--repo", "owner/repo"],
             vec!["foac", "linear", "team", "list"],
+            vec!["foac", "sentry", "issue", "list", "--org", "acme"],
         ] {
             try_parse_from(&providers, args).unwrap();
         }
@@ -318,10 +331,11 @@ mod tests {
 
     #[test]
     fn hidden_provider_help_remains_available() {
-        let providers = test_providers(false, false);
+        let providers = test_providers(false, false, false);
         for (args, usage) in [
             (vec!["foac", "github", "--help"], "Usage: foac github"),
             (vec!["foac", "linear", "--help"], "Usage: foac linear"),
+            (vec!["foac", "sentry", "--help"], "Usage: foac sentry"),
         ] {
             let error = parse_error(&providers, args);
             assert_eq!(error.kind(), ErrorKind::DisplayHelp);
@@ -331,19 +345,27 @@ mod tests {
 
     #[test]
     fn hidden_providers_are_not_suggested() {
-        let error = parse_error(&test_providers(false, false), ["foac", "githu"]).to_string();
+        let error =
+            parse_error(&test_providers(false, false, false), ["foac", "githu"]).to_string();
         assert!(!error.contains("github"));
 
-        let error = parse_error(&test_providers(false, true), ["foac", "githu"]).to_string();
+        let error = parse_error(&test_providers(false, true, false), ["foac", "githu"]).to_string();
         assert!(error.contains("github"));
     }
 
     #[test]
     fn skill_only_documents_authenticated_providers() {
-        for (linear, github) in [(false, false), (true, false), (false, true), (true, true)] {
-            let skill = render_skill(&test_providers(linear, github));
+        for (linear, github, sentry) in [
+            (false, false, false),
+            (true, false, false),
+            (false, true, false),
+            (false, false, true),
+            (true, true, true),
+        ] {
+            let skill = render_skill(&test_providers(linear, github, sentry));
             assert_eq!(skill.contains("foac linear issue list"), linear);
             assert_eq!(skill.contains("foac github issue list"), github);
+            assert_eq!(skill.contains("foac sentry issue list"), sentry);
             assert!(!skill.contains("<!-- foac-provider:"));
             assert!(
                 skill.contains("top-level `--help` lists only authenticated, enabled providers")
@@ -357,6 +379,7 @@ mod tests {
             vec!["foac", "auth"],
             vec!["foac", "auth", "linear"],
             vec!["foac", "auth", "github"],
+            vec!["foac", "auth", "sentry"],
         ] {
             let error = match Cli::try_parse_from(args) {
                 Ok(_) => panic!("bare auth command should display help"),
@@ -379,6 +402,17 @@ mod tests {
             vec!["foac", "auth", "github", "status"],
             vec!["foac", "auth", "github", "login"],
             vec!["foac", "auth", "github", "logout"],
+            vec!["foac", "auth", "sentry", "status"],
+            vec!["foac", "auth", "sentry", "login"],
+            vec![
+                "foac",
+                "auth",
+                "sentry",
+                "login",
+                "--host",
+                "sentry.example.com",
+            ],
+            vec!["foac", "auth", "sentry", "logout"],
         ] {
             Cli::try_parse_from(args).unwrap();
         }
@@ -392,6 +426,8 @@ mod tests {
             vec!["foac", "provider", "enable", "linear"],
             vec!["foac", "provider", "disable", "github"],
             vec!["foac", "provider", "disable", "linear"],
+            vec!["foac", "provider", "enable", "sentry"],
+            vec!["foac", "provider", "disable", "sentry"],
         ] {
             Cli::try_parse_from(args).unwrap();
         }
@@ -422,7 +458,7 @@ mod tests {
         let home = std::env::temp_dir().join(format!("foac-test-{}", std::process::id()));
         std::fs::create_dir_all(home.join(".claude")).unwrap();
         std::fs::create_dir_all(home.join(".cursor")).unwrap();
-        let skill = render_skill(&test_providers(true, false));
+        let skill = render_skill(&test_providers(true, false, false));
         let installed = skill_install(&home, &skill).unwrap();
         assert_eq!(
             installed,
@@ -436,10 +472,11 @@ mod tests {
         std::fs::remove_dir_all(&home).unwrap();
     }
 
-    fn test_providers(linear: bool, github: bool) -> [Provider; 2] {
+    fn test_providers(linear: bool, github: bool, sentry: bool) -> [Provider; 3] {
         [
             Provider::new("github", github),
             Provider::new("linear", linear),
+            Provider::new("sentry", sentry),
         ]
     }
 

@@ -1894,7 +1894,7 @@ fn page_query(page: Page) -> Vec<(&'static str, String)> {
     ]
 }
 
-fn push_query<T: ToString>(
+pub(crate) fn push_query<T: ToString>(
     query: &mut Vec<(&'static str, String)>,
     name: &'static str,
     value: Option<T>,
@@ -1904,7 +1904,11 @@ fn push_query<T: ToString>(
     }
 }
 
-fn insert_opt<T: Into<Value>>(object: &mut Map<String, Value>, name: &str, value: Option<T>) {
+pub(crate) fn insert_opt<T: Into<Value>>(
+    object: &mut Map<String, Value>,
+    name: &str,
+    value: Option<T>,
+) {
     if let Some(value) = value {
         object.insert(name.to_owned(), value.into());
     }
