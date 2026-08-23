@@ -95,11 +95,12 @@ REST core module.
   CLI for GitHub)** — log in once, reuse everywhere. Credentials live in the
   0600 config file, not the OS keychain (rebuilt binaries lose macOS Keychain
   ACL trust, #35). Tokens are never printed; login validates before storing.
-  Slack resolves an operational identity as bot env > stored bot > user env;
-  search always reads `SLACK_USER_TOKEN` because Slack does not allow bot
-  tokens to call `search.messages`. This makes bot-only, user-only, both-token,
-  and unauthenticated installations explicit capability modes without storing
-  user credentials.
+  Slack stores bot and user credentials independently. Ordinary commands resolve
+  bot env > stored bot > user env > stored user; search resolves user env >
+  stored user because Slack does not allow bot tokens to call `search.messages`.
+  Slack login asks for both and validates the pair before one atomic config
+  write. This makes bot-only, user-only, both-token, and unauthenticated
+  installations explicit capability modes.
 - **Inactive providers are invisible** — unauthenticated or disabled providers
   are hidden from `--help`, from suggestions, and from the rendered skill, but
   their commands still parse and their `--help` still works. Auth probing is

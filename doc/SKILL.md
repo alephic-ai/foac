@@ -64,11 +64,13 @@ foac <provider> <resource> <verb> [flags]
 <!-- foac-provider:slack -->
 - **Slack auth capabilities**: ordinary commands prefer `SLACK_BOT_TOKEN`
   (`xoxb-`), then the bot credential in foac's config file, then
-  `SLACK_USER_TOKEN` (`xoxp-`). `slack search` always requires the user token
-  with `search:read`. Bot-only setups cannot search; user-only setups can use
-  every command as the installing user; when both exist, ordinary commands run
-  as the bot and search runs as the user. With neither, Slack is inactive.
-  `foac auth slack login` stores bot tokens only; user tokens are environment-only.
+  `SLACK_USER_TOKEN` (`xoxp-`), then the stored user credential. `slack search`
+  uses user env then stored user and requires `search:read`. Bot-only setups
+  cannot search; user-only setups can use every command as the installing user;
+  when both exist, ordinary commands run as the bot and search runs as the user.
+  With neither, Slack is inactive. `foac auth slack login` prompts for bot then
+  user, validates both before storing either, and allows either to be blank.
+  Redirected input is two lines in the same order. Slack logout removes both.
 <!-- /foac-provider:slack -->
 - **Auth status**: Status commands perform live validation and print
   `authenticated`, `unauthenticated`, or `error`, including the
@@ -185,7 +187,7 @@ scopes are `channels:history`, `channels:read`, `chat:write`, `groups:history`,
 `groups:read`, `im:history`, `im:read`, `mpim:history`, `mpim:read`,
 `reactions:write`, `users:read`, and `users:read.email`; only grant scopes for
 the commands the app needs. User-only operation needs equivalent user scopes;
-search uses `SLACK_USER_TOKEN`, never the bot token.
+search uses the user credential (environment or config), never the bot token.
 <!-- /foac-provider:slack -->
 
 ## Examples

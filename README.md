@@ -88,13 +88,14 @@ foac auth slack logout
 API token, validates it, and stores it in foac's config file
 (`~/.config/foac/config.json`, or under `XDG_CONFIG_HOME`), which foac keeps
 readable by the owner only. Pipe a token to `login` for non-interactive use.
-Tokens are never printed.
+Slack login prompts for both bot and user tokens; for non-interactive use, pipe
+two lines in that order (either line may be blank). Tokens are never printed.
 
 Environment variables take precedence over stored credentials. GitHub also
 falls back to `gh auth token` when neither `GITHUB_TOKEN` nor a stored foac
-credential is available. `logout` removes only foac's stored credential; it
-does not unset environment variables, log out the `gh` CLI, or revoke the token
-at the provider.
+credential is available. `logout` removes only foac's stored credentials
+(both bot and user credentials for Slack); it does not unset environment
+variables, log out the `gh` CLI, or revoke tokens at the provider.
 
 Status commands validate credentials with the provider and print JSON. The
 all-provider command prints an object keyed by provider; provider-specific
@@ -167,9 +168,9 @@ creation and sourcemap upload stay with `sentry-cli`.
 
 `foac slack` talks to Slack's Web API and supports bot tokens, user tokens, or
 both. Ordinary commands prefer `SLACK_BOT_TOKEN`, then a bot credential saved
-by `foac auth slack login`, then `SLACK_USER_TOKEN`. Message search always uses
-the user token because Slack's `search.messages` method does not accept bot
-tokens.
+by `foac auth slack login`, then `SLACK_USER_TOKEN`, then the stored user
+credential. Message search prefers `SLACK_USER_TOKEN`, then the stored user
+credential, because Slack's `search.messages` method does not accept bot tokens.
 Conversation arguments accept IDs or names such as `#eng`; `user get` accepts
 an ID, `@name`, display name, or email.
 
@@ -180,15 +181,18 @@ an ID, `@name`, display name, or email.
 | Bot and user | Run as the app's bot | Run as the installing user |
 | Neither | Slack is hidden from authenticated discovery | Unavailable |
 
-Set user tokens through `SLACK_USER_TOKEN`; `foac auth slack login` stores bot
-tokens only. `foac auth slack status` accepts either token and reports the
-selected account's `token_type`. In a user-only setup, actions are limited by
-that member's visibility and granted user scopes, and writes are attributed to
-that member.
+`foac auth slack login` securely prompts for both token types, validates every
+supplied token before changing the config, and stores them independently; leave
+either prompt blank if it is not needed. With redirected stdin, supply the bot
+token on the first line and user token on the second. `foac auth slack status`
+accepts either token and reports the selected account's `token_type`. In a
+user-only setup, actions are limited by that member's visibility and granted
+user scopes, and writes are attributed to that member.
 
 ```sh
 export SLACK_BOT_TOKEN=xoxb-...
 export SLACK_USER_TOKEN=xoxp-...
+printf '%s\n%s\n' "$SLACK_BOT_TOKEN" "$SLACK_USER_TOKEN" | foac auth slack login
 foac slack conversation list
 foac slack message create '#eng' --body "PR is up"
 foac slack message list '#eng' --thread-ts 1724432400.123456
