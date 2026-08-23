@@ -21,6 +21,16 @@ pub enum Format {
 
 /// Pure format resolution: flag beats `FOAC_FORMAT`, which beats `CI`, which
 /// beats the stdout TTY check. Unknown env values are ignored.
+///
+/// ```
+/// use foac::output::{Format, FormatArg, resolve};
+///
+/// assert_eq!(resolve(FormatArg::Json, Some("table"), false, true), Format::Json);
+/// assert_eq!(resolve(FormatArg::Auto, Some("table"), true, false), Format::Table);
+/// assert_eq!(resolve(FormatArg::Auto, Some("bogus"), false, true), Format::Table);
+/// assert_eq!(resolve(FormatArg::Auto, None, true, true), Format::Json);
+/// assert_eq!(resolve(FormatArg::Auto, None, false, false), Format::Json);
+/// ```
 pub fn resolve(flag: FormatArg, env: Option<&str>, ci: bool, tty: bool) -> Format {
     match flag {
         FormatArg::Json => return Format::Json,
