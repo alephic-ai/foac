@@ -2,10 +2,11 @@
 
 `src/main.rs` parses the top-level CLI and dispatches. Provider commands are
 colocated by provider: `src/linear.rs` contains Linear and `src/github.rs`
-contains GitHub. Linear queries live in `graphql/linear/queries.graphql`, and
-`graphql_client` generates their Rust types at compile time against the
-vendored `graphql/linear/schema.graphql` (51k lines — grep it, don't read it
-whole). It can be refreshed from
+contains GitHub. `src/update.rs` talks to GitHub Releases for `foac update` and
+the once-a-day version check. Linear queries live in
+`graphql/linear/queries.graphql`, and `graphql_client` generates their Rust
+types at compile time against the vendored `graphql/linear/schema.graphql`
+(51k lines — grep it, don't read it whole). It can be refreshed from
 <https://raw.githubusercontent.com/linear/linear/master/packages/sdk/src/schema.graphql>.
 
 Every command follows the same conventions: raw API JSON on stdout, errors on
