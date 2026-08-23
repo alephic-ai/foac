@@ -152,17 +152,20 @@ fn check(
             Err(_) => return (CheckOutcome::Skip, None),
         },
     };
-    if latest == format!("v{current}") {
-        (CheckOutcome::UpToDate, new_cache)
-    } else {
-        let latest = latest.strip_prefix('v').unwrap_or(&latest).to_string();
+    // Semver comparison, not equality: a dev build ahead of the latest
+    // release must not be nagged to "upgrade" backwards. Unparseable tags
+    // degrade to UpToDate (silent).
+    let latest = latest.strip_prefix('v').unwrap_or(&latest);
+    if self_update::version::bump_is_greater(current, latest).unwrap_or(false) {
         (
             CheckOutcome::Outdated {
                 current: current.to_string(),
-                latest,
+                latest: latest.to_string(),
             },
             new_cache,
         )
+    } else {
+        (CheckOutcome::UpToDate, new_cache)
     }
 }
 
@@ -208,6 +211,17 @@ mod tests {
                 latest: "0.7.0".into()
             }
         );
+        assert_eq!(new_cache, None);
+    }
+
+    #[test]
+    fn cache_hit_older_tag_is_up_to_date() {
+        let cache = Cache {
+            checked_at: 10,
+            latest: "v0.6.2".into(),
+        };
+        let (outcome, new_cache) = check(11, "0.7.0", Some(&cache), fetch_must_not_run());
+        assert_eq!(outcome, CheckOutcome::UpToDate);
         assert_eq!(new_cache, None);
     }
 
