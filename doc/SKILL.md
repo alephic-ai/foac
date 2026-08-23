@@ -70,7 +70,9 @@ foac <provider> <resource> <verb> [flags]
   when both exist, ordinary commands run as the bot and search runs as the user.
   With neither, Slack is inactive. `foac auth slack login` prompts for bot then
   user, validates both before storing either, and allows either to be blank.
-  Redirected input is two lines in the same order. Slack logout removes both.
+  Before prompting, it links to Slack's app management page and prints a JSON
+  app manifest with the recommended bot and user scopes. Redirected input is
+  two lines in the same order. Slack logout removes both.
 <!-- /foac-provider:slack -->
 - **Auth status**: Status commands perform live validation and print
   `authenticated`, `unauthenticated`, or `error`, including the

@@ -89,7 +89,9 @@ API token, validates it, and stores it in foac's config file
 (`~/.config/foac/config.json`, or under `XDG_CONFIG_HOME`), which foac keeps
 readable by the owner only. Pipe a token to `login` for non-interactive use.
 Slack login prompts for both bot and user tokens; for non-interactive use, pipe
-two lines in that order (either line may be blank). Tokens are never printed.
+two lines in that order (either line may be blank). It also links to Slack's app
+management page and prints a ready-to-paste JSON app manifest with foac's
+recommended bot and user scopes. Tokens are never printed.
 
 Environment variables take precedence over stored credentials. GitHub also
 falls back to `gh auth token` when neither `GITHUB_TOKEN` nor a stored foac

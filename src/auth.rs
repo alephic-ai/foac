@@ -120,6 +120,47 @@ struct ResolvedCredential {
 
 const SLACK_BOT_CREDENTIAL: &str = "slack_bot";
 const SLACK_USER_CREDENTIAL: &str = "slack_user";
+const SLACK_APP_MANIFEST: &str = r#"{
+  "_metadata": {
+    "major_version": 1
+  },
+  "display_information": {
+    "name": "foac",
+    "description": "Use the foac CLI with Slack."
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "foac",
+      "always_online": false
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "channels:history",
+        "channels:read",
+        "chat:write",
+        "groups:history",
+        "groups:read",
+        "im:history",
+        "im:read",
+        "mpim:history",
+        "mpim:read",
+        "reactions:write",
+        "users:read",
+        "users:read.email"
+      ],
+      "user": [
+        "search:read"
+      ]
+    }
+  },
+  "settings": {
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}"#;
 
 trait SecretStore {
     fn get(&self, name: &str) -> Result<Option<String>, String>;
@@ -1050,7 +1091,7 @@ fn print_login_help(provider: Provider, sentry_url: Option<&str>) {
             "Create a fine-grained personal access token at https://github.com/settings/personal-access-tokens/new and grant the repository permissions needed by your foac commands."
         ),
         Provider::Slack => eprintln!(
-            "Create or install a Slack app, then enter its Bot User OAuth Token (xoxb-) and User OAuth Token (xoxp-). Leave either prompt blank if that token type is not needed."
+            "Go to https://api.slack.com/apps and choose Create New App > From a manifest.\nSuggested manifest:\n{SLACK_APP_MANIFEST}\nInstall the app to your workspace from OAuth & Permissions, then enter its Bot User OAuth Token (xoxb-) and User OAuth Token (xoxp-). Leave either prompt blank if that token type is not needed."
         ),
         Provider::Sentry => eprintln!(
             "Create a user auth token at {}/settings/account/api/auth-tokens/ and grant the scopes needed by your foac commands.",
