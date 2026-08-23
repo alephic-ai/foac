@@ -94,8 +94,8 @@ transfer and Actions log retrieval are unsupported.
 
 ## Agents
 
-`foac skill` prints an agent skill explaining how the CLI is structured and its
-conventions. `foac skill install` writes it into the skill folders of the
+`foac skill print` prints an agent skill explaining how the CLI is structured
+and its conventions. `foac skill install` writes it into the skill folders of the
 agents found on the machine: `~/.claude/skills/` for Claude Code, and the
 cross-agent standard `~/.agents/skills/` read by Cursor, Codex, Gemini CLI,
 GitHub Copilot, OpenCode, Amp, and others.
