@@ -64,7 +64,7 @@ enum SentryAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, clap::ValueEnum)]
-pub(crate) enum Provider {
+pub enum Provider {
     Linear,
     Github,
     Sentry,

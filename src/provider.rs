@@ -20,7 +20,7 @@ pub enum Cmd {
 }
 
 #[derive(Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Config {
+pub struct Config {
     #[serde(default)]
     disabled_providers: Vec<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -30,7 +30,7 @@ pub(crate) struct Config {
 }
 
 impl Config {
-    pub(crate) fn enabled(&self, name: &str) -> bool {
+    pub fn enabled(&self, name: &str) -> bool {
         !self.disabled_providers.iter().any(|p| p == name)
     }
 
@@ -94,10 +94,7 @@ fn set_enabled(
     Ok(())
 }
 
-pub(crate) fn ensure_enabled(
-    config: &Config,
-    name: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn ensure_enabled(config: &Config, name: &str) -> Result<(), Box<dyn std::error::Error>> {
     if config.enabled(name) {
         Ok(())
     } else {
@@ -105,7 +102,7 @@ pub(crate) fn ensure_enabled(
     }
 }
 
-pub(crate) fn load() -> Config {
+pub fn load() -> Config {
     path().and_then(|path| read(&path)).unwrap_or_default()
 }
 

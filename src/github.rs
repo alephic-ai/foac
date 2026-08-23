@@ -770,7 +770,7 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
     }
 }
 
-pub(crate) fn authenticated() -> bool {
+pub fn authenticated() -> bool {
     crate::auth::github_token().is_ok()
 }
 
