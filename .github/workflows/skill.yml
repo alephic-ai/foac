@@ -20,11 +20,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # The spec wants the directory named after the skill, which only applies
-      # once installed; stage the source file accordingly before validating.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # The installed skills are rendered artifacts, one per provider; render
+      # each the way `foac skill install` would and validate those.
       - run: |
-          mkdir -p "$RUNNER_TEMP/skills/foac"
-          cp doc/SKILL.md "$RUNNER_TEMP/skills/foac/"
+          cargo build --locked
+          for p in github linear sentry slack; do
+            mkdir -p "$RUNNER_TEMP/skills/foac-$p"
+            ./target/debug/foac skill print "$p" > "$RUNNER_TEMP/skills/foac-$p/SKILL.md"
+          done
       - uses: alephic-ai/skref@v1
         with:
           path: ${{ runner.temp }}/skills

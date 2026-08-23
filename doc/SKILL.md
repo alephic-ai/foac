@@ -1,9 +1,36 @@
 ---
-name: foac
-description: Use the foac CLI to interact with Linear, GitHub, Sentry, and Slack from the shell. Linear covers issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, and attachments. GitHub covers repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, and collaborators. Sentry covers organizations, projects, issues, error events, and releases. Slack covers conversations, messages, threads, users, search, and reactions. Only authenticated, enabled providers are exposed.
+<!-- foac-provider:github -->
+name: foac-github
+description: Use the foac CLI to interact with GitHub from the shell. Covers repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, and collaborators.
+<!-- /foac-provider:github -->
+<!-- foac-provider:linear -->
+name: foac-linear
+description: Use the foac CLI to interact with Linear from the shell. Covers issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, and attachments.
+<!-- /foac-provider:linear -->
+<!-- foac-provider:sentry -->
+name: foac-sentry
+description: Use the foac CLI to interact with Sentry from the shell. Covers organizations, projects, issues, error events, and releases.
+<!-- /foac-provider:sentry -->
+<!-- foac-provider:slack -->
+name: foac-slack
+description: Use the foac CLI to interact with Slack from the shell. Covers conversations, messages, threads, users, message search, and reactions.
+<!-- /foac-provider:slack -->
 ---
 
-# foac
+<!-- rumdl-disable MD022 MD025 -->
+<!-- foac-provider:github -->
+# foac-github
+<!-- /foac-provider:github -->
+<!-- foac-provider:linear -->
+# foac-linear
+<!-- /foac-provider:linear -->
+<!-- foac-provider:sentry -->
+# foac-sentry
+<!-- /foac-provider:sentry -->
+<!-- foac-provider:slack -->
+# foac-slack
+<!-- /foac-provider:slack -->
+<!-- rumdl-enable MD022 MD025 -->
 
 foac wraps external provider APIs as CLI subcommands, designed for LLM agents:
 every command prints compact JSON on stdout (pass `--format json` when parsing
@@ -249,4 +276,4 @@ prints the installed version. foac checks GitHub at most once a day and prints
 a two-line notice on stderr while a newer release exists — it never
 auto-installs, and the notice is not JSON. Set `FOAC_NO_UPDATE_CHECK` (or `CI`)
 to disable it.
-Reinstall this skill with `foac skill install` after updating.
+Reinstall the foac skills with `foac skill install` after updating.

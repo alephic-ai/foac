@@ -114,9 +114,12 @@ REST core module.
   `null`, because null wipes the field server-side. There is a test asserting
   this; keep it true for every new mutation.
 - **`doc/SKILL.md` moves with the CLI surface** — it is compiled into the
-  binary, filtered per active provider by marker comments, installed into
-  agents' skill folders, and CI-validated. Any change to commands, flags, or
-  conventions updates it in the same commit.
+  binary and rendered into one skill per provider (`foac-<provider>`): marker
+  comments select each provider's frontmatter and sections around the shared
+  content. `foac skill install` writes the active providers' skills into
+  agents' skill folders and removes inactive ones; CI validates every rendered
+  skill. Any change to commands, flags, or conventions updates the source file
+  in the same commit.
 - **Releases are hands-off** — a push to master touching `src/`, `graphql/`,
   `doc/SKILL.md`, or Cargo files bumps the version from conventional-commit
   prefixes and publishes binaries. Commit prefixes are therefore load-bearing.
@@ -154,7 +157,8 @@ REST core module.
   Linear's setup: vendored schema, `queries.graphql`, codegen macro. Every
   provider addition also touches: `auth.rs` (Provider enum, token resolution, identity),
   `provider.rs`'s `PROVIDERS`, `main.rs`'s `providers()`, and `doc/SKILL.md`
-  (with marker blocks).
+  (with marker blocks, including a frontmatter `name`/`description` pair and
+  an H1 for the new provider).
 - **Structural change is provider-driven.** When adding a provider raises a
   question the current structure can't answer, that's the moment to restructure
   — not before (no speculative abstraction), not by working around it. The
@@ -167,14 +171,6 @@ REST core module.
 - **Binary transfer and log streaming are backlog, not forbidden** — accepted
   if they can be made explicit and discoverable in the command grammar
   (today's commands are JSON-metadata only).
-
-## Open Questions
-
-- Should each provider ship its own skill instead of the single filtered
-  `doc/SKILL.md`? Per-provider skills could load less irrelevant context into
-  agents as the provider count grows, at the cost of more moving parts in the
-  render/install machinery. To be evaluated; currently one skill with
-  per-provider marker blocks.
 
 ## Development
 
