@@ -62,9 +62,13 @@ foac <provider> <resource> <verb> [flags]
 - **Sentry auth precedence**: `SENTRY_AUTH_TOKEN`, then the foac config file.
 <!-- /foac-provider:sentry -->
 <!-- foac-provider:slack -->
-- **Slack auth precedence**: `SLACK_BOT_TOKEN` (`xoxb-`), then the foac config
-  file. `slack search` is the exception: Slack requires a user token, supplied
-  separately through `SLACK_USER_TOKEN` (`xoxp-`), with `search:read`.
+- **Slack auth capabilities**: ordinary commands prefer `SLACK_BOT_TOKEN`
+  (`xoxb-`), then the bot credential in foac's config file, then
+  `SLACK_USER_TOKEN` (`xoxp-`). `slack search` always requires the user token
+  with `search:read`. Bot-only setups cannot search; user-only setups can use
+  every command as the installing user; when both exist, ordinary commands run
+  as the bot and search runs as the user. With neither, Slack is inactive.
+  `foac auth slack login` stores bot tokens only; user tokens are environment-only.
 <!-- /foac-provider:slack -->
 - **Auth status**: Status commands perform live validation and print
   `authenticated`, `unauthenticated`, or `error`, including the
@@ -147,8 +151,8 @@ foac <provider> <resource> <verb> [flags]
 - **Slack messages**: `message list/get/create` accept `--thread-ts`; list reads
   replies and create posts a reply. Message text uses mutually exclusive
   `--body` and `--body-file`. Update and delete work only on messages posted by
-  the authenticated bot. Pass reaction names with or without surrounding
-  colons.
+  the selected identity (the bot when available, otherwise the user). Pass
+  reaction names with or without surrounding colons.
 <!-- /foac-provider:slack -->
 
 <!-- foac-provider:github -->
@@ -180,7 +184,8 @@ Use `foac slack <resource> --help` for flags and required arguments. Typical bot
 scopes are `channels:history`, `channels:read`, `chat:write`, `groups:history`,
 `groups:read`, `im:history`, `im:read`, `mpim:history`, `mpim:read`,
 `reactions:write`, `users:read`, and `users:read.email`; only grant scopes for
-the commands the app needs. Search uses `SLACK_USER_TOKEN`, not the bot token.
+the commands the app needs. User-only operation needs equivalent user scopes;
+search uses `SLACK_USER_TOKEN`, never the bot token.
 <!-- /foac-provider:slack -->
 
 ## Examples

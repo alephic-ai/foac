@@ -165,11 +165,26 @@ creation and sourcemap upload stay with `sentry-cli`.
 
 ## Slack
 
-`foac slack` talks to Slack's Web API. Most commands use `SLACK_BOT_TOKEN` or
-a credential saved by `foac auth slack login`. Message search requires a user
-token with `search:read` supplied separately as `SLACK_USER_TOKEN`.
+`foac slack` talks to Slack's Web API and supports bot tokens, user tokens, or
+both. Ordinary commands prefer `SLACK_BOT_TOKEN`, then a bot credential saved
+by `foac auth slack login`, then `SLACK_USER_TOKEN`. Message search always uses
+the user token because Slack's `search.messages` method does not accept bot
+tokens.
 Conversation arguments accept IDs or names such as `#eng`; `user get` accepts
 an ID, `@name`, display name, or email.
+
+| Available credentials | Ordinary commands | Search |
+| --- | --- | --- |
+| Bot only | Run as the app's bot | Unavailable |
+| User only | Run as the installing user | Run as the installing user |
+| Bot and user | Run as the app's bot | Run as the installing user |
+| Neither | Slack is hidden from authenticated discovery | Unavailable |
+
+Set user tokens through `SLACK_USER_TOKEN`; `foac auth slack login` stores bot
+tokens only. `foac auth slack status` accepts either token and reports the
+selected account's `token_type`. In a user-only setup, actions are limited by
+that member's visibility and granted user scopes, and writes are attributed to
+that member.
 
 ```sh
 export SLACK_BOT_TOKEN=xoxb-...
