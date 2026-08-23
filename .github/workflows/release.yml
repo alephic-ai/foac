@@ -3,6 +3,16 @@ name: Release
 on:
   push:
     branches: [master]
+    # Only changes to the binary's code or compiled-in assets warrant a
+    # release; docs and workflow edits ride along with the next real one.
+    paths:
+      - "src/**"
+      - "graphql/**"
+      - "docs/SKILL.md"
+      - Cargo.toml
+      - Cargo.lock
+  # Escape hatch: run by hand, e.g. to resume after a workflow fix.
+  workflow_dispatch:
 
 concurrency:
   group: release
