@@ -147,6 +147,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Build from the release tag, not the trigger commit: the version
+          # bump only exists on the tag when Prepare created it in this run.
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           bin: foac
