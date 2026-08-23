@@ -1251,6 +1251,10 @@ fn exec<Q: GraphQLQuery>(variables: Q::Variables) -> Result<(), Box<dyn std::err
     Ok(())
 }
 
+pub(crate) fn authenticated() -> bool {
+    crate::auth::linear_token().is_ok()
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::{Read, Write};

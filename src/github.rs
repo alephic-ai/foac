@@ -769,6 +769,10 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+pub(crate) fn authenticated() -> bool {
+    crate::auth::github_token().is_ok()
+}
+
 pub(crate) fn auth_identity(token: &str) -> Result<Value, crate::auth::ValidationError> {
     auth_identity_at(
         token,

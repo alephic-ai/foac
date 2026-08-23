@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
 mod auth;
 mod github;
@@ -13,6 +13,21 @@ struct Cli {
 }
 
 const SKILL_MD: &str = include_str!("../doc/SKILL.md");
+
+#[derive(Clone, Copy)]
+struct Provider {
+    name: &'static str,
+    authenticated: bool,
+}
+
+impl Provider {
+    const fn new(name: &'static str, authenticated: bool) -> Self {
+        Self {
+            name,
+            authenticated,
+        }
+    }
+}
 
 #[derive(Subcommand)]
 // One short-lived value on the stack; boxing the variant isn't worth it.
@@ -42,17 +57,34 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let command = Cli::parse().command;
+    // Probing auth (keychain reads, possible `gh` subprocess) is only needed to
+    // hide providers in help/error output and to render the skill, so parse
+    // with the plain command first and probe only on those cold paths.
+    let command = match Cli::try_parse_from(std::env::args_os()) {
+        Ok(cli) => cli.command,
+        Err(_) => {
+            let providers = providers();
+            match try_parse_from(&providers, std::env::args_os()) {
+                Ok(cli) => cli.command,
+                Err(error) => error.exit(),
+            }
+        }
+    };
     let skip_check = matches!(command, Command::Update);
     let result = match command {
         Command::Auth(cmd) => auth::run(cmd),
         Command::Github(cmd) => github::run(cmd),
         Command::Linear(cmd) => linear::run(cmd),
-        Command::Skill(SkillCmd::Print) => {
-            print!("{SKILL_MD}");
-            Ok(())
+        Command::Skill(cmd) => {
+            let skill = render_skill(&providers());
+            match cmd {
+                SkillCmd::Print => {
+                    print!("{skill}");
+                    Ok(())
+                }
+                SkillCmd::Install => skill_install_cmd(&skill),
+            }
         }
-        Command::Skill(SkillCmd::Install) => skill_install_cmd(),
         Command::Update => update::run(),
         Command::Version => {
             println!("{}", env!("CARGO_PKG_VERSION"));
@@ -73,9 +105,102 @@ enum SkillCmd {
     Install,
 }
 
-fn skill_install_cmd() -> Result<(), Box<dyn std::error::Error>> {
+fn providers() -> [Provider; 2] {
+    [
+        Provider::new("github", github::authenticated()),
+        Provider::new("linear", linear::authenticated()),
+    ]
+}
+
+fn cli_command(providers: &[Provider]) -> clap::Command {
+    providers.iter().fold(Cli::command(), |command, provider| {
+        command.mut_subcommand(provider.name, |subcommand| {
+            subcommand.hide(!provider.authenticated)
+        })
+    })
+}
+
+fn try_parse_from<I, T>(providers: &[Provider], args: I) -> Result<Cli, clap::Error>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString> + Clone,
+{
+    let matches = cli_command(providers)
+        .try_get_matches_from(args)
+        .map_err(|mut error| {
+            remove_hidden_provider_suggestions(&mut error, providers);
+            error
+        })?;
+    Cli::from_arg_matches(&matches)
+}
+
+fn remove_hidden_provider_suggestions(error: &mut clap::Error, providers: &[Provider]) {
+    use clap::error::{ContextKind, ContextValue};
+
+    let Some(ContextValue::Strings(mut suggestions)) =
+        error.remove(ContextKind::SuggestedSubcommand)
+    else {
+        return;
+    };
+    suggestions.retain(|suggestion| {
+        providers
+            .iter()
+            .find(|provider| provider.name == suggestion)
+            .is_none_or(|provider| provider.authenticated)
+    });
+    if !suggestions.is_empty() {
+        error.insert(
+            ContextKind::SuggestedSubcommand,
+            ContextValue::Strings(suggestions),
+        );
+    }
+}
+
+fn render_skill(providers: &[Provider]) -> String {
+    let mut rendered = String::with_capacity(SKILL_MD.len());
+    let mut provider_block = None;
+
+    for line in SKILL_MD.split_inclusive('\n') {
+        let marker = line.trim();
+        if let Some(name) = marker
+            .strip_prefix("<!-- foac-provider:")
+            .and_then(|marker| marker.strip_suffix(" -->"))
+        {
+            assert!(
+                provider_block.is_none(),
+                "provider skill blocks cannot nest"
+            );
+            let authenticated = providers
+                .iter()
+                .find(|provider| provider.name == name)
+                .unwrap_or_else(|| panic!("unknown provider skill block: {name}"))
+                .authenticated;
+            provider_block = Some((name, authenticated));
+            continue;
+        }
+        if let Some(name) = marker
+            .strip_prefix("<!-- /foac-provider:")
+            .and_then(|marker| marker.strip_suffix(" -->"))
+        {
+            assert_eq!(provider_block.map(|(name, _)| name), Some(name));
+            provider_block = None;
+            continue;
+        }
+        if provider_block.is_none_or(|(_, authenticated)| authenticated) {
+            rendered.push_str(line);
+        }
+    }
+
+    assert!(
+        provider_block.is_none(),
+        "provider skill block is not closed"
+    );
+    rendered
+}
+
+fn skill_install_cmd(skill: &str) -> Result<(), Box<dyn std::error::Error>> {
     let home = std::env::home_dir().ok_or("could not determine the home directory")?;
-    let installed = skill_install(&home)?;
+    let installed = skill_install(&home, skill)?;
     if installed.is_empty() {
         return Err("no supported agent found; install manually with: foac skill print > <agent skills dir>/foac/SKILL.md".into());
     }
@@ -91,6 +216,7 @@ fn skill_install_cmd() -> Result<(), Box<dyn std::error::Error>> {
 /// cross-agent standard ~/.agents/skills, so two writes cover them all.
 fn skill_install(
     home: &std::path::Path,
+    skill: &str,
 ) -> Result<Vec<std::path::PathBuf>, Box<dyn std::error::Error>> {
     let shared_agent_roots = [
         ".agents",
@@ -113,7 +239,7 @@ fn skill_install(
         let dir = skills_dir.join("foac");
         std::fs::create_dir_all(&dir)?;
         let path = dir.join("SKILL.md");
-        std::fs::write(&path, SKILL_MD)?;
+        std::fs::write(&path, skill)?;
         installed.push(path);
     }
     Ok(installed)
@@ -128,6 +254,71 @@ mod tests {
     #[test]
     fn verify_cli() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn help_only_lists_authenticated_providers() {
+        for (linear, github, expected) in [
+            (false, false, vec![]),
+            (true, false, vec!["linear"]),
+            (false, true, vec!["github"]),
+            (true, true, vec!["github", "linear"]),
+        ] {
+            let providers = test_providers(linear, github);
+            for args in [vec!["foac"], vec!["foac", "--help"]] {
+                let help = parse_error(&providers, args).to_string();
+                for name in ["github", "linear"] {
+                    assert_eq!(help_lists(&help, name), expected.contains(&name));
+                }
+                for name in ["auth", "skill", "update", "version", "help"] {
+                    assert!(help_lists(&help, name));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn hidden_providers_still_parse() {
+        let providers = test_providers(false, false);
+        for args in [
+            vec!["foac", "github", "issue", "list", "--repo", "owner/repo"],
+            vec!["foac", "linear", "team", "list"],
+        ] {
+            try_parse_from(&providers, args).unwrap();
+        }
+    }
+
+    #[test]
+    fn hidden_provider_help_remains_available() {
+        let providers = test_providers(false, false);
+        for (args, usage) in [
+            (vec!["foac", "github", "--help"], "Usage: foac github"),
+            (vec!["foac", "linear", "--help"], "Usage: foac linear"),
+        ] {
+            let error = parse_error(&providers, args);
+            assert_eq!(error.kind(), ErrorKind::DisplayHelp);
+            assert!(error.to_string().contains(usage));
+        }
+    }
+
+    #[test]
+    fn hidden_providers_are_not_suggested() {
+        let error = parse_error(&test_providers(false, false), ["foac", "githu"]).to_string();
+        assert!(!error.contains("github"));
+
+        let error = parse_error(&test_providers(false, true), ["foac", "githu"]).to_string();
+        assert!(error.contains("github"));
+    }
+
+    #[test]
+    fn skill_only_documents_authenticated_providers() {
+        for (linear, github) in [(false, false), (true, false), (false, true), (true, true)] {
+            let skill = render_skill(&test_providers(linear, github));
+            assert_eq!(skill.contains("foac linear issue list"), linear);
+            assert_eq!(skill.contains("foac github issue list"), github);
+            assert!(!skill.contains("<!-- foac-provider:"));
+            assert!(skill.contains("top-level `--help` lists only authenticated providers"));
+        }
     }
 
     #[test]
@@ -179,7 +370,8 @@ mod tests {
         let home = std::env::temp_dir().join(format!("foac-test-{}", std::process::id()));
         std::fs::create_dir_all(home.join(".claude")).unwrap();
         std::fs::create_dir_all(home.join(".cursor")).unwrap();
-        let installed = skill_install(&home).unwrap();
+        let skill = render_skill(&test_providers(true, false));
+        let installed = skill_install(&home, &skill).unwrap();
         assert_eq!(
             installed,
             vec![
@@ -187,7 +379,32 @@ mod tests {
                 home.join(".agents/skills/foac/SKILL.md"),
             ]
         );
-        assert_eq!(std::fs::read_to_string(&installed[0]).unwrap(), SKILL_MD);
+        assert_eq!(std::fs::read_to_string(&installed[0]).unwrap(), skill);
+        assert_eq!(std::fs::read_to_string(&installed[1]).unwrap(), skill);
         std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    fn test_providers(linear: bool, github: bool) -> [Provider; 2] {
+        [
+            Provider::new("github", github),
+            Provider::new("linear", linear),
+        ]
+    }
+
+    fn help_lists(help: &str, command: &str) -> bool {
+        help.lines()
+            .map(str::trim_start)
+            .any(|line| line == command || line.starts_with(&format!("{command} ")))
+    }
+
+    fn parse_error<I, T>(providers: &[Provider], args: I) -> clap::Error
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<std::ffi::OsString> + Clone,
+    {
+        match try_parse_from(providers, args) {
+            Ok(_) => panic!("arguments should produce a clap error"),
+            Err(error) => error,
+        }
     }
 }
