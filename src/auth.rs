@@ -92,6 +92,7 @@ enum ResolveError {
     Failed(String),
 }
 
+#[derive(Debug)]
 struct ResolvedCredential {
     token: String,
     source: CredentialSource,
@@ -147,30 +148,19 @@ pub(crate) fn sentry_token() -> Result<String, Box<dyn std::error::Error>> {
 }
 
 pub(crate) fn slack_token() -> Result<String, Box<dyn std::error::Error>> {
-    let token = resolve_stored(
-        Provider::Slack,
+    resolve_slack(
         environment_token(Provider::Slack),
+        environment_slack_user_token(),
         &ConfigFileStore,
     )
     .map(|credential| credential.token)
-    .map_err(Box::<dyn std::error::Error>::from)?;
-    if !crate::slack::is_bot_token(&token) {
-        return Err(
-            "Slack commands require an xoxb- bot token in SLACK_BOT_TOKEN or foac's config file"
-                .into(),
-        );
-    }
-    Ok(token)
+    .map_err(Into::into)
 }
 
 pub(crate) fn slack_user_token() -> Result<String, Box<dyn std::error::Error>> {
-    std::env::var("SLACK_USER_TOKEN")
-        .ok()
-        .filter(|token| !token.is_empty())
-        .ok_or_else(|| {
-            "SLACK_USER_TOKEN is not set; Slack search requires a user token with search:read"
-                .into()
-        })
+    resolve_slack_user(environment_slack_user_token())
+        .map(|credential| credential.token)
+        .map_err(Into::into)
 }
 
 pub(crate) fn github_token() -> Result<String, Box<dyn std::error::Error>> {
@@ -310,6 +300,12 @@ fn login(
     let token = read_token()?;
     if token.is_empty() {
         return Err("token cannot be empty".into());
+    }
+    if provider == Provider::Slack && !crate::slack::is_bot_token(&token) {
+        return Err(
+            "foac auth slack login stores bot credentials; set user tokens through SLACK_USER_TOKEN"
+                .into(),
+        );
     }
     let account = validate_and_store(provider, &token, store, |token| {
         validate(provider, token, url.as_deref())
@@ -508,10 +504,15 @@ fn text_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
 
 fn provider_status(provider: Provider, store: &dyn SecretStore) -> Value {
     let resolved = match provider {
-        Provider::Linear | Provider::Slack | Provider::Sentry => {
+        Provider::Linear | Provider::Sentry => {
             resolve_stored(provider, environment_token(provider), store)
         }
         Provider::Github => resolve_github(environment_token(provider), store, github_cli_token),
+        Provider::Slack => resolve_slack(
+            environment_token(Provider::Slack),
+            environment_slack_user_token(),
+            store,
+        ),
     };
     credential_status(resolved, |token| validate(provider, token, None))
 }
@@ -607,6 +608,56 @@ fn resolve_stored(
             provider.display_name(),
         ))),
     }
+}
+
+fn resolve_slack(
+    bot_environment: Option<String>,
+    user_environment: Option<String>,
+    store: &dyn SecretStore,
+) -> Result<ResolvedCredential, ResolveError> {
+    match resolve_slack_bot(bot_environment, store) {
+        Ok(credential) => Ok(credential),
+        Err(ResolveError::Missing(_)) => match resolve_slack_user(user_environment) {
+            Ok(credential) => Ok(credential),
+            Err(ResolveError::Missing(_)) => Err(ResolveError::Missing(
+                "SLACK_BOT_TOKEN and SLACK_USER_TOKEN are not set and no Slack bot credential is stored"
+                    .into(),
+            )),
+            Err(error) => Err(error),
+        },
+        Err(error) => Err(error),
+    }
+}
+
+fn resolve_slack_bot(
+    environment: Option<String>,
+    store: &dyn SecretStore,
+) -> Result<ResolvedCredential, ResolveError> {
+    let credential = resolve_stored(Provider::Slack, environment, store)?;
+    if !crate::slack::is_bot_token(&credential.token) {
+        return Err(ResolveError::Failed(
+            "SLACK_BOT_TOKEN and stored Slack credentials must be xoxb- bot tokens".into(),
+        ));
+    }
+    Ok(credential)
+}
+
+fn resolve_slack_user(environment: Option<String>) -> Result<ResolvedCredential, ResolveError> {
+    let token = environment.ok_or_else(|| {
+        ResolveError::Missing(
+            "SLACK_USER_TOKEN is not set; Slack search requires a user token with search:read"
+                .into(),
+        )
+    })?;
+    if !crate::slack::is_user_token(&token) {
+        return Err(ResolveError::Failed(
+            "SLACK_USER_TOKEN must be an xoxp- user token".into(),
+        ));
+    }
+    Ok(ResolvedCredential {
+        token,
+        source: CredentialSource::Environment,
+    })
 }
 
 fn resolve_github<F>(
@@ -718,11 +769,22 @@ fn slack_account(identity: Value) -> Value {
         "user_id": identity["user_id"],
         "user": identity["user"],
         "bot_id": identity["bot_id"],
+        "token_type": if identity["bot_id"].as_str().is_some_and(|id| !id.is_empty()) {
+            "bot"
+        } else {
+            "user"
+        },
     })
 }
 
 fn environment_token(provider: Provider) -> Option<String> {
     std::env::var(provider.environment_variable())
+        .ok()
+        .filter(|token| !token.is_empty())
+}
+
+fn environment_slack_user_token() -> Option<String> {
+    std::env::var("SLACK_USER_TOKEN")
         .ok()
         .filter(|token| !token.is_empty())
 }
@@ -870,6 +932,54 @@ mod tests {
     }
 
     #[test]
+    fn slack_credentials_follow_the_capability_matrix() {
+        let store = MemoryStore::default();
+
+        let missing = resolve_slack(None, None, &store).unwrap_err();
+        assert!(matches!(missing, ResolveError::Missing(_)));
+        assert!(missing.to_string().contains("SLACK_BOT_TOKEN"));
+        assert!(missing.to_string().contains("SLACK_USER_TOKEN"));
+
+        let bot = resolve_slack(Some("xoxb-environment".into()), None, &store).unwrap();
+        assert_eq!(bot.token, "xoxb-environment");
+        assert_eq!(bot.source, CredentialSource::Environment);
+
+        let user = resolve_slack(None, Some("xoxp-user".into()), &store).unwrap();
+        assert_eq!(user.token, "xoxp-user");
+        assert_eq!(user.source, CredentialSource::Environment);
+
+        let bot = resolve_slack(
+            Some("xoxb-environment".into()),
+            Some("xoxp-user".into()),
+            &store,
+        )
+        .unwrap();
+        assert_eq!(bot.token, "xoxb-environment");
+    }
+
+    #[test]
+    fn slack_stored_bot_precedes_user_and_invalid_tokens_fail() {
+        let store = MemoryStore::default();
+        store.set(Provider::Slack, "xoxb-stored").unwrap();
+        let resolved = resolve_slack(None, Some("xoxp-user".into()), &store).unwrap();
+        assert_eq!(resolved.token, "xoxb-stored");
+        assert_eq!(resolved.source, CredentialSource::ConfigFile);
+
+        let error = resolve_slack(
+            Some("not-a-bot-token".into()),
+            Some("xoxp-user".into()),
+            &store,
+        )
+        .unwrap_err();
+        assert!(matches!(error, ResolveError::Failed(_)));
+        assert!(error.to_string().contains("xoxb-"));
+
+        let error = resolve_slack_user(Some("not-a-user-token".into())).unwrap_err();
+        assert!(matches!(error, ResolveError::Failed(_)));
+        assert!(error.to_string().contains("xoxp-"));
+    }
+
+    #[test]
     fn memory_store_logout_is_idempotent() {
         let store = MemoryStore::default();
         store.set(Provider::Github, "token").unwrap();
@@ -930,8 +1040,19 @@ mod tests {
                 "user_id": "U1",
                 "user": "foac",
                 "bot_id": "B1",
+                "token_type": "bot",
             })
         );
+
+        let slack_user = slack_account(json!({
+            "ok": true,
+            "team_id": "T1",
+            "team": "Acme",
+            "user_id": "U2",
+            "user": "person",
+        }));
+        assert_eq!(slack_user["token_type"], "user");
+        assert!(slack_user["bot_id"].is_null());
     }
 
     #[test]

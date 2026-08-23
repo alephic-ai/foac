@@ -247,6 +247,10 @@ pub(crate) fn is_bot_token(token: &str) -> bool {
     token.starts_with("xoxb-") || token.starts_with("xoxe.xoxb-")
 }
 
+pub(crate) fn is_user_token(token: &str) -> bool {
+    token.starts_with("xoxp-") || token.starts_with("xoxe.xoxp-")
+}
+
 pub(crate) fn auth_identity(token: &str) -> Result<Value, crate::auth::ValidationError> {
     auth_identity_at(
         token,
@@ -271,11 +275,6 @@ fn auth_identity_at(token: &str, url: reqwest::Url) -> Result<Value, crate::auth
     }
     if body["ok"] != true {
         return Err(crate::auth::ValidationError::Rejected(body.to_string()));
-    }
-    if body["bot_id"].as_str().is_none_or(str::is_empty) {
-        return Err(crate::auth::ValidationError::Rejected(
-            "Slack bot token required; user tokens belong in SLACK_USER_TOKEN".into(),
-        ));
     }
     Ok(body)
 }
@@ -708,6 +707,9 @@ mod tests {
         assert!(is_bot_token("xoxb-secret"));
         assert!(is_bot_token("xoxe.xoxb-rotating-secret"));
         assert!(!is_bot_token("xoxp-user-secret"));
+        assert!(is_user_token("xoxp-user-secret"));
+        assert!(is_user_token("xoxe.xoxp-rotating-secret"));
+        assert!(!is_user_token("xoxb-secret"));
         assert_eq!(trim_colons(":eyes:"), "eyes");
     }
 
@@ -785,10 +787,11 @@ mod tests {
             "200 OK",
             r#"{"ok":true,"team":"Acme","team_id":"T1","user":"person","user_id":"U1"}"#,
         );
-        let error =
-            auth_identity_at("xoxp-user", api.base_url.join("auth.test").unwrap()).unwrap_err();
+        let identity =
+            auth_identity_at("xoxp-user", api.base_url.join("auth.test").unwrap()).unwrap();
         server.join().unwrap();
-        assert!(matches!(error, crate::auth::ValidationError::Rejected(_)));
+        assert_eq!(identity["user"], "person");
+        assert!(identity.get("bot_id").is_none());
     }
 
     #[test]
