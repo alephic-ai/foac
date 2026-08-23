@@ -2,6 +2,10 @@
 
 foac, the Father Of All CLIs
 
+foac provides a consistent CLI for external providers, organized as
+`foac <provider> <resource> <verb>`. A provider is the external product or API
+named by the first command segment, such as `linear` or `github`.
+
 ## Install
 
 [ubi](https://github.com/houseabsolute/ubi) installs the `foac` binary for your platform from [GitHub Releases](https://github.com/lra/foac/releases).
