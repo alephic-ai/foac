@@ -1,12 +1,6 @@
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
-mod auth;
-mod github;
-mod linear;
-mod output;
-mod provider;
-mod sentry;
-mod update;
+use foac::{auth, github, linear, output, provider, sentry, update};
 
 #[derive(Parser)]
 #[command(about, arg_required_else_help = true)]

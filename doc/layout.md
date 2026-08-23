@@ -1,6 +1,9 @@
 # Layout and conventions
 
-`src/main.rs` parses the top-level CLI and dispatches. Provider commands are
+`src/main.rs` parses the top-level CLI and dispatches. The modules it uses
+live in a library target (`src/lib.rs`) so that `tests/cli.rs` (end-to-end
+runs of the compiled binary) and doc tests can link against the crate; unit
+tests stay inline in each module's `#[cfg(test)]` block. Provider commands are
 colocated by provider: `src/linear.rs` contains Linear, `src/github.rs`
 contains GitHub, and `src/sentry.rs` contains Sentry.
 `src/update.rs` talks to GitHub Releases for `foac update` and

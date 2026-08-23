@@ -1254,7 +1254,7 @@ fn exec<Q: GraphQLQuery>(
     Ok(body["data"].take())
 }
 
-pub(crate) fn authenticated() -> bool {
+pub fn authenticated() -> bool {
     crate::auth::linear_token().is_ok()
 }
 
