@@ -2,9 +2,9 @@
 
 > foac, the Father Of All CLIs: one consistent command grammar —
 > `foac <provider> <resource> <verb>` — wrapping external SaaS APIs (Linear,
-> GitHub, Sentry, more to come). The primary consumer is an LLM agent working
-> in a shell; humans at a TTY are served by a rendering layer on top of the
-> same output. foac's job is to make any provider's API discoverable, uniform,
+> GitHub, Sentry, Slack, more to come). The primary consumer is an LLM agent
+> working in a shell; humans at a TTY are served by a rendering layer on top of
+> the same output. foac's job is to make any provider's API discoverable, uniform,
 > and already authenticated — not to abstract or improve it.
 
 ## How the System Maps to the World
@@ -30,14 +30,13 @@ invocation).
 ```text
                  main.rs  (parse, dispatch, provider hiding, skill render)
                     │
-   ┌────────────┬───┴────────┬──────────────┬───────────┐
-   │ linear.rs  │ github.rs  │  sentry.rs   │  auth.rs  │  ← per-provider commands
-   │ (GraphQL,  │ (REST,     │  (REST, same │  provider.rs  and the cross-cutting
-   │  codegen)  │  untyped)  │   pattern)   │  update.rs    concerns
-   └─────┬──────┴─────┬──────┴──────┬───────┴───────────┘
-         │            │             │
-         └────────────┴──────┬──────┘
-                             ▼
+   ┌────────────┬────────────┬────────────┬────────────┬─────────────┐
+   │ linear.rs  │ github.rs  │ sentry.rs  │ slack.rs   │ auth.rs     │
+   │ (GraphQL,  │ (REST,     │ (REST,     │ (REST,     │ provider.rs │
+   │  codegen)  │  untyped)  │  untyped)  │  untyped)  │ update.rs   │
+   └─────┬──────┴─────┬──────┴─────┬──────┴─────┬──────┴─────────────┘
+         └────────────┴────────────┴──────┬──────┘
+                                         ▼
                         output.rs  (single shared printer: JSON | table)
 ```
 
@@ -55,6 +54,7 @@ src/
 ├── linear.rs    # Linear provider — GraphQL via graphql_client codegen
 ├── github.rs    # GitHub provider — REST passthrough (also hosts shared REST helpers, see drift note)
 ├── sentry.rs    # Sentry provider — REST passthrough, same pattern as github.rs
+├── slack.rs     # Slack provider — REST with Slack's HTTP-200 ok/error envelope
 ├── auth.rs      # Credential resolution (env > config file > gh CLI), live validation, auth commands
 ├── provider.rs  # The config file: enable/disable toggles + stored credentials
 ├── output.rs    # The one success printer: compact JSON, or shape-heuristic tables on a TTY
@@ -64,9 +64,10 @@ graphql/linear/  # Vendored schema (51k lines — grep it) + queries.graphql (co
 doc/SKILL.md     # Agent skill, compiled into the binary; must track every CLI surface change
 ```
 
-Known drift: `sentry.rs` imports `insert_opt`/`push_query` from `github.rs`
-and duplicates its `Api` struct. Do not copy this a third time — the next REST
-provider is the trigger to extract a shared REST core module.
+Known drift: `sentry.rs` imports `insert_opt`/`push_query` from `github.rs`,
+while Sentry and Slack each retain provider-specific request plumbing. Do not
+copy this again — the next REST provider is the trigger to extract a shared
+REST core module.
 
 ## Key Decisions
 
@@ -94,6 +95,12 @@ provider is the trigger to extract a shared REST core module.
   CLI for GitHub)** — log in once, reuse everywhere. Credentials live in the
   0600 config file, not the OS keychain (rebuilt binaries lose macOS Keychain
   ACL trust, #35). Tokens are never printed; login validates before storing.
+  Slack stores bot and user credentials independently. Ordinary commands resolve
+  bot env > stored bot > user env > stored user; search resolves user env >
+  stored user because Slack does not allow bot tokens to call `search.messages`.
+  Slack login asks for both and validates the pair before one atomic config
+  write. This makes bot-only, user-only, both-token, and unauthenticated
+  installations explicit capability modes.
 - **Inactive providers are invisible** — unauthenticated or disabled providers
   are hidden from `--help`, from suggestions, and from the rendered skill, but
   their commands still parse and their `--help` still works. Auth probing is
@@ -140,12 +147,12 @@ provider is the trigger to extract a shared REST core module.
 - **More providers.** That is the roadmap; candidates are tracked in
   [GitHub issues](https://github.com/lra/foac/issues). A new REST provider
   follows `sentry.rs`'s shape but first extracts the shared REST core out of
-  `github.rs` — the core owns any shared boilerplate: the `Api` struct, list
-  wrapping, payload helpers, and the hand-rolled auth-identity HTTP each
-  provider duplicates today. Write the REST adding-a-command recipe down at
-  the same time. A new GraphQL provider copies Linear's setup: vendored
-  schema, `queries.graphql`, codegen macro. Every provider addition also
-  touches: `auth.rs` (Provider enum, token resolution, identity),
+  the existing REST providers — the core owns any shared boilerplate: the
+  `Api` struct, list wrapping, payload helpers, and the hand-rolled
+  auth-identity HTTP each provider duplicates today. Write the REST
+  adding-a-command recipe down at the same time. A new GraphQL provider copies
+  Linear's setup: vendored schema, `queries.graphql`, codegen macro. Every
+  provider addition also touches: `auth.rs` (Provider enum, token resolution, identity),
   `provider.rs`'s `PROVIDERS`, `main.rs`'s `providers()`, and `doc/SKILL.md`
   (with marker blocks).
 - **Structural change is provider-driven.** When adding a provider raises a

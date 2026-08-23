@@ -26,3 +26,8 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   from its Link header; its base URL comes from `SENTRY_URL`, then the host
   saved by `foac auth sentry login` (its prompt or `--host`; default
   `https://sentry.io`), and every request path needs a trailing slash.
+- Slack uses its Web API's HTTP-200 `ok` envelope and cursor pagination.
+  Ordinary commands resolve conversation and user names by paging through the
+  relevant list method. Message search prefers `SLACK_USER_TOKEN`, then the
+  stored user credential, because Slack does not permit bot tokens for
+  `search.messages`.
