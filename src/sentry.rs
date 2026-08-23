@@ -35,7 +35,7 @@ enum Resource {
     Release(ReleaseCmd),
 }
 
-#[derive(Args, Clone)]
+#[derive(Args)]
 struct Page {
     /// Opaque pagination cursor from pageInfo
     #[arg(long)]

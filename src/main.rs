@@ -416,6 +416,12 @@ mod tests {
         ] {
             Cli::try_parse_from(args).unwrap();
         }
+        // --host is a Sentry-only login flag; clap rejects it elsewhere.
+        for provider in ["linear", "github"] {
+            let parsed =
+                Cli::try_parse_from(["foac", "auth", provider, "login", "--host", "example.com"]);
+            assert!(parsed.is_err());
+        }
     }
 
     #[test]

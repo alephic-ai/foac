@@ -21,7 +21,7 @@ enum AuthCmd {
     /// Configure GitHub authentication
     Github(ProviderCmd),
     /// Configure Sentry authentication
-    Sentry(ProviderCmd),
+    Sentry(SentryCmd),
 }
 
 #[derive(Args)]
@@ -36,8 +36,26 @@ enum ProviderAction {
     /// Check authentication for this provider
     Status,
     /// Validate and save a token in foac's config file
+    Login,
+    /// Remove foac's token from the config file
+    Logout,
+}
+
+#[derive(Args)]
+#[command(arg_required_else_help = true)]
+struct SentryCmd {
+    #[command(subcommand)]
+    command: SentryAction,
+}
+
+/// Same shape as [`ProviderAction`], plus the Sentry-only `--host` login flag.
+#[derive(Subcommand)]
+enum SentryAction {
+    /// Check authentication for this provider
+    Status,
+    /// Validate and save a token in foac's config file
     Login {
-        /// Sentry hostname to log in to, skipping the prompt (Sentry only)
+        /// Sentry hostname to log in to, skipping the prompt
         #[arg(long)]
         host: Option<String>,
     },
@@ -93,7 +111,14 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
         }
         AuthCmd::Linear(cmd) => run_provider(Provider::Linear, cmd.command, &store),
         AuthCmd::Github(cmd) => run_provider(Provider::Github, cmd.command, &store),
-        AuthCmd::Sentry(cmd) => run_provider(Provider::Sentry, cmd.command, &store),
+        AuthCmd::Sentry(cmd) => match cmd.command {
+            SentryAction::Status => {
+                println!("{}", provider_status(Provider::Sentry, &store));
+                Ok(())
+            }
+            SentryAction::Login { host } => login(Provider::Sentry, host, &store),
+            SentryAction::Logout => logout(Provider::Sentry, &store),
+        },
     }
 }
 
@@ -217,18 +242,20 @@ fn run_provider(
             println!("{}", provider_status(provider, store));
             Ok(())
         }
-        ProviderAction::Login { host } => login(provider, host, store),
-        ProviderAction::Logout => {
-            let removed = store.delete(provider).map_err(|error| {
-                format!("could not delete {} credential: {error}", provider.as_str())
-            })?;
-            println!(
-                "{}",
-                json!({ "provider": provider.as_str(), "removed": removed })
-            );
-            Ok(())
-        }
+        ProviderAction::Login => login(provider, None, store),
+        ProviderAction::Logout => logout(provider, store),
     }
+}
+
+fn logout(provider: Provider, store: &dyn SecretStore) -> Result<(), Box<dyn std::error::Error>> {
+    let removed = store
+        .delete(provider)
+        .map_err(|error| format!("could not delete {} credential: {error}", provider.as_str()))?;
+    println!(
+        "{}",
+        json!({ "provider": provider.as_str(), "removed": removed })
+    );
+    Ok(())
 }
 
 fn login(
@@ -236,9 +263,6 @@ fn login(
     host: Option<String>,
     store: &dyn SecretStore,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if host.is_some() && provider != Provider::Sentry {
-        return Err("--host only applies to Sentry".into());
-    }
     let url = match (provider, host) {
         (Provider::Sentry, Some(host)) => Some(crate::sentry::normalize_host(&host)),
         (Provider::Sentry, None) => read_sentry_host()?,
@@ -699,18 +723,6 @@ mod tests {
         );
         assert_eq!(failed["status"], "error");
         assert_eq!(failed["source"], "config_file");
-    }
-
-    #[test]
-    fn login_host_is_sentry_only() {
-        // The guard fires before the prompts, so this never touches stdin.
-        let error = login(
-            Provider::Linear,
-            Some("sentry.example.com".into()),
-            &MemoryStore::default(),
-        )
-        .unwrap_err();
-        assert_eq!(error.to_string(), "--host only applies to Sentry");
     }
 
     #[test]
