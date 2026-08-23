@@ -79,6 +79,10 @@ fn render(value: &Value, format: Format, width: usize) -> String {
             return render_object(inner, width);
         }
     }
+    // Keyed map (provider list, auth status): one row per key.
+    if root.len() > 1 && root.values().all(Value::is_object) {
+        return render_keyed(root, width);
+    }
     render_object(root, width)
 }
 
@@ -120,6 +124,26 @@ fn render_list(rows: &[Value], page: &Map<String, Value>, width: usize) -> Strin
         );
     }
     format!("{}\n\n{footer}\n", table(builder, width))
+}
+
+fn render_keyed(entries: &Map<String, Value>, width: usize) -> String {
+    let columns: std::collections::BTreeSet<&str> = entries
+        .values()
+        .filter_map(Value::as_object)
+        .flat_map(|row| row.keys().map(String::as_str))
+        .collect();
+    let mut builder = Builder::default();
+    builder.push_record(std::iter::once("KEY").chain(columns.iter().copied()));
+    for (key, row) in entries {
+        builder.push_record(
+            std::iter::once(key.clone()).chain(
+                columns
+                    .iter()
+                    .map(|column| row.get(*column).map_or_else(String::new, cell)),
+            ),
+        );
+    }
+    format!("{}\n", table(builder, width))
 }
 
 fn render_object(fields: &Map<String, Value>, width: usize) -> String {
@@ -270,6 +294,21 @@ mod tests {
         assert_eq!(
             render(&value, Format::Table, 80),
             "hasNextPage=false hasPreviousPage=false nextPage=null previousPage=null\n"
+        );
+    }
+
+    #[test]
+    fn keyed_map_renders_one_row_per_key() {
+        let value = json!({
+            "github": {"enabled": false},
+            "linear": {"enabled": true},
+        });
+        assert_eq!(
+            render(&value, Format::Table, 80),
+            " KEY    | enabled\n\
+             --------+---------\n\
+             \x20github | false\n\
+             \x20linear | true\n"
         );
     }
 

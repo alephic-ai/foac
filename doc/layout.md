@@ -11,11 +11,12 @@ types at compile time against the vendored `graphql/linear/schema.graphql`
 <https://raw.githubusercontent.com/linear/linear/master/packages/sdk/src/schema.graphql>.
 
 Every command follows the same conventions: raw API JSON on stdout, errors on
-stderr with exit code 1, nothing interactive. Linear and GitHub success output
-goes through the shared printer in `src/output.rs`: compact JSON by default,
-a table sized to the terminal width when stdout is an interactive TTY
-(overridable with `--format json|table|auto` or `FOAC_FORMAT`; `CI` forces
-JSON). Auth, version, update, and skill output bypasses it. For Linear, `list` filter flags
+stderr with exit code 1, nothing interactive. JSON success output (providers,
+auth, provider enable/disable) goes through the shared printer in
+`src/output.rs`: compact JSON by default, a table sized to the terminal width
+when stdout is an interactive TTY (overridable with `--format json|table|auto`
+or `FOAC_FORMAT`; `CI` forces JSON). Version, update, and skill output
+bypasses it. For Linear, `list` filter flags
 accept a UUID or a human name (see `eq_filter`), while `create`/`update` flags
 require UUIDs.
 
