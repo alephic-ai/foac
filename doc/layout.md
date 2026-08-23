@@ -1,40 +1,32 @@
 # Layout and conventions
 
-`src/main.rs` parses the top-level CLI and dispatches. The modules it uses
-live in a library target (`src/lib.rs`) so that `tests/cli.rs` (end-to-end
-runs of the compiled binary) and doc tests can link against the crate; unit
-tests stay inline in each module's `#[cfg(test)]` block. Provider commands are
-colocated by provider: `src/linear.rs` contains Linear, `src/github.rs`
-contains GitHub, `src/sentry.rs` contains Sentry, and `src/slack.rs` contains
-Slack.
-`src/update.rs` talks to GitHub Releases for `foac update` and
-the once-a-day version check. Linear queries live in
-`graphql/linear/queries.graphql`, and `graphql_client` generates their Rust
-types at compile time against the vendored `graphql/linear/schema.graphql`
-(51k lines — grep it, don't read it whole). It can be refreshed from
-<https://raw.githubusercontent.com/linear/linear/master/packages/sdk/src/schema.graphql>.
+[ARCHITECTURE.md](../ARCHITECTURE.md) has the theory: what foac is, the module
+map, the key decisions and the rules they impose, and where the system is
+meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
 
-Every command follows the same conventions: raw API JSON on stdout, errors on
-stderr with exit code 1, nothing interactive. JSON success output (providers,
-auth, provider enable/disable) goes through the shared printer in
-`src/output.rs`: compact JSON by default, a table sized to the terminal width
-when stdout is an interactive TTY (overridable with `--format json|table|auto`
-or `FOAC_FORMAT`; `CI` forces JSON). Enable and disable print the same
-keyed map as `provider list`; the table bolds the changed provider's values.
-Single-provider auth status and login print a two-line summary in table mode
-(logout prints one line); JSON stays a one-key map. The all-provider auth
-table flattens `account` to an identity string.
-Version, update, and skill output bypass it. For Linear, `list` filter flags
-accept a UUID or a human name (see `eq_filter`), while `create`/`update` flags
-require UUIDs.
-
-GitHub uses its versioned REST API. Successful object responses are raw JSON;
-list responses wrap API items with `pageInfo` derived from the Link header.
-Sentry follows the same REST pattern with cursor pagination from its Link
-header; its base URL comes from `SENTRY_URL`, then the host saved by
-`foac auth sentry login` (its prompt or `--host`; default
-`https://sentry.io`), and every request path needs a trailing slash.
-Slack uses its Web API's HTTP-200 `ok` envelope and cursor pagination. Bot
-commands resolve conversation and user names by paging through the relevant
-list method; message search uses the separate `SLACK_USER_TOKEN` because Slack
-does not permit bot tokens for `search.messages`.
+- `src/main.rs` parses the top-level CLI and dispatches. The modules live in a
+  library target (`src/lib.rs`) so that `tests/cli.rs` (end-to-end runs of the
+  compiled binary) and doc tests can link against the crate; unit tests stay
+  inline in each module's `#[cfg(test)]` block.
+- Linear queries live in `graphql/linear/queries.graphql`, and `graphql_client`
+  generates their Rust types at compile time against the vendored
+  `graphql/linear/schema.graphql` (51k lines — grep it, don't read it whole).
+  It can be refreshed from
+  <https://raw.githubusercontent.com/linear/linear/master/packages/sdk/src/schema.graphql>.
+- Table-mode details of the shared printer (`src/output.rs`): the table is
+  sized to the terminal width; enable and disable print the same keyed map as
+  `provider list` with the changed provider's values bolded; single-provider
+  auth status and login print a two-line summary (logout one line) while JSON
+  stays a one-key map; the all-provider auth table flattens `account` to an
+  identity string. Version, update, and skill output bypass the printer.
+- For Linear, `list` filter flags accept a UUID or a human name (see
+  `eq_filter`), while `create`/`update` flags require UUIDs.
+- GitHub uses its versioned REST API; list responses derive `pageInfo` from
+  the Link header. Sentry follows the same REST pattern with cursor pagination
+  from its Link header; its base URL comes from `SENTRY_URL`, then the host
+  saved by `foac auth sentry login` (its prompt or `--host`; default
+  `https://sentry.io`), and every request path needs a trailing slash.
+- Slack uses its Web API's HTTP-200 `ok` envelope and cursor pagination. Bot
+  commands resolve conversation and user names by paging through the relevant
+  list method; message search uses the separate `SLACK_USER_TOKEN` because
+  Slack does not permit bot tokens for `search.messages`.
