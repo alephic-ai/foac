@@ -674,8 +674,8 @@ fn issue_filter(
     }
 }
 
-pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
-    match cmd {
+pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
+    let data = match cmd {
         Cmd::Issue(cmd) => match cmd {
             IssueCmd::List {
                 team,
@@ -1193,7 +1193,9 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
                 exec::<AttachmentDelete>(attachment_delete::Variables { id })
             }
         },
-    }
+    }?;
+    crate::output::print(&data, format);
+    Ok(())
 }
 
 pub(crate) fn auth_identity(
@@ -1234,7 +1236,9 @@ fn parse_enum<T: serde::de::DeserializeOwned>(s: String) -> Result<T, Box<dyn st
 }
 
 /// POST a compile-time-checked query to Linear, print the `data` JSON on stdout.
-fn exec<Q: GraphQLQuery>(variables: Q::Variables) -> Result<(), Box<dyn std::error::Error>> {
+fn exec<Q: GraphQLQuery>(
+    variables: Q::Variables,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     let key = crate::auth::linear_token()?;
     let response = reqwest::blocking::Client::new()
         .post(API_URL)
@@ -1243,12 +1247,11 @@ fn exec<Q: GraphQLQuery>(variables: Q::Variables) -> Result<(), Box<dyn std::err
         .json(&Q::build_query(variables))
         .send()?;
     let status = response.status();
-    let body: serde_json::Value = response.json()?;
+    let mut body: serde_json::Value = response.json()?;
     if !status.is_success() || body.get("errors").is_some_and(|e| !e.is_null()) {
         return Err(body.to_string().into());
     }
-    println!("{}", body["data"]);
-    Ok(())
+    Ok(body["data"].take())
 }
 
 pub(crate) fn authenticated() -> bool {

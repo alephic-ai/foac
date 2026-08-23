@@ -3,12 +3,16 @@ use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 mod auth;
 mod github;
 mod linear;
+mod output;
 mod provider;
 mod update;
 
 #[derive(Parser)]
 #[command(about, arg_required_else_help = true)]
 struct Cli {
+    /// Output format for Linear and GitHub responses (other commands ignore it)
+    #[arg(long, global = true, value_enum, default_value = "auto")]
+    format: output::FormatArg,
     #[command(subcommand)]
     command: Command,
 }
@@ -62,26 +66,33 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Probing auth (keychain reads, possible `gh` subprocess) is only needed to
     // hide providers in help/error output and to render the skill, so parse
     // with the plain command first and probe only on those cold paths.
-    let command = match Cli::try_parse_from(std::env::args_os()) {
-        Ok(cli) => cli.command,
+    let cli = match Cli::try_parse_from(std::env::args_os()) {
+        Ok(cli) => cli,
         Err(_) => {
             let providers = providers();
             match try_parse_from(&providers, std::env::args_os()) {
-                Ok(cli) => cli.command,
+                Ok(cli) => cli,
                 Err(error) => error.exit(),
             }
         }
     };
+    let format = output::resolve(
+        cli.format,
+        std::env::var("FOAC_FORMAT").ok().as_deref(),
+        std::env::var_os("CI").is_some(),
+        std::io::IsTerminal::is_terminal(&std::io::stdout()),
+    );
+    let command = cli.command;
     let skip_check = matches!(command, Command::Update);
     let result = match command {
         Command::Auth(cmd) => auth::run(cmd),
         Command::Github(cmd) => {
             provider::ensure_enabled(&provider::load(), "github")?;
-            github::run(cmd)
+            github::run(cmd, format)
         }
         Command::Linear(cmd) => {
             provider::ensure_enabled(&provider::load(), "linear")?;
-            linear::run(cmd)
+            linear::run(cmd, format)
         }
         Command::Provider(cmd) => provider::run(cmd),
         Command::Skill(cmd) => {
