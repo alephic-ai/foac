@@ -719,6 +719,7 @@ struct Api {
     client: reqwest::blocking::Client,
     base_url: reqwest::Url,
     token: String,
+    format: crate::output::Format,
 }
 
 #[derive(Debug)]
@@ -742,9 +743,9 @@ macro_rules! path {
     }};
 }
 
-pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
     let Cmd { repo, command } = cmd;
-    let api = Api::github(crate::auth::github_token()?)?;
+    let api = Api::github(crate::auth::github_token()?, format)?;
     match command {
         Resource::Repo(cmd) => run_repo(&api, repo, cmd),
         Resource::Issue(cmd) => run_issue(&api, selected_repo(repo)?, cmd),
@@ -1727,11 +1728,15 @@ fn run_collaborator(
 }
 
 impl Api {
-    fn github(token: String) -> Result<Self, Box<dyn std::error::Error>> {
+    fn github(
+        token: String,
+        format: crate::output::Format,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
             client: reqwest::blocking::Client::new(),
             base_url: reqwest::Url::parse(API_URL)?,
             token,
+            format,
         })
     }
 
@@ -1743,7 +1748,7 @@ impl Api {
         body: Option<Value>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let response = self.send(method, &segments, &query, body)?;
-        println!("{}", response.body);
+        crate::output::print(&response.body, self.format);
         Ok(())
     }
 
@@ -1756,12 +1761,12 @@ impl Api {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let response = self.send(method, &segments, &query, None)?;
         let items = list_items(response.body, shape)?;
-        println!(
-            "{}",
-            json!({
+        crate::output::print(
+            &json!({
                 "items": items,
                 "pageInfo": page_info(response.link.as_deref()),
-            })
+            }),
+            self.format,
         );
         Ok(())
     }
@@ -2265,6 +2270,7 @@ mod tests {
         });
         let api = Api {
             client: reqwest::blocking::Client::new(),
+            format: crate::output::Format::Json,
             base_url: reqwest::Url::parse(&format!("http://{address}/")).unwrap(),
             token: "secret-token".into(),
         };

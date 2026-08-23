@@ -6,8 +6,9 @@ description: Use the foac CLI to interact with Linear and GitHub from the shell.
 # foac
 
 foac wraps external provider APIs as CLI subcommands, designed for LLM agents:
-every command prints compact JSON on stdout, errors go to stderr with exit
-code 1, and provider API commands are non-interactive. Auth login is the
+every command prints compact JSON on stdout (pass `--format json` when parsing
+— a human at an interactive terminal gets a table instead), errors go to
+stderr with exit code 1, and provider API commands are non-interactive. Auth login is the
 explicit exception: it securely prompts on a TTY or reads a token from
 redirected stdin.
 
@@ -62,8 +63,13 @@ foac <provider> <resource> <verb> [flags]
   Administration. Branch protection and collaborator changes need
   Administration write.
 <!-- /foac-provider:github -->
-- **Output**: the raw API response as JSON on stdout. Failures print the
-  API's error JSON on stderr and exit non-zero.
+- **Output**: the raw API response as JSON on stdout. Linear and GitHub
+  success output renders as a table sized to the terminal when stdout is an
+  interactive TTY and `CI` is not set, so agents parsing stdout must pass
+  `--format json` or set `FOAC_FORMAT=json`; pipes and CI always get JSON.
+  `auth`, `provider`, `version`, `update`, and `skill` ignore `--format`.
+  Failures print
+  the API's error JSON on stderr and exit non-zero.
 <!-- foac-provider:linear -->
 - **Linear pagination**: `list` verbs take `--limit N` (default 50) and
   `--after CURSOR`; loop using `pageInfo.endCursor` while `hasNextPage` is true.
