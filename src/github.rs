@@ -2028,15 +2028,15 @@ mod tests {
     #[test]
     fn parses_supported_github_remotes() {
         for remote in [
-            "https://github.com/alephic-ai/foac.git",
-            "git@github.com:alephic-ai/foac.git",
-            "ssh://git@github.com/alephic-ai/foac",
+            "https://github.com/owner/repo.git",
+            "git@github.com:owner/repo.git",
+            "ssh://git@github.com/owner/repo",
         ] {
             let repo = parse_github_remote(remote).unwrap();
-            assert_eq!(repo.owner, "alephic-ai");
-            assert_eq!(repo.name, "foac");
+            assert_eq!(repo.owner, "owner");
+            assert_eq!(repo.name, "repo");
         }
-        assert!(parse_github_remote("https://example.com/alephic-ai/foac").is_none());
+        assert!(parse_github_remote("https://example.com/owner/repo").is_none());
         assert!(parse_repo("owner/repo/extra").is_none());
     }
 

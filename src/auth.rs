@@ -106,14 +106,14 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
     let store = ConfigFileStore;
     match cmd.command {
         AuthCmd::Status => {
-            crate::output::print(&all_provider_statuses(&store), format);
+            print_all_statuses(&store, format);
             Ok(())
         }
         AuthCmd::Linear(cmd) => run_provider(Provider::Linear, cmd.command, &store, format),
         AuthCmd::Github(cmd) => run_provider(Provider::Github, cmd.command, &store, format),
         AuthCmd::Sentry(cmd) => match cmd.command {
             SentryAction::Status => {
-                crate::output::print(&provider_status(Provider::Sentry, &store), format);
+                print_status(Provider::Sentry, &store, format);
                 Ok(())
             }
             SentryAction::Login { host } => login(Provider::Sentry, host, &store, format),
@@ -240,7 +240,7 @@ fn run_provider(
 ) -> Result<(), Box<dyn std::error::Error>> {
     match action {
         ProviderAction::Status => {
-            crate::output::print(&provider_status(provider, store), format);
+            print_status(provider, store, format);
             Ok(())
         }
         ProviderAction::Login => login(provider, None, store, format),
@@ -256,10 +256,8 @@ fn logout(
     let removed = store
         .delete(provider)
         .map_err(|error| format!("could not delete {} credential: {error}", provider.as_str()))?;
-    crate::output::print(
-        &json!({ "provider": provider.as_str(), "removed": removed }),
-        format,
-    );
+    let report = logout_report(provider, removed);
+    crate::output::print_text(&logout_summary(removed), &report, format);
     Ok(())
 }
 
@@ -296,16 +294,165 @@ fn login(
             provider.environment_variable()
         );
     }
-    crate::output::print(
-        &json!({
-            "provider": provider.as_str(),
+    let report = login_report(provider, account);
+    crate::output::print_text(
+        &status_summary(provider, &report[provider.as_str()]),
+        &report,
+        format,
+    );
+    Ok(())
+}
+
+fn print_all_statuses(store: &dyn SecretStore, format: crate::output::Format) {
+    let statuses = all_provider_statuses(store);
+    if format == crate::output::Format::Table {
+        crate::output::print(&flatten_accounts_for_table(&statuses), format);
+    } else {
+        crate::output::print(&statuses, format);
+    }
+}
+
+fn print_status(provider: Provider, store: &dyn SecretStore, format: crate::output::Format) {
+    let report = keyed_provider_status(provider, store);
+    crate::output::print_text(
+        &status_summary(provider, &report[provider.as_str()]),
+        &report,
+        format,
+    );
+}
+
+fn nest(provider: Provider, body: Value) -> Value {
+    json!({ provider.as_str(): body })
+}
+
+fn login_report(provider: Provider, account: Value) -> Value {
+    nest(
+        provider,
+        json!({
             "status": "authenticated",
             "source": CredentialSource::ConfigFile.as_str(),
             "account": account,
         }),
-        format,
-    );
-    Ok(())
+    )
+}
+
+fn logout_report(provider: Provider, removed: bool) -> Value {
+    nest(provider, json!({ "removed": removed }))
+}
+
+fn keyed_provider_status(provider: Provider, store: &dyn SecretStore) -> Value {
+    nest(provider, provider_status(provider, store))
+}
+
+fn flatten_accounts_for_table(statuses: &Value) -> Value {
+    let Some(map) = statuses.as_object() else {
+        return statuses.clone();
+    };
+    let mut out = map.clone();
+    for provider in [Provider::Linear, Provider::Github, Provider::Sentry] {
+        let Some(obj) = out
+            .get_mut(provider.as_str())
+            .and_then(Value::as_object_mut)
+        else {
+            continue;
+        };
+        if let Some(account) = obj.get("account").cloned().filter(Value::is_object) {
+            obj.insert(
+                "account".into(),
+                json!(account_identity(provider, &account)),
+            );
+        }
+    }
+    Value::Object(out)
+}
+
+fn status_summary(provider: Provider, body: &Value) -> String {
+    let status = body["status"].as_str().unwrap_or("unknown");
+    let line1 = match body["source"].as_str() {
+        Some(source) => format!("{status} via {source}"),
+        None => status.to_owned(),
+    };
+    let line2 = if status == "authenticated" {
+        body.get("account")
+            .map(|account| account_identity(provider, account))
+            .filter(|identity| !identity.is_empty())
+    } else {
+        body["error"]
+            .as_str()
+            .map(str::to_owned)
+            .filter(|error| !error.is_empty())
+    };
+    match line2 {
+        Some(line2) => format!("{line1}\n{line2}\n"),
+        None => format!("{line1}\n"),
+    }
+}
+
+fn logout_summary(removed: bool) -> String {
+    if removed {
+        "removed stored credential\n".to_owned()
+    } else {
+        "no stored credential\n".to_owned()
+    }
+}
+
+fn account_identity(provider: Provider, account: &Value) -> String {
+    match provider {
+        Provider::Linear => linear_identity(account),
+        Provider::Github => github_identity(account),
+        Provider::Sentry => sentry_identity(account),
+    }
+}
+
+fn linear_identity(account: &Value) -> String {
+    let name = text_field(account, "name").or_else(|| text_field(account, "displayName"));
+    let email = text_field(account, "email");
+    let workspace = account
+        .get("workspace")
+        .and_then(|workspace| text_field(workspace, "name"));
+    let person = match (name, email) {
+        (Some(name), Some(email)) => format!("{name} <{email}>"),
+        (Some(name), None) => name.to_owned(),
+        (None, Some(email)) => email.to_owned(),
+        (None, None) => String::new(),
+    };
+    match (person.is_empty(), workspace) {
+        (false, Some(workspace)) => format!("{person}  {workspace}"),
+        (false, None) => person,
+        (true, Some(workspace)) => workspace.to_owned(),
+        (true, None) => String::new(),
+    }
+}
+
+fn github_identity(account: &Value) -> String {
+    let login = text_field(account, "login");
+    let name = text_field(account, "name");
+    match (login, name) {
+        (Some(login), Some(name)) if name != login => format!("{login} ({name})"),
+        (Some(login), _) => login.to_owned(),
+        (None, Some(name)) => name.to_owned(),
+        (None, None) => String::new(),
+    }
+}
+
+fn sentry_identity(account: &Value) -> String {
+    let Some(organizations) = account.get("organizations").and_then(Value::as_array) else {
+        return String::new();
+    };
+    organizations
+        .iter()
+        .filter_map(|organization| {
+            text_field(organization, "slug").or_else(|| text_field(organization, "name"))
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn text_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|text| !text.is_empty())
 }
 
 fn provider_status(provider: Provider, store: &dyn SecretStore) -> Value {
@@ -699,6 +846,149 @@ mod tests {
                 "name": "The Octocat",
             })
         );
+    }
+
+    #[test]
+    fn single_provider_status_nests_under_the_provider_key() {
+        let status = keyed_provider_status(Provider::Linear, &MemoryStore::default());
+        assert_eq!(status["linear"]["status"], "unauthenticated");
+        assert!(status.get("status").is_none());
+        assert!(status.get("github").is_none());
+    }
+
+    #[test]
+    fn login_and_logout_reports_nest_under_the_provider_key() {
+        let login = login_report(Provider::Linear, json!({ "id": "user-id" }));
+        assert_eq!(
+            login,
+            json!({
+                "linear": {
+                    "status": "authenticated",
+                    "source": "config_file",
+                    "account": { "id": "user-id" },
+                }
+            })
+        );
+        let logout = logout_report(Provider::Sentry, false);
+        assert_eq!(logout, json!({ "sentry": { "removed": false } }));
+    }
+
+    #[test]
+    fn account_identity_summarizes_each_provider() {
+        let linear = linear_account(json!({
+            "viewer": {
+                "id": "user-id",
+                "name": "User",
+                "displayName": "Display",
+                "email": "user@example.com",
+            },
+            "organization": { "id": "ws", "name": "Workspace", "urlKey": "workspace" },
+        }));
+        assert_eq!(
+            account_identity(Provider::Linear, &linear),
+            "User <user@example.com>  Workspace"
+        );
+
+        let github = github_account(json!({
+            "id": 1,
+            "login": "octocat",
+            "name": "The Octocat",
+        }));
+        assert_eq!(
+            account_identity(Provider::Github, &github),
+            "octocat (The Octocat)"
+        );
+        assert_eq!(
+            account_identity(
+                Provider::Github,
+                &github_account(json!({ "id": 1, "login": "octocat", "name": "octocat" }))
+            ),
+            "octocat"
+        );
+
+        let sentry = sentry_account(json!([
+            { "id": "1", "slug": "acme", "name": "Acme" },
+            { "id": "2", "slug": "globex", "name": "Globex" },
+        ]));
+        assert_eq!(account_identity(Provider::Sentry, &sentry), "acme, globex");
+        assert_eq!(
+            account_identity(Provider::Sentry, &sentry_account(json!([]))),
+            ""
+        );
+    }
+
+    #[test]
+    fn status_summary_is_two_lines_when_there_is_detail() {
+        assert_eq!(
+            status_summary(
+                Provider::Linear,
+                &json!({
+                    "status": "authenticated",
+                    "source": "environment",
+                    "account": {
+                        "name": "User",
+                        "email": "user@example.com",
+                        "workspace": { "name": "Workspace" },
+                    },
+                })
+            ),
+            "authenticated via environment\nUser <user@example.com>  Workspace\n"
+        );
+        assert_eq!(
+            status_summary(
+                Provider::Linear,
+                &json!({
+                    "status": "unauthenticated",
+                    "source": Value::Null,
+                    "error": "LINEAR_API_KEY is not set and no Linear credential is stored",
+                })
+            ),
+            "unauthenticated\nLINEAR_API_KEY is not set and no Linear credential is stored\n"
+        );
+        assert_eq!(
+            status_summary(
+                Provider::Linear,
+                &json!({
+                    "status": "unauthenticated",
+                    "source": "environment",
+                    "error": "rejected",
+                })
+            ),
+            "unauthenticated via environment\nrejected\n"
+        );
+    }
+
+    #[test]
+    fn logout_summary_distinguishes_removed_from_missing() {
+        assert_eq!(logout_summary(true), "removed stored credential\n");
+        assert_eq!(logout_summary(false), "no stored credential\n");
+    }
+
+    #[test]
+    fn flatten_accounts_replaces_nested_account_with_identity() {
+        let statuses = json!({
+            "linear": {
+                "status": "authenticated",
+                "source": "environment",
+                "account": {
+                    "name": "User",
+                    "email": "user@example.com",
+                    "workspace": { "name": "Workspace" },
+                },
+            },
+            "github": {
+                "status": "unauthenticated",
+                "source": Value::Null,
+                "error": "missing",
+            },
+        });
+        let table = flatten_accounts_for_table(&statuses);
+        assert_eq!(
+            table["linear"]["account"],
+            "User <user@example.com>  Workspace"
+        );
+        assert!(table["github"].get("account").is_none());
+        assert_eq!(statuses["linear"]["account"]["email"], "user@example.com");
     }
 
     #[test]

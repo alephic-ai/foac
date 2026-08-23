@@ -45,9 +45,9 @@ foac <provider> <resource> <verb> [flags]
   redirected, it reads the token from stdin. Logout removes only foac's stored
   credential. Use `foac auth --help` to list auth targets.
 - **Provider toggles**: `foac provider <enable|disable> <name>` turns a provider
-  on or off (state kept in `~/.config/foac/config.json`); `foac provider list`
-  shows each provider's state. Disabled providers are hidden from discovery and
-  their commands refuse to run.
+  on or off (state kept in `~/.config/foac/config.json`) and prints the same
+  per-provider enabled map as `foac provider list`. Disabled providers are
+  hidden from discovery and their commands refuse to run.
 <!-- foac-provider:linear -->
 - **Linear auth precedence**: `LINEAR_API_KEY`, then the foac config file.
 <!-- /foac-provider:linear -->
@@ -59,9 +59,14 @@ foac <provider> <resource> <verb> [flags]
 - **Sentry auth precedence**: `SENTRY_AUTH_TOKEN`, then the foac config file.
 <!-- /foac-provider:sentry -->
 - **Auth status**: Status commands perform live validation and print
-  `authenticated`, `unauthenticated`, or `error` as JSON, including the
-  credential source and safe account identity when available. They exit zero
-  after printing the report; inspect the JSON status values.
+  `authenticated`, `unauthenticated`, or `error`, including the
+  credential source and safe account identity when available. `foac auth status`
+  prints an object keyed by provider; `foac auth <provider> <status|login|logout>`
+  prints a one-key map for that provider (login matches status fields; logout
+  reports `removed`). Agents should parse that JSON (`--format json`). A TTY
+  shows a short summary for the single-provider commands; the all-provider
+  table flattens `account` to an identity string. They exit zero after printing
+  the report; inspect the JSON status values.
 <!-- foac-provider:github -->
 - **GitHub permissions**: classic tokens need `repo` for private repositories.
   Fine-grained tokens need Metadata read plus read or write access, as used, to
@@ -159,10 +164,10 @@ foac linear comment create --issue ENG-123 --body "Done, see PR #42"
 <!-- foac-provider:github -->
 
 ```sh
-foac github issue list --repo alephic-ai/example --state open
-foac github pull create --repo alephic-ai/example --head feature --base main --title "Add feature" --body-file /tmp/pr.md
-foac github review create --repo alephic-ai/example --pull 42 --event approve --body "Looks good"
-foac github run rerun --repo alephic-ai/example 123456 --failed
+foac github issue list --repo owner/repo --state open
+foac github pull create --repo owner/repo --head feature --base main --title "Add feature" --body-file /tmp/pr.md
+foac github review create --repo owner/repo --pull 42 --event approve --body "Looks good"
+foac github run rerun --repo owner/repo 123456 --failed
 ```
 
 <!-- /foac-provider:github -->

@@ -126,9 +126,9 @@ changes require Administration write access.
 
 ```sh
 export GITHUB_TOKEN=github_pat_...
-foac github issue list --repo lra/foac --state open
-foac github pull get 14 --repo lra/foac
-foac github run list --repo lra/foac --status failure
+foac github issue list --repo owner/repo --state open
+foac github pull get 14 --repo owner/repo
+foac github run list --repo owner/repo --status failure
 foac github --help
 ```
 
