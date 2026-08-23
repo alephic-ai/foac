@@ -5,8 +5,6 @@ use std::process::Command as ProcessCommand;
 use clap::{Args, Subcommand};
 use serde_json::{Value, json};
 
-const KEYRING_SERVICE: &str = "foac";
-
 #[derive(Args)]
 #[command(arg_required_else_help = true)]
 pub struct Cmd {
@@ -35,9 +33,9 @@ struct ProviderCmd {
 enum ProviderAction {
     /// Check authentication for this provider
     Status,
-    /// Validate and save a token in the OS secret store
+    /// Validate and save a token in foac's config file
     Login,
-    /// Remove foac's token from the OS secret store
+    /// Remove foac's token from the config file
     Logout,
 }
 
@@ -50,7 +48,7 @@ pub(crate) enum Provider {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CredentialSource {
     Environment,
-    SecretStore,
+    ConfigFile,
     GhCli,
 }
 
@@ -77,10 +75,10 @@ trait SecretStore {
     fn delete(&self, provider: Provider) -> Result<bool, String>;
 }
 
-struct OsSecretStore;
+struct ConfigFileStore;
 
 pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
-    let store = OsSecretStore;
+    let store = ConfigFileStore;
     match cmd.command {
         AuthCmd::Status => {
             println!("{}", all_provider_statuses(&store));
@@ -92,7 +90,7 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub(crate) fn linear_token() -> Result<String, Box<dyn std::error::Error>> {
-    resolve_linear(environment_token(Provider::Linear), &OsSecretStore)
+    resolve_linear(environment_token(Provider::Linear), &ConfigFileStore)
         .map(|credential| credential.token)
         .map_err(Into::into)
 }
@@ -100,7 +98,7 @@ pub(crate) fn linear_token() -> Result<String, Box<dyn std::error::Error>> {
 pub(crate) fn github_token() -> Result<String, Box<dyn std::error::Error>> {
     resolve_github(
         environment_token(Provider::Github),
-        &OsSecretStore,
+        &ConfigFileStore,
         github_cli_token,
     )
     .map(|credential| credential.token)
@@ -147,39 +145,33 @@ impl CredentialSource {
     fn as_str(self) -> &'static str {
         match self {
             Self::Environment => "environment",
-            Self::SecretStore => "secret_store",
+            Self::ConfigFile => "config_file",
             Self::GhCli => "gh_cli",
         }
     }
 }
 
-impl SecretStore for OsSecretStore {
+impl SecretStore for ConfigFileStore {
     fn get(&self, provider: Provider) -> Result<Option<String>, String> {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, provider.as_str())
-            .map_err(|error| error.to_string())?;
-        match entry.get_password() {
-            Ok(token) if token.is_empty() => Ok(None),
-            Ok(token) => Ok(Some(token)),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(error) => Err(error.to_string()),
-        }
+        Ok(crate::provider::load()
+            .credential(provider.as_str())
+            .filter(|token| !token.is_empty())
+            .map(str::to_owned))
     }
 
     fn set(&self, provider: Provider, token: &str) -> Result<(), String> {
-        keyring::Entry::new(KEYRING_SERVICE, provider.as_str())
-            .map_err(|error| error.to_string())?
-            .set_password(token)
-            .map_err(|error| error.to_string())
+        let mut config = crate::provider::load();
+        config.set_credential(provider.as_str(), token.to_owned());
+        crate::provider::save(&config).map_err(|error| error.to_string())
     }
 
     fn delete(&self, provider: Provider) -> Result<bool, String> {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, provider.as_str())
-            .map_err(|error| error.to_string())?;
-        match entry.delete_credential() {
-            Ok(()) => Ok(true),
-            Err(keyring::Error::NoEntry) => Ok(false),
-            Err(error) => Err(error.to_string()),
+        let mut config = crate::provider::load();
+        let removed = config.remove_credential(provider.as_str());
+        if removed {
+            crate::provider::save(&config).map_err(|error| error.to_string())?;
         }
+        Ok(removed)
     }
 }
 
@@ -225,7 +217,7 @@ fn login(provider: Provider, store: &dyn SecretStore) -> Result<(), Box<dyn std:
         json!({
             "provider": provider.as_str(),
             "status": "authenticated",
-            "source": CredentialSource::SecretStore.as_str(),
+            "source": CredentialSource::ConfigFile.as_str(),
             "account": account,
         })
     );
@@ -316,13 +308,13 @@ fn resolve_linear(
     match store.get(Provider::Linear) {
         Ok(Some(token)) => Ok(ResolvedCredential {
             token,
-            source: CredentialSource::SecretStore,
+            source: CredentialSource::ConfigFile,
         }),
         Ok(None) => Err(ResolveError::Missing(
             "LINEAR_API_KEY is not set and no Linear credential is stored".into(),
         )),
         Err(error) => Err(ResolveError::Failed(format!(
-            "could not read Linear credential from the OS secret store: {error}"
+            "could not read Linear credential from the config file: {error}"
         ))),
     }
 }
@@ -345,7 +337,7 @@ where
         Ok(Some(token)) => {
             return Ok(ResolvedCredential {
                 token,
-                source: CredentialSource::SecretStore,
+                source: CredentialSource::ConfigFile,
             });
         }
         Ok(None) => None,
@@ -358,7 +350,7 @@ where
         }),
         Ok(None) => match store_error {
             Some(error) => Err(ResolveError::Failed(format!(
-                "could not read GitHub credential from the OS secret store: {error}"
+                "could not read GitHub credential from the config file: {error}"
             ))),
             None => Err(ResolveError::Missing(
                 "GITHUB_TOKEN is not set, no GitHub credential is stored, and `gh auth token` did not return a token".into(),
@@ -366,7 +358,7 @@ where
         },
         Err(error) => Err(ResolveError::Failed(match store_error {
             Some(store_error) => format!(
-                "could not read GitHub credential from the OS secret store ({store_error}) or GitHub CLI ({error})"
+                "could not read GitHub credential from the config file ({store_error}) or GitHub CLI ({error})"
             ),
             None => format!("could not read GitHub CLI credential: {error}"),
         })),
@@ -494,7 +486,7 @@ mod tests {
 
         let resolved = resolve_linear(None, &store).unwrap();
         assert_eq!(resolved.token, "stored");
-        assert_eq!(resolved.source, CredentialSource::SecretStore);
+        assert_eq!(resolved.source, CredentialSource::ConfigFile);
     }
 
     #[test]
@@ -591,12 +583,12 @@ mod tests {
         let failed = credential_status(
             Ok(ResolvedCredential {
                 token: "token".into(),
-                source: CredentialSource::SecretStore,
+                source: CredentialSource::ConfigFile,
             }),
             |_| Err(ValidationError::Failed("offline".into())),
         );
         assert_eq!(failed["status"], "error");
-        assert_eq!(failed["source"], "secret_store");
+        assert_eq!(failed["source"], "config_file");
     }
 
     #[test]

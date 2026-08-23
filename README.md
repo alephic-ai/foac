@@ -70,10 +70,10 @@ foac auth github logout
 ```
 
 `login` prints a link and permission guidance, securely prompts for a personal
-API token, validates it, and stores it in the operating system's secret store:
-Keychain Services on macOS, Credential Manager on Windows, and Secret Service
-on Linux. Pipe a token to `login` for non-interactive use. Tokens are never
-printed.
+API token, validates it, and stores it in foac's config file
+(`~/.config/foac/config.json`, or under `XDG_CONFIG_HOME`), which foac keeps
+readable by the owner only. Pipe a token to `login` for non-interactive use.
+Tokens are never printed.
 
 Environment variables take precedence over stored credentials. GitHub also
 falls back to `gh auth token` when neither `GITHUB_TOKEN` nor a stored foac

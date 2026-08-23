@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
@@ -22,6 +23,8 @@ pub enum Cmd {
 pub(crate) struct Config {
     #[serde(default)]
     disabled_providers: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    credentials: BTreeMap<String, String>,
 }
 
 impl Config {
@@ -34,6 +37,18 @@ impl Config {
         if !enabled {
             self.disabled_providers.push(name.to_owned());
         }
+    }
+
+    pub(crate) fn credential(&self, name: &str) -> Option<&str> {
+        self.credentials.get(name).map(String::as_str)
+    }
+
+    pub(crate) fn set_credential(&mut self, name: &str, token: String) {
+        self.credentials.insert(name.to_owned(), token);
+    }
+
+    pub(crate) fn remove_credential(&mut self, name: &str) -> bool {
+        self.credentials.remove(name).is_some()
     }
 }
 
@@ -54,12 +69,9 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn set_enabled(provider: Provider, enabled: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let xdg = std::env::var("XDG_CONFIG_HOME").ok();
-    let path = config_path(xdg.as_deref(), std::env::home_dir().as_deref())
-        .ok_or("could not determine the config path")?;
-    let mut config = read(&path).unwrap_or_default();
+    let mut config = load();
     config.set_enabled(provider.as_str(), enabled);
-    write(&path, &config)?;
+    save(&config)?;
     println!(
         "{}",
         json!({"provider": provider.as_str(), "enabled": enabled})
@@ -79,10 +91,17 @@ pub(crate) fn ensure_enabled(
 }
 
 pub(crate) fn load() -> Config {
+    path().and_then(|path| read(&path)).unwrap_or_default()
+}
+
+pub(crate) fn save(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+    let path = path().ok_or("could not determine the config path")?;
+    write(&path, config)
+}
+
+fn path() -> Option<PathBuf> {
     let xdg = std::env::var("XDG_CONFIG_HOME").ok();
     config_path(xdg.as_deref(), std::env::home_dir().as_deref())
-        .and_then(|path| read(&path))
-        .unwrap_or_default()
 }
 
 fn config_path(xdg_config_home: Option<&str>, home: Option<&Path>) -> Option<PathBuf> {
@@ -101,6 +120,12 @@ fn write(path: &Path, config: &Config) -> Result<(), Box<dyn std::error::Error>>
         std::fs::create_dir_all(dir)?;
     }
     std::fs::write(path, serde_json::to_vec(config)?)?;
+    // The file can hold credentials, so keep it readable by the owner only.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    }
     Ok(())
 }
 
@@ -166,6 +191,27 @@ mod tests {
         config.set_enabled("github", true);
         assert!(config.enabled("github"));
         assert!(config.disabled_providers.is_empty());
+
+        config.set_credential("linear", "lin_api_token".into());
+        write(&path, &config).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        let config = read(&path).unwrap();
+        assert_eq!(config.credential("linear"), Some("lin_api_token"));
+        assert_eq!(config.credential("github"), None);
+
+        let mut config = config;
+        assert!(config.remove_credential("linear"));
+        assert!(!config.remove_credential("linear"));
+        write(&path, &config).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            r#"{"disabled_providers":[]}"#
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

@@ -37,7 +37,7 @@ foac <provider> <resource> <verb> [flags]
 
 - **Auth commands**: Use `foac auth status` for all providers, or
   `foac auth <provider> <status|login|logout>` for one. Login securely reads and
-  validates a token before saving it in the OS secret store; when stdin is
+  validates a token before saving it in foac's config file; when stdin is
   redirected, it reads the token from stdin. Logout removes only foac's stored
   credential. Use `foac auth --help` to list auth targets.
 - **Provider toggles**: `foac provider <enable|disable> <name>` turns a provider
@@ -45,10 +45,10 @@ foac <provider> <resource> <verb> [flags]
   shows each provider's state. Disabled providers are hidden from discovery and
   their commands refuse to run.
 <!-- foac-provider:linear -->
-- **Linear auth precedence**: `LINEAR_API_KEY`, then the OS secret store.
+- **Linear auth precedence**: `LINEAR_API_KEY`, then the foac config file.
 <!-- /foac-provider:linear -->
 <!-- foac-provider:github -->
-- **GitHub auth precedence**: `GITHUB_TOKEN`, then the OS secret store, then
+- **GitHub auth precedence**: `GITHUB_TOKEN`, then the foac config file, then
   `gh auth token`.
 <!-- /foac-provider:github -->
 - **Auth status**: Status commands perform live validation and print
