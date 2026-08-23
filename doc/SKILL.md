@@ -5,7 +5,7 @@ description: Use the foac CLI to interact with Linear and GitHub from the shell.
 
 # foac
 
-foac wraps external service APIs as CLI subcommands, designed for LLM agents:
+foac wraps external provider APIs as CLI subcommands, designed for LLM agents:
 every command prints compact JSON on stdout, errors go to stderr with exit
 code 1, and nothing is interactive.
 
@@ -15,7 +15,8 @@ code 1, and nothing is interactive.
 foac <provider> <resource> <verb> [flags]
 ```
 
-- Providers: `linear`, `github`.
+- A provider is the external product or API named by the first command segment.
+  Providers: `linear`, `github`.
 - Resources are nouns (`issue`, `project`, `team`, `user`, ...), verbs are
   `list`, `get`, `create`, `update`, `delete`.
 - `--help` at any level is the ground truth for what exists and which flags
