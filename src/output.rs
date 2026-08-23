@@ -135,11 +135,13 @@ fn render_keyed(entries: &Map<String, Value>, width: usize) -> String {
     let mut builder = Builder::default();
     builder.push_record(std::iter::once("KEY").chain(columns.iter().copied()));
     for (key, row) in entries {
-        builder.push_record(std::iter::once(key.clone()).chain(
-            columns
-                .iter()
-                .map(|column| row.get(*column).map_or_else(String::new, cell)),
-        ));
+        builder.push_record(
+            std::iter::once(key.clone()).chain(
+                columns
+                    .iter()
+                    .map(|column| row.get(*column).map_or_else(String::new, cell)),
+            ),
+        );
     }
     format!("{}\n", table(builder, width))
 }
