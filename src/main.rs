@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use self_update::cargo_crate_version;
 
+mod github;
 mod linear;
 
 #[derive(Parser)]
@@ -16,6 +17,8 @@ const SKILL_MD: &str = include_str!("../doc/SKILL.md");
 // One short-lived value on the stack; boxing the variant isn't worth it.
 #[allow(clippy::large_enum_variant)]
 enum Command {
+    /// Interact with GitHub, requires GITHUB_TOKEN or an authenticated gh CLI
+    Github(github::Cmd),
     /// Interact with Linear (linear.app), requires LINEAR_API_KEY
     #[command(subcommand)]
     Linear(linear::Cmd),
@@ -39,6 +42,7 @@ fn main() {
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     match Cli::parse().command {
+        Command::Github(cmd) => github::run(cmd),
         Command::Linear(cmd) => linear::run(cmd),
         Command::Skill { command: None } => {
             print!("{SKILL_MD}");

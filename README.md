@@ -60,6 +60,32 @@ foac linear issue create --team <TEAM_UUID> --title "Fix the flux capacitor"
 foac linear --help
 ```
 
+## GitHub
+
+`foac github` talks to GitHub.com's REST API. Set `GITHUB_TOKEN`, or authenticate
+the `gh` CLI and foac will use `gh auth token` as a fallback. Repository-scoped
+commands accept `--repo OWNER/NAME`; without it, foac uses the current checkout's
+GitHub remote.
+
+For classic tokens, the `repo` scope covers private-repository commands. For
+fine-grained tokens, grant Metadata read plus read or write access—matching the
+commands you will use—to Issues, Pull requests, Actions, Checks, Commit
+statuses, Contents, and Administration. Branch protection and collaborator
+changes require Administration write access.
+
+```sh
+export GITHUB_TOKEN=github_pat_...
+foac github issue list --repo lra/foac --state open
+foac github pull get 14 --repo lra/foac
+foac github run list --repo lra/foac --status failure
+foac github --help
+```
+
+GitHub list commands print `{"items":[...],"pageInfo":{...}}` and accept
+`--limit`/`--page`. Commands with long Markdown fields accept either `--body`
+or `--body-file`. Asset and artifact commands return metadata only; binary
+transfer and Actions log retrieval are unsupported.
+
 ## Agents
 
 `foac skill` prints an agent skill explaining how the CLI is structured and its
