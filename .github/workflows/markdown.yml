@@ -1,0 +1,21 @@
+name: Markdown
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: markdown-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: rumdl check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: rvben/rumdl@v0

@@ -11,7 +11,7 @@ code 1, and nothing is interactive.
 
 ## Structure
 
-```
+```text
 foac <provider> <resource> <verb> [flags]
 ```
 

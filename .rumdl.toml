@@ -1,0 +1,3 @@
+[global]
+# Long lines are fine; URLs and install one-liners don't wrap well.
+disable = ["MD013"]
