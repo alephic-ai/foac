@@ -49,6 +49,8 @@ foac update
 
 `foac update` downloads the latest GitHub release for this platform and replaces the running binary.
 
+Once a day, other commands may print a notice on stderr if a newer release exists. They never auto-install. Set `FOAC_NO_UPDATE_CHECK` (or `CI`) to skip the check.
+
 ## Linear
 
 `foac linear` talks to [Linear's GraphQL API](https://linear.app/developers/graphql). It needs a personal API key in `LINEAR_API_KEY`. Every command prints JSON on stdout; list commands paginate with `--limit`/`--after` and include `pageInfo` in the output.

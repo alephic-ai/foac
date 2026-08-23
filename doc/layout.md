@@ -1,7 +1,8 @@
 # Layout and conventions
 
-The layout is two files: `src/main.rs` parses the top-level CLI and
-dispatches, `src/linear.rs` holds every Linear command. Queries live in
+`src/main.rs` parses the top-level CLI and dispatches, `src/linear.rs` holds
+every Linear command, and `src/update.rs` talks to GitHub Releases for
+`foac update` and the once-a-day version check. Queries live in
 `graphql/linear/queries.graphql`, and `graphql_client` generates their Rust
 types at compile time against the vendored `graphql/linear/schema.graphql`
 (51k lines — grep it, don't read it whole). It can be refreshed from
