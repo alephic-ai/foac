@@ -744,7 +744,7 @@ macro_rules! path {
 
 pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
     let Cmd { repo, command } = cmd;
-    let api = Api::github(github_token()?)?;
+    let api = Api::github(crate::auth::github_token()?)?;
     match command {
         Resource::Repo(cmd) => run_repo(&api, repo, cmd),
         Resource::Issue(cmd) => run_issue(&api, selected_repo(repo)?, cmd),
@@ -767,6 +767,41 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
         Resource::Label(cmd) => run_label(&api, selected_repo(repo)?, cmd),
         Resource::Collaborator(cmd) => run_collaborator(&api, selected_repo(repo)?, cmd),
     }
+}
+
+pub(crate) fn auth_identity(token: &str) -> Result<Value, crate::auth::ValidationError> {
+    auth_identity_at(
+        token,
+        reqwest::Url::parse(&format!("{API_URL}user")).unwrap(),
+    )
+}
+
+fn auth_identity_at(token: &str, url: reqwest::Url) -> Result<Value, crate::auth::ValidationError> {
+    let response = reqwest::blocking::Client::new()
+        .get(url)
+        .bearer_auth(token)
+        .header("Accept", "application/vnd.github+json")
+        .header("X-GitHub-Api-Version", API_VERSION)
+        .header("User-Agent", "foac")
+        .send()
+        .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
+    let status = response.status();
+    let text = response
+        .text()
+        .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
+    let body: Value = serde_json::from_str(&text).unwrap_or_else(|_| {
+        json!({
+            "status": status.as_u16(),
+            "body": text,
+        })
+    });
+    if status == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(crate::auth::ValidationError::Rejected(body.to_string()));
+    }
+    if !status.is_success() {
+        return Err(crate::auth::ValidationError::Failed(body.to_string()));
+    }
+    Ok(body)
 }
 
 fn run_repo(
@@ -1786,25 +1821,6 @@ impl BodyInput {
     }
 }
 
-fn github_token() -> Result<String, Box<dyn std::error::Error>> {
-    if let Some(token) = std::env::var("GITHUB_TOKEN")
-        .ok()
-        .filter(|token| !token.is_empty())
-    {
-        return Ok(token);
-    }
-    let output = ProcessCommand::new("gh").args(["auth", "token"]).output();
-    if let Ok(output) = output
-        && output.status.success()
-    {
-        let token = String::from_utf8(output.stdout)?.trim().to_owned();
-        if !token.is_empty() {
-            return Ok(token);
-        }
-    }
-    Err("GITHUB_TOKEN is not set and `gh auth token` did not return a token".into())
-}
-
 fn selected_repo(explicit: Option<String>) -> Result<Repo, Box<dyn std::error::Error>> {
     if let Some(repo) = explicit {
         return parse_repo(&repo).ok_or_else(|| "--repo must be OWNER/NAME".into());
@@ -2064,6 +2080,27 @@ mod tests {
         assert!(request.contains("x-github-api-version: 2026-03-10"));
         assert!(request.contains("accept: application/vnd.github+json"));
         assert_eq!(response.body, json!({ "ok": true }));
+    }
+
+    #[test]
+    fn validates_github_identity_and_rejects_bad_credentials() {
+        let (api, request_rx, server) = test_api(
+            "200 OK",
+            r#"{"id":1,"login":"octocat","name":"The Octocat"}"#,
+            "",
+        );
+        let identity =
+            auth_identity_at("status-token", api.base_url.join("user").unwrap()).unwrap();
+        server.join().unwrap();
+        let request = request_rx.recv().unwrap().to_ascii_lowercase();
+        assert!(request.starts_with("get /user http/1.1"));
+        assert!(request.contains("authorization: bearer status-token"));
+        assert_eq!(identity["login"], "octocat");
+
+        let (api, _, server) = test_api("401 Unauthorized", r#"{"message":"bad credentials"}"#, "");
+        let error = auth_identity_at("bad-token", api.base_url.join("user").unwrap()).unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(error, crate::auth::ValidationError::Rejected(_)));
     }
 
     #[test]

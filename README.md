@@ -55,9 +55,42 @@ foac update
 
 Other commands check GitHub for a newer release at most once a day, and print a notice on stderr while one exists. They never auto-install. Set `FOAC_NO_UPDATE_CHECK` (or `CI`) to skip the check.
 
+## Authentication
+
+foac can validate every provider at once or manage each provider separately:
+
+```sh
+foac auth status
+foac auth linear status
+foac auth linear login
+foac auth linear logout
+foac auth github status
+foac auth github login
+foac auth github logout
+```
+
+`login` prints a link and permission guidance, securely prompts for a personal
+API token, validates it, and stores it in the operating system's secret store:
+Keychain Services on macOS, Credential Manager on Windows, and Secret Service
+on Linux. Pipe a token to `login` for non-interactive use. Tokens are never
+printed.
+
+Environment variables take precedence over stored credentials. GitHub also
+falls back to `gh auth token` when neither `GITHUB_TOKEN` nor a stored foac
+credential is available. `logout` removes only foac's stored credential; it
+does not unset environment variables, log out the `gh` CLI, or revoke the token
+at the provider.
+
+Status commands validate credentials with the provider and print JSON. The
+all-provider command prints an object keyed by provider; provider-specific
+commands print one status object. A provider's `status` is `authenticated`,
+`unauthenticated`, or `error`, and includes the credential `source` and safe
+account identity when available. Status commands exit zero after printing the
+report, so callers should inspect the JSON status values.
+
 ## Linear
 
-`foac linear` talks to [Linear's GraphQL API](https://linear.app/developers/graphql). It needs a personal API key in `LINEAR_API_KEY`. Every command prints JSON on stdout; list commands paginate with `--limit`/`--after` and include `pageInfo` in the output.
+`foac linear` talks to [Linear's GraphQL API](https://linear.app/developers/graphql). It uses `LINEAR_API_KEY` or a credential saved by `foac auth linear login`. Every command prints JSON on stdout; list commands paginate with `--limit`/`--after` and include `pageInfo` in the output.
 
 ```sh
 export LINEAR_API_KEY=lin_api_...
@@ -68,10 +101,10 @@ foac linear --help
 
 ## GitHub
 
-`foac github` talks to GitHub.com's REST API. Set `GITHUB_TOKEN`, or authenticate
-the `gh` CLI and foac will use `gh auth token` as a fallback. Repository-scoped
-commands accept `--repo OWNER/NAME`; without it, foac uses the current checkout's
-GitHub remote.
+`foac github` talks to GitHub.com's REST API. It uses `GITHUB_TOKEN`, a credential
+saved by `foac auth github login`, or `gh auth token`, in that order.
+Repository-scoped commands accept `--repo OWNER/NAME`; without it, foac uses the
+current checkout's GitHub remote.
 
 For classic tokens, the `repo` scope covers private-repository commands. For
 fine-grained tokens, grant Metadata read plus read or write access—matching the

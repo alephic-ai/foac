@@ -1,5 +1,7 @@
 use graphql_client::GraphQLQuery;
 
+const API_URL: &str = "https://api.linear.app/graphql";
+
 // Linear custom scalars, mapped to plain strings/JSON since we never compute on them.
 type DateTime = String;
 type TimelessDate = String;
@@ -1194,6 +1196,38 @@ pub fn run(cmd: Cmd) -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+pub(crate) fn auth_identity(
+    token: &str,
+) -> Result<serde_json::Value, crate::auth::ValidationError> {
+    auth_identity_at(token, API_URL)
+}
+
+fn auth_identity_at(
+    token: &str,
+    api_url: &str,
+) -> Result<serde_json::Value, crate::auth::ValidationError> {
+    let response = reqwest::blocking::Client::new()
+        .post(api_url)
+        .header("Authorization", token)
+        .json(&WorkspaceGet::build_query(workspace_get::Variables {}))
+        .send()
+        .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
+    let status = response.status();
+    let body: serde_json::Value = response
+        .json()
+        .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
+    if status == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(crate::auth::ValidationError::Rejected(body.to_string()));
+    }
+    if !status.is_success() {
+        return Err(crate::auth::ValidationError::Failed(body.to_string()));
+    }
+    if body.get("errors").is_some_and(|errors| !errors.is_null()) {
+        return Err(crate::auth::ValidationError::Failed(body.to_string()));
+    }
+    Ok(body["data"].clone())
+}
+
 /// Parse a CLI string into a generated GraphQL enum (e.g. "onTrack") via serde.
 fn parse_enum<T: serde::de::DeserializeOwned>(s: String) -> Result<T, Box<dyn std::error::Error>> {
     Ok(serde_json::from_value(serde_json::Value::String(s))?)
@@ -1201,12 +1235,9 @@ fn parse_enum<T: serde::de::DeserializeOwned>(s: String) -> Result<T, Box<dyn st
 
 /// POST a compile-time-checked query to Linear, print the `data` JSON on stdout.
 fn exec<Q: GraphQLQuery>(variables: Q::Variables) -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("LINEAR_API_KEY")
-        .ok()
-        .filter(|k| !k.is_empty())
-        .ok_or("LINEAR_API_KEY is not set")?;
+    let key = crate::auth::linear_token()?;
     let response = reqwest::blocking::Client::new()
-        .post("https://api.linear.app/graphql")
+        .post(API_URL)
         // Personal API keys are sent bare, no "Bearer" prefix.
         .header("Authorization", key)
         .json(&Q::build_query(variables))
@@ -1222,6 +1253,10 @@ fn exec<Q: GraphQLQuery>(variables: Q::Variables) -> Result<(), Box<dyn std::err
 
 #[cfg(test)]
 mod tests {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+
     use super::*;
 
     #[test]
@@ -1247,5 +1282,70 @@ mod tests {
         // null values in update inputs would wipe data server-side.
         assert_eq!(filter.as_object().unwrap().len(), 3);
         assert!(v["variables"].get("after").is_none());
+    }
+
+    #[test]
+    fn validates_linear_identity_and_rejects_bad_credentials() {
+        let body = r#"{"data":{"organization":{"id":"workspace-id","name":"Workspace","urlKey":"workspace","createdAt":"2026-01-01T00:00:00Z"},"viewer":{"id":"user-id","name":"User","displayName":"Display","email":"user@example.com"}}}"#;
+        let (url, request_rx, server) = test_api("200 OK", body);
+        let identity = auth_identity_at("linear-token", &url).unwrap();
+        server.join().unwrap();
+        let request = request_rx.recv().unwrap().to_ascii_lowercase();
+        assert!(request.contains("authorization: linear-token"));
+        assert_eq!(identity["viewer"]["id"], "user-id");
+
+        let (url, _, server) = test_api("401 Unauthorized", r#"{"error":"invalid"}"#);
+        let error = auth_identity_at("bad-token", &url).unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(error, crate::auth::ValidationError::Rejected(_)));
+
+        let (url, _, server) = test_api(
+            "200 OK",
+            r#"{"errors":[{"message":"provider failure"}],"data":null}"#,
+        );
+        let error = auth_identity_at("token", &url).unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(error, crate::auth::ValidationError::Failed(_)));
+    }
+
+    fn test_api(
+        status: &str,
+        body: &str,
+    ) -> (String, mpsc::Receiver<String>, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (request_tx, request_rx) = mpsc::channel();
+        let response = format!(
+            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0; 1024];
+            loop {
+                let read = stream.read(&mut buffer).unwrap();
+                request.extend_from_slice(&buffer[..read]);
+                let complete = request
+                    .windows(4)
+                    .position(|window| window == b"\r\n\r\n")
+                    .is_some_and(|header_end| {
+                        let headers = String::from_utf8_lossy(&request[..header_end]);
+                        let content_length = headers.lines().find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse::<usize>().ok())
+                                .flatten()
+                        });
+                        request.len() >= header_end + 4 + content_length.unwrap_or(0)
+                    });
+                if read == 0 || complete {
+                    break;
+                }
+            }
+            let _ = request_tx.send(String::from_utf8(request).unwrap());
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+        (format!("http://{address}/"), request_rx, server)
     }
 }
