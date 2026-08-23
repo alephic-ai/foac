@@ -65,17 +65,21 @@ impl Config {
 pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
         Cmd::List => {
-            let config = load();
-            let statuses: serde_json::Map<String, serde_json::Value> = PROVIDERS
-                .iter()
-                .map(|name| (name.to_string(), json!({"enabled": config.enabled(name)})))
-                .collect();
-            crate::output::print(&serde_json::Value::Object(statuses), format);
+            crate::output::print(&statuses(&load()), format);
             Ok(())
         }
         Cmd::Enable { provider } => set_enabled(provider, true, format),
         Cmd::Disable { provider } => set_enabled(provider, false, format),
     }
+}
+
+fn statuses(config: &Config) -> serde_json::Value {
+    serde_json::Value::Object(
+        PROVIDERS
+            .iter()
+            .map(|name| (name.to_string(), json!({"enabled": config.enabled(name)})))
+            .collect(),
+    )
 }
 
 fn set_enabled(
@@ -86,10 +90,7 @@ fn set_enabled(
     let mut config = load();
     config.set_enabled(provider.as_str(), enabled);
     save(&config)?;
-    crate::output::print(
-        &json!({"provider": provider.as_str(), "enabled": enabled}),
-        format,
-    );
+    crate::output::print_highlighting(&statuses(&config), format, provider.as_str());
     Ok(())
 }
 
@@ -245,6 +246,20 @@ mod tests {
         assert_eq!(
             error,
             "github is disabled; run `foac provider enable github` to enable it"
+        );
+    }
+
+    #[test]
+    fn statuses_lists_every_provider() {
+        let mut config = Config::default();
+        config.set_enabled("sentry", false);
+        assert_eq!(
+            statuses(&config),
+            json!({
+                "github": {"enabled": true},
+                "linear": {"enabled": true},
+                "sentry": {"enabled": false},
+            })
         );
     }
 }

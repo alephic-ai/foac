@@ -15,8 +15,12 @@ stderr with exit code 1, nothing interactive. JSON success output (providers,
 auth, provider enable/disable) goes through the shared printer in
 `src/output.rs`: compact JSON by default, a table sized to the terminal width
 when stdout is an interactive TTY (overridable with `--format json|table|auto`
-or `FOAC_FORMAT`; `CI` forces JSON). Version, update, and skill output
-bypasses it. For Linear, `list` filter flags
+or `FOAC_FORMAT`; `CI` forces JSON). Enable and disable print the same
+keyed map as `provider list`; the table bolds the changed provider's values.
+Single-provider auth status and login print a two-line summary in table mode
+(logout prints one line); JSON stays a one-key map. The all-provider auth
+table flattens `account` to an identity string.
+Version, update, and skill output bypass it. For Linear, `list` filter flags
 accept a UUID or a human name (see `eq_filter`), while `create`/`update` flags
 require UUIDs.
 

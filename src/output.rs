@@ -1,10 +1,12 @@
 //! Shared success-output printer for the Linear and GitHub providers: compact
 //! JSON for machines, tables sized to the terminal for humans.
 
+use std::io::IsTerminal;
+
 use serde_json::{Map, Value};
 use tabled::builder::Builder;
 use tabled::settings::peaker::Priority;
-use tabled::settings::{Style, Width};
+use tabled::settings::{Color, Style, Width};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, clap::ValueEnum)]
 pub enum FormatArg {
@@ -43,11 +45,46 @@ pub fn resolve(flag: FormatArg, env: Option<&str>, ci: bool, tty: bool) -> Forma
 }
 
 pub fn print(value: &Value, format: Format) {
-    let width = terminal_size::terminal_size().map_or(80, |(w, _)| w.0 as usize);
-    print!("{}", render(value, format, width));
+    emit(value, format, None);
 }
 
+/// Like [`print`], but the table bolds every value cell of `highlight_key`.
+/// JSON is unchanged; ANSI is omitted when stdout is not a TTY or `NO_COLOR`
+/// is set to a non-empty value.
+pub fn print_highlighting(value: &Value, format: Format, highlight_key: &str) {
+    emit(value, format, Some(highlight_key));
+}
+
+/// JSON uses [`print`]; table mode writes `text` as-is (auth summaries).
+pub fn print_text(text: &str, value: &Value, format: Format) {
+    match format {
+        Format::Json => print(value, format),
+        Format::Table => print!("{text}"),
+    }
+}
+
+fn emit(value: &Value, format: Format, highlight_key: Option<&str>) {
+    let width = terminal_size::terminal_size().map_or(80, |(w, _)| w.0 as usize);
+    let highlight_key = highlight_key.filter(|_| format == Format::Table && color_enabled());
+    print!("{}", render_inner(value, format, width, highlight_key));
+}
+
+fn color_enabled() -> bool {
+    std::io::stdout().is_terminal()
+        && std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty())
+}
+
+#[cfg(test)]
 fn render(value: &Value, format: Format, width: usize) -> String {
+    render_inner(value, format, width, None)
+}
+
+fn render_inner(
+    value: &Value,
+    format: Format,
+    width: usize,
+    highlight_key: Option<&str>,
+) -> String {
     if format == Format::Json {
         return format!("{value}\n");
     }
@@ -81,7 +118,7 @@ fn render(value: &Value, format: Format, width: usize) -> String {
     }
     // Keyed map (provider list, auth status): one row per key.
     if root.len() > 1 && root.values().all(Value::is_object) {
-        return render_keyed(root, width);
+        return render_keyed(root, width, highlight_key);
     }
     render_object(root, width)
 }
@@ -123,10 +160,10 @@ fn render_list(rows: &[Value], page: &Map<String, Value>, width: usize) -> Strin
                 .map(|key| row.get(*key).map_or_else(String::new, cell)),
         );
     }
-    format!("{}\n\n{footer}\n", table(builder, width))
+    format!("{}\n\n{footer}\n", table(builder, width, &[]))
 }
 
-fn render_keyed(entries: &Map<String, Value>, width: usize) -> String {
+fn render_keyed(entries: &Map<String, Value>, width: usize, highlight_key: Option<&str>) -> String {
     let columns: std::collections::BTreeSet<&str> = entries
         .values()
         .filter_map(Value::as_object)
@@ -134,7 +171,8 @@ fn render_keyed(entries: &Map<String, Value>, width: usize) -> String {
         .collect();
     let mut builder = Builder::default();
     builder.push_record(std::iter::once("KEY").chain(columns.iter().copied()));
-    for (key, row) in entries {
+    let mut highlights = Vec::new();
+    for (row_i, (key, row)) in entries.iter().enumerate() {
         builder.push_record(
             std::iter::once(key.clone()).chain(
                 columns
@@ -142,8 +180,12 @@ fn render_keyed(entries: &Map<String, Value>, width: usize) -> String {
                     .map(|column| row.get(*column).map_or_else(String::new, cell)),
             ),
         );
+        if highlight_key == Some(key.as_str()) {
+            // Skip the KEY column; bold every value on the changed row.
+            highlights.extend((1..=columns.len()).map(|col| (row_i + 1, col)));
+        }
     }
-    format!("{}\n", table(builder, width))
+    format!("{}\n", table(builder, width, &highlights))
 }
 
 fn render_object(fields: &Map<String, Value>, width: usize) -> String {
@@ -155,7 +197,7 @@ fn render_object(fields: &Map<String, Value>, width: usize) -> String {
     for (key, value) in fields {
         builder.push_record([key.clone(), cell(value)]);
     }
-    format!("{}\n", table(builder, width))
+    format!("{}\n", table(builder, width, &[]))
 }
 
 /// Strings render raw (no JSON quoting) with newlines/CR/tabs flattened to
@@ -167,13 +209,17 @@ fn cell(value: &Value) -> String {
     }
 }
 
-fn table(builder: Builder, width: usize) -> String {
+fn table(builder: Builder, width: usize, highlights: &[(usize, usize)]) -> String {
     let mut table = builder.build();
     table.with(Style::psql()).with(
         Width::truncate(width)
             .suffix("…")
             .priority(Priority::max(true)),
     );
+    // Color after truncate so cell width does not count ANSI bytes.
+    for &(row, col) in highlights {
+        table.modify((row, col), Color::BOLD);
+    }
     // tabled pads every column including the last; keep lines clean.
     table
         .to_string()
@@ -309,6 +355,35 @@ mod tests {
              --------+---------\n\
              \x20github | false\n\
              \x20linear | true\n"
+        );
+    }
+
+    #[test]
+    fn keyed_map_highlights_the_named_row_values() {
+        let value = json!({
+            "github": {"enabled": false},
+            "linear": {"enabled": true},
+            "sentry": {"enabled": false},
+        });
+        assert_eq!(
+            render_inner(&value, Format::Table, 80, Some("sentry")),
+            " KEY    | enabled\n\
+             --------+---------\n\
+             \x20github | false\n\
+             \x20linear | true\n\
+             \x20sentry | \u{1b}[1mfalse\u{1b}[22m\n"
+        );
+    }
+
+    #[test]
+    fn json_mode_ignores_highlight() {
+        let value = json!({
+            "github": {"enabled": true},
+            "sentry": {"enabled": false},
+        });
+        assert_eq!(
+            render_inner(&value, Format::Json, 80, Some("sentry")),
+            format!("{value}\n")
         );
     }
 
