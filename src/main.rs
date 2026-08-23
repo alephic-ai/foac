@@ -22,11 +22,9 @@ enum Command {
     /// Interact with Linear (linear.app), requires LINEAR_API_KEY
     #[command(subcommand)]
     Linear(linear::Cmd),
-    /// Print an agent skill (SKILL.md) describing how to use this CLI
-    Skill {
-        #[command(subcommand)]
-        command: Option<SkillCmd>,
-    },
+    /// Manage the agent skill (SKILL.md) describing how to use this CLI
+    #[command(subcommand, arg_required_else_help = true)]
+    Skill(SkillCmd),
     /// Download and replace this binary with the latest GitHub release
     Update,
     /// Print the version
@@ -46,13 +44,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let result = match command {
         Command::Github(cmd) => github::run(cmd),
         Command::Linear(cmd) => linear::run(cmd),
-        Command::Skill { command: None } => {
+        Command::Skill(SkillCmd::Print) => {
             print!("{SKILL_MD}");
             Ok(())
         }
-        Command::Skill {
-            command: Some(SkillCmd::Install),
-        } => skill_install_cmd(),
+        Command::Skill(SkillCmd::Install) => skill_install_cmd(),
         Command::Update => update::run(),
         Command::Version => {
             println!("{}", env!("CARGO_PKG_VERSION"));
@@ -67,6 +63,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 #[derive(Subcommand)]
 enum SkillCmd {
+    /// Print the skill to stdout
+    Print,
     /// Install the skill for every supported agent found on this machine
     Install,
 }
@@ -75,7 +73,7 @@ fn skill_install_cmd() -> Result<(), Box<dyn std::error::Error>> {
     let home = std::env::home_dir().ok_or("could not determine the home directory")?;
     let installed = skill_install(&home)?;
     if installed.is_empty() {
-        return Err("no supported agent found; install manually with: foac skill > <agent skills dir>/foac/SKILL.md".into());
+        return Err("no supported agent found; install manually with: foac skill print > <agent skills dir>/foac/SKILL.md".into());
     }
     for path in installed {
         println!("Installed {}", path.display());
@@ -126,6 +124,17 @@ mod tests {
     #[test]
     fn verify_cli() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn skill_requires_subcommand() {
+        assert!(Cli::try_parse_from(["foac", "skill"]).is_err());
+        assert!(matches!(
+            Cli::try_parse_from(["foac", "skill", "print"])
+                .unwrap()
+                .command,
+            Command::Skill(SkillCmd::Print)
+        ));
     }
 
     #[test]
