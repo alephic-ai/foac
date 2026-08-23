@@ -53,5 +53,5 @@ foac linear comment create --issue ENG-123 --body "Done, see PR #42"
 ## Maintenance
 
 `foac update` replaces the binary with the latest release; `foac version`
-prints the installed version. Regenerate this skill with `foac skill` after
-updating.
+prints the installed version. Reinstall this skill with `foac skill install`
+after updating.

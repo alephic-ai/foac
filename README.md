@@ -66,11 +66,10 @@ The vendored schema in `graphql/linear/schema.graphql` can be refreshed from
 ## Agents
 
 `foac skill` prints an agent skill explaining how the CLI is structured and its
-conventions. To install it for Claude Code:
-
-```sh
-mkdir -p ~/.claude/skills/foac && foac skill > ~/.claude/skills/foac/SKILL.md
-```
+conventions. `foac skill install` writes it into the skill folders of the
+agents found on the machine: `~/.claude/skills/` for Claude Code, and the
+cross-agent standard `~/.agents/skills/` read by Cursor, Codex, Gemini CLI,
+GitHub Copilot, OpenCode, Amp, and others.
 
 ## From source
 

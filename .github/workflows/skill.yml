@@ -22,7 +22,7 @@ jobs:
       # once installed; stage the source file accordingly before validating.
       - run: |
           mkdir -p "$RUNNER_TEMP/skills/foac"
-          cp docs/SKILL.md "$RUNNER_TEMP/skills/foac/"
+          cp doc/SKILL.md "$RUNNER_TEMP/skills/foac/"
       - uses: alephic-ai/skref@v1
         with:
           path: ${{ runner.temp }}/skills
