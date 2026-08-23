@@ -1,1 +1,6 @@
 /target
+
+# Local agent configuration
+/.agents/
+/.claude/
+/.codex/
