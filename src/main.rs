@@ -17,6 +17,8 @@ enum Command {
     /// Interact with Linear (linear.app), requires LINEAR_API_KEY
     #[command(subcommand)]
     Linear(linear::Cmd),
+    /// Print an agent skill (SKILL.md) describing how to use this CLI
+    Skill,
     /// Download and replace this binary with the latest GitHub release
     Update,
     /// Print the version
@@ -33,6 +35,10 @@ fn main() {
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     match Cli::parse().command {
         Some(Command::Linear(cmd)) => linear::run(cmd),
+        Some(Command::Skill) => {
+            print!("{}", include_str!("../docs/SKILL.md"));
+            Ok(())
+        }
         Some(Command::Update) => update(),
         Some(Command::Version) => {
             println!("{}", env!("CARGO_PKG_VERSION"));

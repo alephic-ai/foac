@@ -1,0 +1,28 @@
+name: Skill
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: skill-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: skref validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # The spec wants the directory named after the skill, which only applies
+      # once installed; stage the source file accordingly before validating.
+      - run: |
+          mkdir -p "$RUNNER_TEMP/skills/foac"
+          cp docs/SKILL.md "$RUNNER_TEMP/skills/foac/"
+      - uses: alephic-ai/skref@v1
+        with:
+          path: ${{ runner.temp }}/skills
