@@ -120,7 +120,6 @@ struct ResolvedCredential {
 
 const SLACK_BOT_CREDENTIAL: &str = "slack_bot";
 const SLACK_USER_CREDENTIAL: &str = "slack_user";
-const LEGACY_SLACK_CREDENTIAL: &str = "slack";
 
 trait SecretStore {
     fn get(&self, name: &str) -> Result<Option<String>, String>;
@@ -323,11 +322,7 @@ fn logout(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let provider_name = provider.as_str();
     let names: &[&str] = if provider == Provider::Slack {
-        &[
-            SLACK_BOT_CREDENTIAL,
-            SLACK_USER_CREDENTIAL,
-            LEGACY_SLACK_CREDENTIAL,
-        ]
+        &[SLACK_BOT_CREDENTIAL, SLACK_USER_CREDENTIAL]
     } else {
         &[provider_name]
     };
@@ -814,7 +809,7 @@ fn resolve_slack_bot(
 ) -> Result<ResolvedCredential, ResolveError> {
     let credential = resolve_named_stored(
         environment,
-        &[SLACK_BOT_CREDENTIAL, LEGACY_SLACK_CREDENTIAL],
+        &[SLACK_BOT_CREDENTIAL],
         "SLACK_BOT_TOKEN is not set and no Slack bot credential is stored",
         "Slack bot",
         store,
@@ -1246,18 +1241,6 @@ mod tests {
     }
 
     #[test]
-    fn slack_bot_resolution_reads_the_legacy_storage_key() {
-        let store = MemoryStore::default();
-        store
-            .set_many(&[(LEGACY_SLACK_CREDENTIAL, "xoxb-legacy")])
-            .unwrap();
-        assert_eq!(
-            resolve_slack(None, None, &store).unwrap().token,
-            "xoxb-legacy"
-        );
-    }
-
-    #[test]
     fn parses_slack_login_tokens_in_bot_then_user_order() {
         assert_eq!(
             parse_slack_tokens("xoxb-bot\nxoxp-user\n").unwrap(),
@@ -1375,13 +1358,12 @@ mod tests {
     }
 
     #[test]
-    fn slack_logout_removes_both_tokens_and_the_legacy_key() {
+    fn slack_logout_removes_both_tokens() {
         let store = MemoryStore::default();
         store
             .set_many(&[
                 (SLACK_BOT_CREDENTIAL, "xoxb-bot"),
                 (SLACK_USER_CREDENTIAL, "xoxp-user"),
-                (LEGACY_SLACK_CREDENTIAL, "xoxb-legacy"),
             ])
             .unwrap();
         logout(Provider::Slack, &store, crate::output::Format::Json).unwrap();
