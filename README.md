@@ -28,6 +28,14 @@ graph LR
     SMCP[Sentry MCP server] --> Sentry
     SCLI[sentry-cli] --> Sentry
     SLMCP[Slack MCP server] --> Slack
+    classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
+    classDef mcp fill:#ffe0b2,stroke:#e65100,color:#000
+    classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
+    classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
+    class CC,CU,CX,GEM harness
+    class LMCP,GHMCP,SMCP,SLMCP mcp
+    class GHCLI,SCLI cli
+    class Linear,GitHub,Sentry,Slack provider
 ```
 
 With foac, install once and log in once; every harness talks to every
@@ -40,6 +48,12 @@ graph LR
     CX[Codex] --> F
     GEM[Gemini CLI] --> F[foac]
     F --> Linear & GitHub & Sentry & Slack
+    classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
+    classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
+    classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
+    class CC,CU,CX,GEM harness
+    class F cli
+    class Linear,GitHub,Sentry,Slack provider
 ```
 
 ## Why harnesses like foac
