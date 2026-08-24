@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -160,10 +160,7 @@ fn write(path: &Path, config: &Config) -> Result<(), Box<dyn std::error::Error>>
         std::fs::create_dir_all(dir)?;
     }
     let bytes = serde_json::to_vec_pretty(config)?;
-    write_private(path, |file| {
-        file.set_len(0)?;
-        file.write_all(&bytes)
-    })?;
+    write_private(path, |file| file.write_all(&bytes))?;
     Ok(())
 }
 
@@ -171,24 +168,25 @@ fn write_private(
     path: &Path,
     write_body: impl FnOnce(&mut File) -> std::io::Result<()>,
 ) -> std::io::Result<()> {
-    let mut options = OpenOptions::new();
-    options.write(true).create(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options.open(path)?;
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut temp = tempfile::Builder::new()
+        .prefix(".foac-config-")
+        .tempfile_in(dir)?;
 
-    // Existing files may have permissive modes, so tighten them before the
-    // callback can truncate the file or write credentials.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        temp.as_file()
+            .set_permissions(std::fs::Permissions::from_mode(0o600))?;
     }
 
-    write_body(&mut file)
+    write_body(temp.as_file_mut())?;
+
+    // into_temp_path closes the handle before persist atomically replaces the
+    // destination. On Windows, tempfile implements this with MoveFileExW and
+    // MOVEFILE_REPLACE_EXISTING rather than std::fs::rename.
+    let temp_path = temp.into_temp_path();
+    temp_path.persist(path).map_err(|error| error.error)
 }
 
 #[cfg(test)]
@@ -328,7 +326,7 @@ mod tests {
         write_private(&path, |file| {
             let mode = file.metadata().unwrap().permissions().mode();
             assert_eq!(mode & 0o777, 0o600);
-            assert_eq!(std::fs::read(&path).unwrap(), b"");
+            assert!(!path.exists());
             file.write_all(b"secret")
         })
         .unwrap();
@@ -337,9 +335,9 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    #[cfg(unix)]
     #[test]
-    fn private_writer_tightens_existing_file_before_replacing_contents() {
+    fn private_writer_atomically_replaces_existing_file() {
+        #[cfg(unix)]
         use std::os::unix::fs::PermissionsExt;
 
         let dir = std::env::temp_dir().join(format!(
@@ -349,18 +347,48 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.json");
         std::fs::write(&path, b"old secret").unwrap();
+        #[cfg(unix)]
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o666)).unwrap();
 
         write_private(&path, |file| {
-            let mode = file.metadata().unwrap().permissions().mode();
-            assert_eq!(mode & 0o777, 0o600);
+            #[cfg(unix)]
+            {
+                let mode = file.metadata().unwrap().permissions().mode();
+                assert_eq!(mode & 0o777, 0o600);
+            }
             assert_eq!(std::fs::read(&path).unwrap(), b"old secret");
-            file.set_len(0)?;
             file.write_all(b"new secret")
         })
         .unwrap();
 
         assert_eq!(std::fs::read(&path).unwrap(), b"new secret");
+        #[cfg(unix)]
+        {
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn private_writer_keeps_existing_file_on_pre_replace_failure() {
+        let dir = std::env::temp_dir().join(format!(
+            "foac-provider-private-failure-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        std::fs::write(&path, b"old secret").unwrap();
+
+        let error = write_private(&path, |file| {
+            file.write_all(b"partial new secret")?;
+            Err(std::io::Error::other("injected pre-replace failure"))
+        })
+        .unwrap_err();
+
+        assert_eq!(error.to_string(), "injected pre-replace failure");
+        assert_eq!(std::fs::read(&path).unwrap(), b"old secret");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
