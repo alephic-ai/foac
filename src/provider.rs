@@ -65,7 +65,7 @@ impl Config {
 pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
         Cmd::List => {
-            crate::output::print(&statuses(&load()), format);
+            crate::output::print(&statuses(&load()?), format);
             Ok(())
         }
         Cmd::Enable { provider } => set_enabled(provider, true, format),
@@ -87,7 +87,7 @@ fn set_enabled(
     enabled: bool,
     format: crate::output::Format,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut config = load();
+    let mut config = load()?;
     config.set_enabled(provider.as_str(), enabled);
     save(&config)?;
     crate::output::print_highlighting(&statuses(&config), format, provider.as_str());
@@ -102,8 +102,9 @@ pub fn ensure_enabled(config: &Config, name: &str) -> Result<(), Box<dyn std::er
     }
 }
 
-pub fn load() -> Config {
-    path().and_then(|path| read(&path)).unwrap_or_default()
+pub fn load() -> Result<Config, Box<dyn std::error::Error>> {
+    let path = path().ok_or("could not determine the config path")?;
+    load_from(&path)
 }
 
 pub(crate) fn save(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
@@ -123,8 +124,33 @@ fn config_path(xdg_config_home: Option<&str>, home: Option<&Path>) -> Option<Pat
     Some(home?.join(".config/foac/config.json"))
 }
 
-fn read(path: &Path) -> Option<Config> {
-    serde_json::from_slice(&std::fs::read(path).ok()?).ok()
+fn load_from(path: &Path) -> Result<Config, Box<dyn std::error::Error>> {
+    Ok(read(path)?.unwrap_or_default())
+}
+
+fn read(path: &Path) -> Result<Option<Config>, Box<dyn std::error::Error>> {
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!("could not read config file {}: {error}", path.display()).into());
+        }
+    };
+    serde_json::from_slice(&bytes).map(Some).map_err(|error| {
+        let cause = match error.classify() {
+            serde_json::error::Category::Io => "JSON I/O error",
+            serde_json::error::Category::Syntax => "invalid JSON syntax",
+            serde_json::error::Category::Data => "invalid config data",
+            serde_json::error::Category::Eof => "unexpected end of JSON input",
+        };
+        format!(
+            "could not parse config file {}: {cause} at line {} column {}",
+            path.display(),
+            error.line(),
+            error.column()
+        )
+        .into()
+    })
 }
 
 fn write(path: &Path, config: &Config) -> Result<(), Box<dyn std::error::Error>> {
@@ -179,11 +205,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("foac-provider-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.json");
-        let corrupt = dir.join("corrupt.json");
-        std::fs::write(&corrupt, "not-json").unwrap();
-
-        assert_eq!(read(&path), None);
-        assert_eq!(read(&corrupt), None);
+        assert_eq!(read(&path).unwrap(), None);
         assert!(Config::default().enabled("github"));
 
         let mut config = Config::default();
@@ -195,7 +217,7 @@ mod tests {
             "{\n  \"disabled_providers\": [\n    \"github\"\n  ]\n}"
         );
 
-        let config = read(&path).unwrap();
+        let config = read(&path).unwrap().unwrap();
         assert!(!config.enabled("github"));
         assert!(config.enabled("linear"));
 
@@ -212,7 +234,7 @@ mod tests {
             let mode = std::fs::metadata(&path).unwrap().permissions().mode();
             assert_eq!(mode & 0o777, 0o600);
         }
-        let config = read(&path).unwrap();
+        let config = read(&path).unwrap().unwrap();
         assert_eq!(config.credential("linear"), Some("lin_api_token"));
         assert_eq!(config.credential("github"), None);
 
@@ -220,7 +242,7 @@ mod tests {
         config.set_credential("slack_bot", "xoxb-bot".into());
         config.set_credential("slack_user", "xoxp-user".into());
         write(&path, &config).unwrap();
-        let config = read(&path).unwrap();
+        let config = read(&path).unwrap().unwrap();
         assert_eq!(config.credential("slack_bot"), Some("xoxb-bot"));
         assert_eq!(config.credential("slack_user"), Some("xoxp-user"));
 
@@ -237,7 +259,7 @@ mod tests {
 
         config.set_sentry_url(Some("https://sentry.example.com".into()));
         write(&path, &config).unwrap();
-        let config = read(&path).unwrap();
+        let config = read(&path).unwrap().unwrap();
         assert_eq!(config.sentry_url(), Some("https://sentry.example.com"));
         assert_eq!(Config::default().sentry_url(), None);
 
@@ -262,7 +284,36 @@ mod tests {
             std::fs::read(&path).unwrap(),
             serde_json::to_string_pretty(&config).unwrap().as_bytes()
         );
-        assert_eq!(read(&path), Some(config));
+        assert_eq!(read(&path).unwrap(), Some(config));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn config_read_distinguishes_missing_unreadable_and_malformed_files() {
+        let dir =
+            std::env::temp_dir().join(format!("foac-provider-read-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let missing = dir.join("missing.json");
+        assert_eq!(load_from(&missing).unwrap(), Config::default());
+
+        let unreadable = dir.join("unreadable.json");
+        std::fs::create_dir(&unreadable).unwrap();
+        let error = load_from(&unreadable).unwrap_err().to_string();
+        assert!(error.contains("could not read config file"));
+        assert!(error.contains(&unreadable.display().to_string()));
+
+        let malformed = dir.join("malformed.json");
+        std::fs::write(
+            &malformed,
+            br#"{"credentials":"sensitive-token-not-for-errors"}"#,
+        )
+        .unwrap();
+        let error = load_from(&malformed).unwrap_err().to_string();
+        assert!(error.contains("could not parse config file"));
+        assert!(error.contains(&malformed.display().to_string()));
+        assert!(error.contains("invalid config data at line 1 column"));
+        assert!(!error.contains("sensitive-token-not-for-errors"));
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

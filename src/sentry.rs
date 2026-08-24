@@ -183,7 +183,12 @@ pub(crate) fn auth_identity(
     token: &str,
     url_override: Option<&str>,
 ) -> Result<Value, crate::auth::ValidationError> {
-    let base = url_override.map_or_else(base_url, |url| url.trim_end_matches('/').to_owned());
+    let base = match url_override {
+        Some(url) => url.trim_end_matches('/').to_owned(),
+        None => {
+            base_url().map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?
+        }
+    };
     let url = reqwest::Url::parse(&format!("{base}/api/0/organizations/"))
         .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
     auth_identity_at(token, url)
@@ -348,7 +353,7 @@ impl Api {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
             client: reqwest::blocking::Client::new(),
-            base_url: reqwest::Url::parse(&base_url())?,
+            base_url: reqwest::Url::parse(&base_url()?)?,
             token,
             format,
         })
@@ -436,11 +441,15 @@ impl Api {
     }
 }
 
-pub(crate) fn base_url() -> String {
-    resolve_base_url(
-        std::env::var("SENTRY_URL").ok(),
-        crate::provider::load().sentry_url().map(str::to_owned),
-    )
+pub(crate) fn base_url() -> Result<String, Box<dyn std::error::Error>> {
+    let environment = std::env::var("SENTRY_URL").ok();
+    if environment.as_ref().is_some_and(|url| !url.is_empty()) {
+        return Ok(resolve_base_url(environment, None));
+    }
+    Ok(resolve_base_url(
+        environment,
+        crate::provider::load()?.sentry_url().map(str::to_owned),
+    ))
 }
 
 /// Turn the hostname the user gave at login into a base URL: empty means the

@@ -78,6 +78,9 @@ foac <provider> <resource> <verb> [flags]
   on or off (state kept in `~/.config/foac/config.json`) and prints the same
   per-provider enabled map as `foac provider list`. Disabled providers are
   hidden from discovery and their commands refuse to run.
+- **Configuration errors**: A missing config file is a valid first-run state.
+  An existing file that cannot be read or parsed fails closed with its path and
+  cause; foac never replaces it with defaults during a later mutation.
 <!-- foac-provider:linear -->
 - **Linear auth precedence**: `LINEAR_API_KEY`, then the foac config file.
 <!-- /foac-provider:linear -->
