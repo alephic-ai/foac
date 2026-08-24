@@ -18,16 +18,15 @@ and one-off CLIs, each with its own config and its own copy of your tokens:
 
 ```mermaid
 graph LR
-    CC([Claude Code]) --> LMCP & GHCLI & JMCP & CMCP & SMCP & SLMCP
-    CU([Cursor]) --> LMCP & GHMCP & JMCP & CMCP & SMCP & SLMCP
-    GRK([Grok Build]) --> LMCP & GHMCP & JMCP & CMCP & SMCP & SLMCP
-    CX([Codex]) --> LMCP & GHCLI & JMCP & CMCP & SMCP & SLMCP
-    GEM([Gemini CLI]) --> LMCP & GHMCP & JMCP & CMCP & SMCP & SLMCP
+    CC([Claude Code]) --> LMCP & GHCLI & AMCP & SMCP & SLMCP
+    CU([Cursor]) --> LMCP & GHMCP & AMCP & SMCP & SLMCP
+    GRK([Grok Build]) --> LMCP & GHMCP & AMCP & SMCP & SLMCP
+    CX([Codex]) --> LMCP & GHCLI & AMCP & SMCP & SLMCP
+    GEM([Gemini CLI]) --> LMCP & GHMCP & AMCP & SMCP & SLMCP
     LMCP{{Linear MCP server}} --> Linear[(Linear)]
     GHMCP{{GitHub MCP server}} --> GitHub[(GitHub)]
     GHCLI[[gh CLI]] --> GitHub
-    JMCP{{Jira MCP server}} --> Jira[(Jira)]
-    CMCP{{Confluence MCP server}} --> Confluence[(Confluence)]
+    AMCP{{Atlassian MCP server}} --> Jira[(Jira)] & Confluence[(Confluence)]
     SMCP{{Sentry MCP server}} --> Sentry[(Sentry)]
     SLMCP{{Slack MCP server}} --> Slack[(Slack)]
     classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
@@ -35,13 +34,13 @@ graph LR
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
     class CC,CU,GRK,CX,GEM harness
-    class LMCP,GHMCP,JMCP,CMCP,SMCP,SLMCP mcp
+    class LMCP,GHMCP,AMCP,SMCP,SLMCP mcp
     class GHCLI cli
     class Linear,GitHub,Jira,Confluence,Sentry,Slack provider
 ```
 
-Five harnesses and six providers is thirty integrations to configure and
-keep authenticated. Every harness or provider you add multiplies that
+Five harnesses and five adapters is twenty-five integrations to configure
+and keep authenticated. Every harness or adapter you add multiplies that
 number.
 
 With foac, install once and log in once; every harness talks to every
