@@ -124,6 +124,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[derive(Subcommand)]
 enum SkillCmd {
     /// Print one provider's skill to stdout
+    #[command(arg_required_else_help = true)]
     Print {
         #[arg(value_parser = clap::builder::PossibleValuesParser::new(provider::PROVIDERS))]
         provider: String,
@@ -588,7 +589,12 @@ mod tests {
     #[test]
     fn skill_requires_subcommand() {
         assert!(Cli::try_parse_from(["foac", "skill"]).is_err());
-        assert!(Cli::try_parse_from(["foac", "skill", "print"]).is_err());
+        let missing_provider = Cli::try_parse_from(["foac", "skill", "print"])
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(missing_provider.contains("<PROVIDER>"));
+        assert!(missing_provider.contains("possible values: github, linear, sentry, slack"));
         assert!(Cli::try_parse_from(["foac", "skill", "print", "nope"]).is_err());
         assert!(matches!(
             Cli::try_parse_from(["foac", "skill", "print", "linear"])
