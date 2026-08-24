@@ -17,4 +17,5 @@ self_update = { version = "1.0.0-rc.6", features = ["archive-zip", "compression-
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tabled = { version = "0.21.0", default-features = false, features = ["std"] }
+tempfile = "3.27.0"
 terminal_size = "0.4.4"
