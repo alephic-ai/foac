@@ -117,7 +117,7 @@ mise use -g github:lra/foac
 
 This installs the `foac` binary from
 [GitHub Releases](https://github.com/lra/foac/releases) and puts it on your
-`PATH`; `mise up` upgrades it later.
+`PATH`; `foac update` keeps it current after that.
 
 ## Quick start
 
