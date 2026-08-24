@@ -18,16 +18,16 @@ and one-off CLIs, each with its own config and its own copy of your tokens:
 
 ```mermaid
 graph LR
-    CC[Claude Code] --> LMCP & GHCLI & SMCP & SLMCP
-    CU[Cursor] --> LMCP & GHMCP & SCLI & SLMCP
-    CX[Codex] --> LMCP & GHCLI & SMCP & SLMCP
-    GEM[Gemini CLI] --> LMCP & GHMCP & SMCP & SLMCP
-    LMCP[Linear MCP server] --> Linear
-    GHMCP[GitHub MCP server] --> GitHub
-    GHCLI[gh CLI] --> GitHub
-    SMCP[Sentry MCP server] --> Sentry
-    SCLI[sentry-cli] --> Sentry
-    SLMCP[Slack MCP server] --> Slack
+    CC([Claude Code]) --> LMCP & GHCLI & SMCP & SLMCP
+    CU([Cursor]) --> LMCP & GHMCP & SCLI & SLMCP
+    CX([Codex]) --> LMCP & GHCLI & SMCP & SLMCP
+    GEM([Gemini CLI]) --> LMCP & GHMCP & SMCP & SLMCP
+    LMCP{{Linear MCP server}} --> Linear[(Linear)]
+    GHMCP{{GitHub MCP server}} --> GitHub[(GitHub)]
+    GHCLI[[gh CLI]] --> GitHub
+    SMCP{{Sentry MCP server}} --> Sentry[(Sentry)]
+    SCLI[[sentry-cli]] --> Sentry
+    SLMCP{{Slack MCP server}} --> Slack[(Slack)]
     classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
     classDef mcp fill:#ffe0b2,stroke:#e65100,color:#000
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
@@ -43,11 +43,11 @@ provider through the same binary:
 
 ```mermaid
 graph LR
-    CC[Claude Code] --> F
-    CU[Cursor] --> F
-    CX[Codex] --> F
-    GEM[Gemini CLI] --> F[foac]
-    F --> Linear & GitHub & Sentry & Slack
+    CC([Claude Code]) --> F
+    CU([Cursor]) --> F
+    CX([Codex]) --> F
+    GEM([Gemini CLI]) --> F[[foac]]
+    F --> Linear[(Linear)] & GitHub[(GitHub)] & Sentry[(Sentry)] & Slack[(Slack)]
     classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
