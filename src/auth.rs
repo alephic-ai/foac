@@ -1155,7 +1155,7 @@ fn print_login_help(
             );
         }
         Provider::Figma => eprintln!(
-            "Create a personal access token in Figma under Settings > Security > Personal access tokens (https://www.figma.com/developers/api#access-tokens).\nGrant current_user:read (required for login validation), then the scopes for the commands you use: folders:read (project and file listing), file_content:read (file get/nodes and image export), file_versions:read (version history), and file_comments:read/file_comments:write (comments)."
+            "Create a personal access token in Figma under Settings > Security > Personal access tokens (https://www.figma.com/developers/api#access-tokens).\nGrant the scopes for the commands you use:\n  current_user:read    required, login validates against /v1/me\n  folders:read         project list, file list\n  file_content:read    file get, file nodes, image export\n  file_versions:read   file versions\n  file_comments:read   comment list\n  file_comments:write  comment create, comment delete"
         ),
     }
     Ok(())
