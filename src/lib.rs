@@ -4,6 +4,7 @@
 
 pub mod auth;
 pub mod github;
+pub mod jira;
 pub mod linear;
 pub mod output;
 pub mod provider;

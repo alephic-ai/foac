@@ -20,6 +20,8 @@ enum AuthCmd {
     Linear(ProviderCmd),
     /// Configure GitHub authentication
     Github(ProviderCmd),
+    /// Configure Jira (Atlassian) authentication
+    Jira(JiraCmd),
     /// Configure Slack authentication
     Slack(SlackCmd),
     /// Configure Sentry authentication
@@ -65,6 +67,35 @@ enum SlackAction {
 
 #[derive(Args)]
 #[command(arg_required_else_help = true)]
+struct JiraCmd {
+    #[command(subcommand)]
+    command: JiraAction,
+}
+
+#[derive(Subcommand)]
+enum JiraAction {
+    /// Check authentication for this provider
+    Status,
+    /// Validate and save the Atlassian host, email, and API token
+    ///
+    /// Prompts for the host, email, then API token. Redirected input supplies
+    /// one line per missing value in the same order; --host and --email skip
+    /// their prompt or line. The stored credential is shared with future
+    /// Atlassian providers.
+    Login {
+        /// Atlassian site host like acme.atlassian.net, skipping the prompt
+        #[arg(long)]
+        host: Option<String>,
+        /// Atlassian account email, skipping the prompt
+        #[arg(long)]
+        email: Option<String>,
+    },
+    /// Remove foac's stored Atlassian host, email, and API token
+    Logout,
+}
+
+#[derive(Args)]
+#[command(arg_required_else_help = true)]
 struct SentryCmd {
     #[command(subcommand)]
     command: SentryAction,
@@ -89,6 +120,7 @@ enum SentryAction {
 pub enum Provider {
     Linear,
     Github,
+    Jira,
     Slack,
     Sentry,
 }
@@ -175,6 +207,14 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
         }
         AuthCmd::Linear(cmd) => run_provider(Provider::Linear, cmd.command, &store, format),
         AuthCmd::Github(cmd) => run_provider(Provider::Github, cmd.command, &store, format),
+        AuthCmd::Jira(cmd) => match cmd.command {
+            JiraAction::Status => {
+                print_status(Provider::Jira, &store, format);
+                Ok(())
+            }
+            JiraAction::Login { host, email } => jira_login(host, email, &store, format),
+            JiraAction::Logout => logout(Provider::Jira, &store, format),
+        },
         AuthCmd::Slack(cmd) => run_slack(cmd.command, &store, format),
         AuthCmd::Sentry(cmd) => match cmd.command {
             SentryAction::Status => {
@@ -236,6 +276,155 @@ pub(crate) fn github_token() -> Result<String, Box<dyn std::error::Error>> {
     .map_err(Into::into)
 }
 
+/// Vendor-level Atlassian credentials: every Jira request needs the tenant
+/// host, the account email, and the API token.
+#[derive(Debug)]
+pub(crate) struct JiraCredentials {
+    pub(crate) host: String,
+    pub(crate) email: String,
+    pub(crate) token: String,
+}
+
+#[derive(Debug)]
+struct ResolvedJira {
+    credentials: JiraCredentials,
+    /// The token's source; the host and email may come from elsewhere.
+    source: CredentialSource,
+}
+
+/// Resolve the credentials for a `foac jira` invocation. Each value falls
+/// back flag > environment > stored; a missing token is additionally read
+/// from redirected stdin so a one-off invocation never puts it in shell
+/// history.
+pub(crate) fn jira_credentials(
+    host_flag: Option<String>,
+    email_flag: Option<String>,
+) -> Result<JiraCredentials, Box<dyn std::error::Error>> {
+    let store = crate::provider::CredentialStore;
+    let host = match host_flag {
+        Some(host) => Some(host),
+        None => jira_part(
+            environment("ATLASSIAN_HOST"),
+            crate::provider::Credential::AtlassianHost,
+            "Atlassian host",
+            &store,
+        )?
+        .map(|(value, _)| value),
+    }
+    .ok_or("--host or ATLASSIAN_HOST is not set and no Atlassian host is stored; run `foac auth jira login`")?;
+    let email = match email_flag {
+        Some(email) => Some(email),
+        None => jira_part(
+            environment("ATLASSIAN_EMAIL"),
+            crate::provider::Credential::AtlassianEmail,
+            "Atlassian email",
+            &store,
+        )?
+        .map(|(value, _)| value),
+    }
+    .ok_or("--email or ATLASSIAN_EMAIL is not set and no Atlassian email is stored; run `foac auth jira login`")?;
+    let token = match jira_part(
+        environment("ATLASSIAN_API_TOKEN"),
+        crate::provider::Credential::AtlassianToken,
+        "Atlassian API token",
+        &store,
+    )? {
+        Some((token, _)) => token,
+        None if !std::io::stdin().is_terminal() => {
+            let token = read_token()?;
+            if token.is_empty() {
+                return Err("the Atlassian API token piped to stdin is empty".into());
+            }
+            token
+        }
+        None => {
+            return Err(
+                "ATLASSIAN_API_TOKEN is not set and no Atlassian API token is stored; pipe the token to stdin or run `foac auth jira login`"
+                    .into(),
+            );
+        }
+    };
+    Ok(JiraCredentials {
+        host: crate::jira::normalize_host(&host)?,
+        email,
+        token,
+    })
+}
+
+pub(crate) fn jira_authenticated() -> bool {
+    resolve_jira(jira_environment(), &crate::provider::CredentialStore).is_ok()
+}
+
+/// The `ATLASSIAN_HOST`, `ATLASSIAN_EMAIL`, and `ATLASSIAN_API_TOKEN`
+/// environment values, in that order.
+fn jira_environment() -> [Option<String>; 3] {
+    [
+        environment("ATLASSIAN_HOST"),
+        environment("ATLASSIAN_EMAIL"),
+        environment("ATLASSIAN_API_TOKEN"),
+    ]
+}
+
+fn resolve_jira(
+    environment: [Option<String>; 3],
+    store: &dyn SecretStore,
+) -> Result<ResolvedJira, ResolveError> {
+    let [host_environment, email_environment, token_environment] = environment;
+    let resolve = |environment,
+                   variable: &str,
+                   credential,
+                   display_name: &str|
+     -> Result<(String, CredentialSource), ResolveError> {
+        jira_part(environment, credential, display_name, store)?.ok_or_else(|| {
+            ResolveError::Missing(format!(
+                "{variable} is not set and no {display_name} is stored"
+            ))
+        })
+    };
+    let (host, _) = resolve(
+        host_environment,
+        "ATLASSIAN_HOST",
+        crate::provider::Credential::AtlassianHost,
+        "Atlassian host",
+    )?;
+    let (email, _) = resolve(
+        email_environment,
+        "ATLASSIAN_EMAIL",
+        crate::provider::Credential::AtlassianEmail,
+        "Atlassian email",
+    )?;
+    let (token, source) = resolve(
+        token_environment,
+        "ATLASSIAN_API_TOKEN",
+        crate::provider::Credential::AtlassianToken,
+        "Atlassian API token",
+    )?;
+    let host = crate::jira::normalize_host(&host)
+        .map_err(|error| ResolveError::Failed(error.to_string()))?;
+    Ok(ResolvedJira {
+        credentials: JiraCredentials { host, email, token },
+        source,
+    })
+}
+
+fn jira_part(
+    environment: Option<String>,
+    credential: crate::provider::Credential,
+    display_name: &str,
+    store: &dyn SecretStore,
+) -> Result<Option<(String, CredentialSource)>, ResolveError> {
+    if let Some(value) = environment {
+        return Ok(Some((value, CredentialSource::Environment)));
+    }
+    match store.get(credential) {
+        Ok(Some(value)) => Ok(Some((value, CredentialSource::ConfigFile))),
+        Ok(None) => Ok(None),
+        Err(error) => Err(ResolveError::Failed(format!(
+            "could not read {display_name} credential from the credentials file: {error}"
+        ))),
+    }
+}
+
 impl fmt::Display for ValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -261,6 +450,7 @@ impl Provider {
         match self {
             Self::Linear => "linear",
             Self::Github => "github",
+            Self::Jira => "jira",
             Self::Slack => "slack",
             Self::Sentry => "sentry",
         }
@@ -270,6 +460,7 @@ impl Provider {
         match self {
             Self::Linear => "Linear",
             Self::Github => "GitHub",
+            Self::Jira => "Jira",
             Self::Slack => "Slack",
             Self::Sentry => "Sentry",
         }
@@ -279,6 +470,7 @@ impl Provider {
         match self {
             Self::Linear => "LINEAR_API_KEY",
             Self::Github => "GITHUB_TOKEN",
+            Self::Jira => "ATLASSIAN_API_TOKEN",
             Self::Slack => "SLACK_BOT_TOKEN",
             Self::Sentry => "SENTRY_AUTH_TOKEN",
         }
@@ -288,6 +480,7 @@ impl Provider {
         match self {
             Self::Linear => crate::provider::Credential::Linear,
             Self::Github => crate::provider::Credential::Github,
+            Self::Jira => crate::provider::Credential::AtlassianToken,
             Self::Slack => crate::provider::Credential::SlackBot,
             Self::Sentry => crate::provider::Credential::Sentry,
         }
@@ -361,13 +554,17 @@ fn logout(
     store: &dyn SecretStore,
     format: crate::output::Format,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let credentials: &[crate::provider::Credential] = if provider == Provider::Slack {
-        &[
+    let credentials: &[crate::provider::Credential] = match provider {
+        Provider::Slack => &[
             crate::provider::Credential::SlackBot,
             crate::provider::Credential::SlackUser,
-        ]
-    } else {
-        &[provider.credential()]
+        ],
+        Provider::Jira => &[
+            crate::provider::Credential::AtlassianHost,
+            crate::provider::Credential::AtlassianEmail,
+            crate::provider::Credential::AtlassianToken,
+        ],
+        _ => &[provider.credential()],
     };
     let removed = store
         .delete_many(credentials)
@@ -423,6 +620,109 @@ fn login(
         format,
     );
     Ok(())
+}
+
+fn jira_login(
+    host: Option<String>,
+    email: Option<String>,
+    store: &dyn SecretStore,
+    format: crate::output::Format,
+) -> Result<(), Box<dyn std::error::Error>> {
+    print_login_help(Provider::Jira, None)?;
+    let (host, email, token) = read_jira_login(host, email)?;
+    let host = crate::jira::normalize_host(&host)?;
+    let account = crate::jira::auth_identity(&host, &email, &token)
+        .map(|identity| jira_account(&host, &identity))?;
+    store
+        .set_many(&[
+            (crate::provider::Credential::AtlassianHost, host.as_str()),
+            (crate::provider::Credential::AtlassianEmail, email.as_str()),
+            (crate::provider::Credential::AtlassianToken, token.as_str()),
+        ])
+        .map_err(|error| format!("could not store Atlassian credentials: {error}"))?;
+    for variable in ["ATLASSIAN_HOST", "ATLASSIAN_EMAIL", "ATLASSIAN_API_TOKEN"] {
+        if environment(variable).is_some() {
+            eprintln!(
+                "Warning: {variable} is set and takes precedence over the stored credential."
+            );
+        }
+    }
+    let report = login_report(Provider::Jira, account);
+    crate::output::print_text(
+        &status_summary(Provider::Jira, &report[Provider::Jira.as_str()]),
+        &report,
+        format,
+    );
+    Ok(())
+}
+
+fn read_jira_login(
+    host: Option<String>,
+    email: Option<String>,
+) -> Result<(String, String, String), Box<dyn std::error::Error>> {
+    if std::io::stdin().is_terminal() {
+        let host = match host {
+            Some(host) => host,
+            None => prompt_line("Atlassian host (e.g. acme.atlassian.net): ")?,
+        };
+        let email = match email {
+            Some(email) => email,
+            None => prompt_line("Email: ")?,
+        };
+        let token = rpassword::prompt_password("API token: ")?;
+        return require_jira_values(host, email, token).map_err(Into::into);
+    }
+    let mut input = String::new();
+    std::io::stdin().read_to_string(&mut input)?;
+    parse_jira_login(&input, host, email).map_err(Into::into)
+}
+
+fn prompt_line(prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
+    eprint!("{prompt}");
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line)?;
+    Ok(line.trim().to_owned())
+}
+
+fn parse_jira_login(
+    input: &str,
+    host: Option<String>,
+    email: Option<String>,
+) -> Result<(String, String, String), String> {
+    const USAGE: &str =
+        "Jira login input must contain one line per missing value, in host, email, token order";
+    let mut lines = input.lines();
+    let mut read = |value: Option<String>| match value {
+        Some(value) => Ok(value),
+        None => lines
+            .next()
+            .map(|line| line.trim().to_owned())
+            .ok_or_else(|| USAGE.to_owned()),
+    };
+    let host = read(host)?;
+    let email = read(email)?;
+    let token = read(None)?;
+    if lines.any(|line| !line.trim().is_empty()) {
+        return Err(USAGE.to_owned());
+    }
+    require_jira_values(host, email, token)
+}
+
+fn require_jira_values(
+    host: String,
+    email: String,
+    token: String,
+) -> Result<(String, String, String), String> {
+    for (value, what) in [(&host, "host"), (&email, "email"), (&token, "API token")] {
+        if value.trim().is_empty() {
+            return Err(format!("Atlassian {what} cannot be empty"));
+        }
+    }
+    Ok((
+        host.trim().to_owned(),
+        email.trim().to_owned(),
+        token.trim().to_owned(),
+    ))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -604,6 +904,7 @@ fn flatten_accounts_for_table(statuses: &Value) -> Value {
     for provider in [
         Provider::Linear,
         Provider::Github,
+        Provider::Jira,
         Provider::Slack,
         Provider::Sentry,
     ] {
@@ -657,8 +958,27 @@ fn account_identity(provider: Provider, account: &Value) -> String {
     match provider {
         Provider::Linear => linear_identity(account),
         Provider::Github => github_identity(account),
+        Provider::Jira => jira_identity(account),
         Provider::Slack => slack_identity(account),
         Provider::Sentry => sentry_identity(account),
+    }
+}
+
+fn jira_identity(account: &Value) -> String {
+    let name = text_field(account, "displayName");
+    let email = text_field(account, "emailAddress");
+    let host = text_field(account, "host");
+    let person = match (name, email) {
+        (Some(name), Some(email)) => format!("{name} <{email}>"),
+        (Some(name), None) => name.to_owned(),
+        (None, Some(email)) => email.to_owned(),
+        (None, None) => String::new(),
+    };
+    match (person.is_empty(), host) {
+        (false, Some(host)) => format!("{person}  {host}"),
+        (false, None) => person,
+        (true, Some(host)) => host.to_owned(),
+        (true, None) => String::new(),
     }
 }
 
@@ -725,6 +1045,26 @@ fn text_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
 }
 
 fn provider_status(provider: Provider, store: &dyn SecretStore) -> Value {
+    // Jira validates with three credentials, not one token.
+    if provider == Provider::Jira {
+        return match resolve_jira(jira_environment(), store) {
+            Ok(resolved) => credential_status(
+                Ok(ResolvedCredential {
+                    token: resolved.credentials.token.clone(),
+                    source: resolved.source,
+                }),
+                |token| {
+                    crate::jira::auth_identity(
+                        &resolved.credentials.host,
+                        &resolved.credentials.email,
+                        token,
+                    )
+                    .map(|identity| jira_account(&resolved.credentials.host, &identity))
+                },
+            ),
+            Err(error) => credential_status(Err(error), |_| unreachable!()),
+        };
+    }
     let resolved = match provider {
         Provider::Linear | Provider::Sentry => {
             resolve_stored(provider, environment_token(provider), store)
@@ -735,6 +1075,7 @@ fn provider_status(provider: Provider, store: &dyn SecretStore) -> Value {
             environment_slack_user_token(),
             store,
         ),
+        Provider::Jira => unreachable!("handled above"),
     };
     credential_status(resolved, |token| validate(provider, token, None))
 }
@@ -743,6 +1084,7 @@ fn all_provider_statuses(store: &dyn SecretStore) -> Value {
     json!({
         "linear": provider_status(Provider::Linear, store),
         "github": provider_status(Provider::Github, store),
+        "jira": provider_status(Provider::Jira, store),
         "slack": provider_status(Provider::Slack, store),
         "sentry": provider_status(Provider::Sentry, store),
     })
@@ -976,9 +1318,19 @@ fn validate(
     match provider {
         Provider::Linear => crate::linear::auth_identity(token).map(linear_account),
         Provider::Github => crate::github::auth_identity(token).map(github_account),
+        Provider::Jira => unreachable!("Jira validates with host and email, not one token"),
         Provider::Slack => crate::slack::auth_identity(token).map(slack_account),
         Provider::Sentry => crate::sentry::auth_identity(token, sentry_url).map(sentry_account),
     }
+}
+
+fn jira_account(host: &str, identity: &Value) -> Value {
+    json!({
+        "accountId": identity["accountId"],
+        "displayName": identity["displayName"],
+        "emailAddress": identity["emailAddress"],
+        "host": host,
+    })
 }
 
 fn linear_account(identity: Value) -> Value {
@@ -1039,16 +1391,18 @@ fn slack_account(identity: Value) -> Value {
     })
 }
 
-fn environment_token(provider: Provider) -> Option<String> {
-    std::env::var(provider.environment_variable())
+fn environment(variable: &str) -> Option<String> {
+    std::env::var(variable)
         .ok()
-        .filter(|token| !token.is_empty())
+        .filter(|value| !value.is_empty())
+}
+
+fn environment_token(provider: Provider) -> Option<String> {
+    environment(provider.environment_variable())
 }
 
 fn environment_slack_user_token() -> Option<String> {
-    std::env::var("SLACK_USER_TOKEN")
-        .ok()
-        .filter(|token| !token.is_empty())
+    environment("SLACK_USER_TOKEN")
 }
 
 fn github_cli_token() -> Result<Option<String>, String> {
@@ -1100,6 +1454,9 @@ fn print_login_help(
         ),
         Provider::Github => eprintln!(
             "Create a fine-grained personal access token at https://github.com/settings/personal-access-tokens/new and grant the repository permissions needed by your foac commands."
+        ),
+        Provider::Jira => eprintln!(
+            "Create an Atlassian API token at https://id.atlassian.com/manage-profile/security/api-tokens (the token covers Jira and Confluence), and have your site host (like acme.atlassian.net) and account email ready."
         ),
         Provider::Slack => eprintln!(
             "Go to https://api.slack.com/apps and choose Create New App > From a manifest.\nSuggested manifest:\n{SLACK_APP_MANIFEST}\nInstall the app to your workspace from OAuth & Permissions, then enter its Bot User OAuth Token (xoxb-) and User OAuth Token (xoxp-). Leave either prompt blank if that token type is not needed."
@@ -1211,6 +1568,117 @@ mod tests {
             resolve_stored(Provider::Linear, None, &store),
             Err(ResolveError::Failed(_))
         ));
+    }
+
+    #[test]
+    fn jira_credentials_resolve_environment_then_store_and_name_the_missing_part() {
+        let store = MemoryStore::default();
+        let missing = resolve_jira([None, None, None], &store).unwrap_err();
+        assert!(matches!(missing, ResolveError::Missing(_)));
+        assert!(missing.to_string().contains("ATLASSIAN_HOST"));
+
+        store
+            .set_many(&[
+                (
+                    crate::provider::Credential::AtlassianHost,
+                    "https://acme.atlassian.net/",
+                ),
+                (
+                    crate::provider::Credential::AtlassianEmail,
+                    "user@example.com",
+                ),
+            ])
+            .unwrap();
+        let missing = resolve_jira([None, None, None], &store).unwrap_err();
+        assert!(missing.to_string().contains("ATLASSIAN_API_TOKEN"));
+
+        store
+            .set_many(&[(crate::provider::Credential::AtlassianToken, "stored-token")])
+            .unwrap();
+        let resolved = resolve_jira([None, None, None], &store).unwrap();
+        assert_eq!(resolved.credentials.host, "acme.atlassian.net");
+        assert_eq!(resolved.credentials.email, "user@example.com");
+        assert_eq!(resolved.credentials.token, "stored-token");
+        assert_eq!(resolved.source, CredentialSource::ConfigFile);
+
+        // The environment beats the store part by part; the token decides the
+        // reported source.
+        let resolved = resolve_jira(
+            [
+                Some("env.atlassian.net".into()),
+                None,
+                Some("env-token".into()),
+            ],
+            &store,
+        )
+        .unwrap();
+        assert_eq!(resolved.credentials.host, "env.atlassian.net");
+        assert_eq!(resolved.credentials.email, "user@example.com");
+        assert_eq!(resolved.credentials.token, "env-token");
+        assert_eq!(resolved.source, CredentialSource::Environment);
+
+        let broken = MemoryStore {
+            get_error: Some("locked".into()),
+            ..Default::default()
+        };
+        assert!(matches!(
+            resolve_jira([None, None, None], &broken),
+            Err(ResolveError::Failed(_))
+        ));
+    }
+
+    #[test]
+    fn parses_jira_login_lines_for_the_values_flags_do_not_cover() {
+        assert_eq!(
+            parse_jira_login("acme.atlassian.net\nuser@example.com\ntoken\n", None, None).unwrap(),
+            (
+                "acme.atlassian.net".into(),
+                "user@example.com".into(),
+                "token".into()
+            )
+        );
+        assert_eq!(
+            parse_jira_login(
+                "token\n",
+                Some("acme.atlassian.net".into()),
+                Some("user@example.com".into())
+            )
+            .unwrap(),
+            (
+                "acme.atlassian.net".into(),
+                "user@example.com".into(),
+                "token".into()
+            )
+        );
+        assert!(parse_jira_login("only-a-token\n", None, None).is_err());
+        assert!(parse_jira_login("host\nemail\ntoken\nextra\n", None, None).is_err());
+        assert!(parse_jira_login("host\n\ntoken\n", None, None).is_err());
+    }
+
+    #[test]
+    fn jira_account_and_identity_keep_safe_fields() {
+        let account = jira_account(
+            "acme.atlassian.net",
+            &json!({
+                "accountId": "5b10a2844c20165700ede21g",
+                "displayName": "User",
+                "emailAddress": "user@example.com",
+                "active": true,
+            }),
+        );
+        assert_eq!(
+            account,
+            json!({
+                "accountId": "5b10a2844c20165700ede21g",
+                "displayName": "User",
+                "emailAddress": "user@example.com",
+                "host": "acme.atlassian.net",
+            })
+        );
+        assert_eq!(
+            account_identity(Provider::Jira, &account),
+            "User <user@example.com>  acme.atlassian.net"
+        );
     }
 
     #[test]

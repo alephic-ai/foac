@@ -1,11 +1,10 @@
-use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
 
 use clap::{Args, Subcommand, ValueEnum};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
-use crate::rest::{self, Api, insert_opt, push_query};
+use crate::rest::{self, Api, Auth, BodyInput, insert_opt, push_query};
 
 const API_URL: &str = "https://api.github.com/";
 const API_VERSION: &str = "2026-03-10";
@@ -95,16 +94,6 @@ struct Page {
     /// One-based page number
     #[arg(long, default_value_t = 1)]
     page: u32,
-}
-
-#[derive(Args, Default)]
-struct BodyInput {
-    /// Markdown body
-    #[arg(long, conflicts_with = "body_file")]
-    body: Option<String>,
-    /// Read the Markdown body from a UTF-8 file
-    #[arg(long, conflicts_with = "body")]
-    body_file: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -775,7 +764,12 @@ pub(crate) fn auth_identity(token: &str) -> Result<Value, crate::auth::Validatio
 }
 
 fn auth_identity_at(token: &str, url: reqwest::Url) -> Result<Value, crate::auth::ValidationError> {
-    rest::identity(url, token, HEADERS, &[reqwest::StatusCode::UNAUTHORIZED])
+    rest::identity(
+        url,
+        &Auth::Bearer(token.to_owned()),
+        HEADERS,
+        &[reqwest::StatusCode::UNAUTHORIZED],
+    )
 }
 
 fn run_repo(
@@ -1725,7 +1719,7 @@ fn api(token: String, format: crate::output::Format) -> Result<Api, Box<dyn std:
     Ok(Api {
         client: reqwest::blocking::Client::new(),
         base_url: reqwest::Url::parse(API_URL)?,
-        token,
+        auth: Auth::Bearer(token),
         format,
         headers: HEADERS,
         trailing_slash: false,
@@ -1746,22 +1740,6 @@ fn print_list(
         api.format,
     );
     Ok(())
-}
-
-impl BodyInput {
-    fn read(self) -> Result<Option<String>, Box<dyn std::error::Error>> {
-        match (self.body, self.body_file) {
-            (Some(body), None) => Ok(Some(body)),
-            (None, Some(path)) => Ok(Some(std::fs::read_to_string(path)?)),
-            (None, None) => Ok(None),
-            (Some(_), Some(_)) => unreachable!("clap enforces --body xor --body-file"),
-        }
-    }
-
-    fn required(self) -> Result<String, Box<dyn std::error::Error>> {
-        self.read()?
-            .ok_or_else(|| "one of --body or --body-file is required".into())
-    }
 }
 
 fn selected_repo(explicit: Option<String>) -> Result<Repo, Box<dyn std::error::Error>> {
@@ -2155,7 +2133,7 @@ mod tests {
             client: reqwest::blocking::Client::new(),
             format: crate::output::Format::Json,
             base_url: url,
-            token: "secret-token".into(),
+            auth: Auth::Bearer("secret-token".into()),
             headers: HEADERS,
             trailing_slash: false,
         };

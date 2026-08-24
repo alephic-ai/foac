@@ -9,7 +9,7 @@ use toml_edit::{Array, DocumentMut, Item, Value, value};
 
 use crate::auth::Provider;
 
-pub const PROVIDERS: [&str; 4] = ["github", "linear", "sentry", "slack"];
+pub const PROVIDERS: [&str; 5] = ["github", "jira", "linear", "sentry", "slack"];
 
 /// Per-folder settings file, looked up from the working directory to `/`;
 /// the nearest file wins and overrides the global toggles.
@@ -87,6 +87,11 @@ pub(crate) enum Credential {
     Sentry,
     SlackBot,
     SlackUser,
+    // Atlassian credentials are vendor-level: Jira and (future) Confluence
+    // share the same host, email, and API token.
+    AtlassianHost,
+    AtlassianEmail,
+    AtlassianToken,
 }
 
 impl Credential {
@@ -97,6 +102,9 @@ impl Credential {
             Self::Sentry => "sentry",
             Self::SlackBot => "slack_bot",
             Self::SlackUser => "slack_user",
+            Self::AtlassianHost => "atlassian_host",
+            Self::AtlassianEmail => "atlassian_email",
+            Self::AtlassianToken => "atlassian_token",
         }
     }
 }
@@ -1028,6 +1036,7 @@ mod tests {
             statuses(&settings),
             json!({
                 "github": {"enabled": true},
+                "jira": {"enabled": true},
                 "linear": {"enabled": true},
                 "sentry": {"enabled": false},
                 "slack": {"enabled": true},

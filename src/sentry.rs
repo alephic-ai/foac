@@ -2,7 +2,7 @@ use clap::{Args, Subcommand};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
-use crate::rest::{self, Api, insert_opt, push_query};
+use crate::rest::{self, Api, Auth, insert_opt, push_query};
 
 pub(crate) const DEFAULT_HOST: &str = "sentry.io";
 const DEFAULT_URL: &str = "https://sentry.io";
@@ -182,7 +182,12 @@ pub(crate) fn auth_identity(
 }
 
 fn auth_identity_at(token: &str, url: reqwest::Url) -> Result<Value, crate::auth::ValidationError> {
-    rest::identity(url, token, &[], &[reqwest::StatusCode::UNAUTHORIZED])
+    rest::identity(
+        url,
+        &Auth::Bearer(token.to_owned()),
+        &[],
+        &[reqwest::StatusCode::UNAUTHORIZED],
+    )
 }
 
 fn run_org(api: &Api, org: Option<String>, cmd: OrgCmd) -> Result<(), Box<dyn std::error::Error>> {
@@ -317,7 +322,7 @@ fn api(token: String, format: crate::output::Format) -> Result<Api, Box<dyn std:
     Ok(Api {
         client: reqwest::blocking::Client::new(),
         base_url: reqwest::Url::parse(&base_url()?)?,
-        token,
+        auth: Auth::Bearer(token),
         format,
         headers: &[],
         // Sentry requires the trailing slash; without it the API redirects

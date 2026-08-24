@@ -261,7 +261,12 @@ pub(crate) fn auth_identity(token: &str) -> Result<Value, crate::auth::Validatio
 }
 
 fn auth_identity_at(token: &str, url: reqwest::Url) -> Result<Value, crate::auth::ValidationError> {
-    let (status, body) = rest::fetch_identity(Method::POST, url, token, &[])?;
+    let (status, body) = rest::fetch_identity(
+        Method::POST,
+        url,
+        &rest::Auth::Bearer(token.to_owned()),
+        &[],
+    )?;
     if !status.is_success() {
         return Err(crate::auth::ValidationError::Failed(body.to_string()));
     }
