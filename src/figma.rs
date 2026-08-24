@@ -16,6 +16,9 @@ pub struct Cmd {
 
 #[derive(Subcommand)]
 enum Resource {
+    /// Teams (Figma's API cannot list them; IDs come from figma.com URLs)
+    #[command(subcommand)]
+    Team(TeamCmd),
     /// Projects in a team
     #[command(subcommand)]
     Project(ProjectCmd),
@@ -28,6 +31,16 @@ enum Resource {
     /// Rendered image URLs for nodes
     #[command(subcommand)]
     Image(ImageCmd),
+}
+
+#[derive(Subcommand)]
+enum TeamCmd {
+    /// Extract the team ID from a pasted team page URL; Figma's API cannot
+    /// list teams, so open the team in the Figma app and copy the address
+    Id {
+        /// Team page URL like https://www.figma.com/files/team/<ID>/<name>
+        url: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -160,12 +173,22 @@ macro_rules! path {
 }
 
 pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
-    let api = api(crate::auth::figma_token()?, format)?;
     match cmd.command {
-        Resource::Project(cmd) => run_project(&api, cmd),
-        Resource::File(cmd) => run_file(&api, cmd),
-        Resource::Comment(cmd) => run_comment(&api, cmd),
-        Resource::Image(cmd) => run_image(&api, cmd),
+        // Pure URL parsing, no API call, so it works without a token.
+        Resource::Team(TeamCmd::Id { url }) => {
+            crate::output::print(&json!({ "team_id": team_id(&url)? }), format);
+            Ok(())
+        }
+        command => {
+            let api = api(crate::auth::figma_token()?, format)?;
+            match command {
+                Resource::Team(_) => unreachable!("team commands are handled above"),
+                Resource::Project(cmd) => run_project(&api, cmd),
+                Resource::File(cmd) => run_file(&api, cmd),
+                Resource::Comment(cmd) => run_comment(&api, cmd),
+                Resource::Image(cmd) => run_image(&api, cmd),
+            }
+        }
     }
 }
 
@@ -368,6 +391,15 @@ fn file_key(input: &str) -> String {
     }
 }
 
+fn team_id(input: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let id = url_id(input, "team");
+    if id != input || (!input.is_empty() && input.bytes().all(|byte| byte.is_ascii_digit())) {
+        Ok(id)
+    } else {
+        Err("could not find /team/<ID> in the URL; open your team in the Figma app and paste the page address (https://www.figma.com/files/team/<ID>/<name>)".into())
+    }
+}
+
 /// Team and project IDs are numbers from figma.com URLs (there is no API to
 /// discover them); accept the pasted URL and take the segment after `kind`,
 /// e.g. `figma.com/files/team/123/Name` with kind `team` gives `123`.
@@ -442,6 +474,17 @@ mod tests {
             file_key("https://www.figma.com/files/recent"),
             "https://www.figma.com/files/recent"
         );
+    }
+
+    #[test]
+    fn team_id_extracts_or_rejects() {
+        assert_eq!(
+            team_id("https://www.figma.com/files/team/1234567890/My-Team").unwrap(),
+            "1234567890"
+        );
+        assert_eq!(team_id("1234567890").unwrap(), "1234567890");
+        assert!(team_id("https://www.figma.com/files/recent").is_err());
+        assert!(team_id("not-a-url").is_err());
     }
 
     #[test]

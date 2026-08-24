@@ -624,6 +624,13 @@ mod tests {
     #[test]
     fn parses_figma_commands() {
         for args in [
+            vec![
+                "foac",
+                "figma",
+                "team",
+                "id",
+                "https://www.figma.com/files/team/12345/My-Team",
+            ],
             vec!["foac", "figma", "project", "list", "12345"],
             vec!["foac", "figma", "file", "list", "67890"],
             vec![

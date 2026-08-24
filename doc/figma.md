@@ -15,8 +15,9 @@ commands you use:
 File, team, and project arguments accept a raw key/ID or a pasted figma.com
 URL. Team and project IDs are the numbers after `/team/` and `/project/` in
 figma.com URLs (open the team or project in Figma and copy the address);
-they are not discoverable through the API. Node IDs use colons like `1:2`,
-and the `node-id=1-2` form from URLs is converted automatically.
+they are not discoverable through the API, and `foac figma team id <URL>`
+extracts the team ID from the pasted address. Node IDs use colons like
+`1:2`, and the `node-id=1-2` form from URLs is converted automatically.
 
 ```sh
 export FIGMA_ACCESS_TOKEN=figd_...

@@ -199,9 +199,9 @@ foac <provider> <resource> <verb> [flags]
 - **Figma identifiers**: file, team, and project arguments accept a raw
   key/ID or a pasted figma.com URL. Team and project IDs are the numbers
   after `/team/` and `/project/` in figma.com URLs; they are not
-  discoverable through the API, so ask the user for the URL when unknown.
-  Node IDs use colons like `1:2`; a URL's `node-id=1-2` form is converted
-  automatically.
+  discoverable through the API, so ask the user for the URL when unknown
+  (`figma team id <URL>` extracts the team ID from it). Node IDs use colons
+  like `1:2`; a URL's `node-id=1-2` form is converted automatically.
 - **Figma file size**: `file get` returns the whole document tree, which can
   be very large. Scope it with `--depth N` or `--ids`, or use `file nodes`
   for specific nodes.
