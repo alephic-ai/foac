@@ -736,7 +736,7 @@ mod tests {
             .send(Method::GET, "conversations.list", &[], None)
             .unwrap_err();
         server.join().unwrap();
-        assert_eq!(error.to_string(), r#"{"error":"missing_scope","ok":false}"#);
+        assert_eq!(error.to_string(), r#"{"ok":false,"error":"missing_scope"}"#);
     }
 
     #[test]

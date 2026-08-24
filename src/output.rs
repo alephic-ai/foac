@@ -151,26 +151,64 @@ fn render_list(rows: &[Value], page: &Map<String, Value>, width: usize) -> Strin
     if rows.is_empty() {
         return format!("{footer}\n");
     }
-    // Scalar keys only, union across rows; BTreeSet keeps them sorted.
-    let columns: std::collections::BTreeSet<&str> = rows
+    // Scalar keys only, union across rows, in first-seen order: APIs lead
+    // with their identifying fields (id, name, title, ...).
+    let mut columns: Vec<&str> = Vec::new();
+    for row in rows.iter().filter_map(Value::as_object) {
+        for (key, value) in row {
+            if !value.is_object() && !value.is_array() && !columns.contains(&key.as_str()) {
+                columns.push(key);
+            }
+        }
+    }
+    let cells: Vec<Vec<String>> = rows
         .iter()
-        .filter_map(Value::as_object)
-        .flat_map(|row| {
-            row.iter()
-                .filter(|(_, value)| !value.is_object() && !value.is_array())
-                .map(|(key, _)| key.as_str())
-        })
-        .collect();
-    let mut builder = Builder::default();
-    builder.push_record(columns.iter().copied());
-    for row in rows {
-        builder.push_record(
+        .map(|row| {
             columns
                 .iter()
-                .map(|key| row.get(*key).map_or_else(String::new, cell)),
-        );
+                .map(|key| row.get(*key).map_or_else(String::new, cell))
+                .collect()
+        })
+        .collect();
+    // Keep only the leading columns that fit the terminal: REST rows carry
+    // ~80 scalar fields, and rendering them all crushes every cell to "…".
+    let kept = fit_columns(&columns, &cells, width);
+    let hidden = columns.len() - kept;
+    let mut builder = Builder::default();
+    builder.push_record(columns[..kept].iter().copied());
+    for row in &cells {
+        builder.push_record(row[..kept].iter().cloned());
     }
-    format!("{}\n\n{footer}\n", table(builder, width, &[]))
+    let note = match hidden {
+        0 => String::new(),
+        1 => "\n1 more column; use --format json to see all".to_owned(),
+        n => format!("\n{n} more columns; use --format json to see all"),
+    };
+    format!("{}{note}\n\n{footer}\n", table(builder, width, &[]))
+}
+
+/// How many leading columns fit in `width`, each costing its widest cell
+/// (capped so one long column cannot evict everything after it) plus the
+/// " | " separator. Always keeps at least one.
+fn fit_columns(columns: &[&str], cells: &[Vec<String>], width: usize) -> usize {
+    let mut budget = width;
+    let mut kept = 0;
+    for (i, column) in columns.iter().enumerate() {
+        let widest = cells
+            .iter()
+            .map(|row| row[i].chars().count())
+            .chain([column.chars().count()])
+            .max()
+            .unwrap_or(0)
+            .min(30);
+        let cost = widest + 3;
+        if i > 0 && cost > budget {
+            break;
+        }
+        budget = budget.saturating_sub(cost);
+        kept = i + 1;
+    }
+    kept
 }
 
 fn render_keyed(entries: &Map<String, Value>, width: usize, highlight_key: Option<&str>) -> String {
@@ -281,7 +319,7 @@ mod tests {
              ------------+-----------\n\
              \x20ENG-1      | Fix login\n\
              \n\
-             endCursor=abc hasNextPage=false\n"
+             hasNextPage=false endCursor=abc\n"
         );
     }
 
@@ -297,11 +335,11 @@ mod tests {
         }});
         assert_eq!(
             render(&value, Format::Table, 80),
-            " name     | number\n\
-             ----------+--------\n\
-             \x20Sprint 4 | 4\n\
+            " number | name\n\
+             --------+----------\n\
+             \x204      | Sprint 4\n\
              \n\
-             endCursor=xyz hasNextPage=true\n"
+             hasNextPage=true endCursor=xyz\n"
         );
     }
 
@@ -313,12 +351,35 @@ mod tests {
         });
         assert_eq!(
             render(&value, Format::Table, 60),
-            " body                    | closed | title\n\
-             -------------------------+--------+-------------------------\n\
-             \x20line one line two tabb… | null   | xxxxxxxxxxxxxxxxxxxxxx…\n\
+            " body                     | closed\n\
+             --------------------------+--------\n\
+             \x20line one line two tabbed | null\n\
+             1 more column; use --format json to see all\n\
              \n\
-             hasNextPage=false hasPreviousPage=false nextPage=null previousPage=null\n"
+             hasNextPage=false nextPage=null hasPreviousPage=false previousPage=null\n"
         );
+    }
+
+    #[test]
+    fn list_keeps_first_seen_column_order_and_hides_overflow() {
+        // 80-field REST rows used to become 80 crushed "…" columns; now the
+        // leading fields render and the rest are counted.
+        let items: Vec<_> = (0..2)
+            .map(|row| {
+                let mut object = Map::new();
+                object.insert("id".into(), json!(row));
+                object.insert("name".into(), json!(format!("repo-{row}")));
+                for field in 0..80 {
+                    object.insert(format!("field_{field:02}"), json!("value"));
+                }
+                Value::Object(object)
+            })
+            .collect();
+        let value = json!({"items": items, "pageInfo": {"hasNextPage": true}});
+        let rendered = render(&value, Format::Table, 40);
+        assert!(rendered.starts_with(" id | name"));
+        assert!(rendered.contains("more columns; use --format json to see all"));
+        assert!(!rendered.contains("…"));
     }
 
     #[test]
@@ -349,7 +410,7 @@ mod tests {
         });
         assert_eq!(
             render(&value, Format::Table, 80),
-            "hasNextPage=false hasPreviousPage=false nextPage=null previousPage=null\n"
+            "hasNextPage=false nextPage=null hasPreviousPage=false previousPage=null\n"
         );
     }
 
@@ -432,8 +493,8 @@ mod tests {
             render(&value, Format::Table, 80),
             " FIELD   | VALUE\n\
              ---------+-------------\n\
-             \x20issue   | {\"id\":\"i1\"}\n\
-             \x20success | true\n"
+             \x20success | true\n\
+             \x20issue   | {\"id\":\"i1\"}\n"
         );
     }
 
