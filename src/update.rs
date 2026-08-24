@@ -70,6 +70,14 @@ fn installed_skills(home: Option<&Path>) -> Vec<InstalledSkill> {
         .collect()
 }
 
+/// Providers whose skill is installed for any supported agent.
+pub(crate) fn installed_skill_providers() -> Vec<&'static str> {
+    installed_skills(std::env::home_dir().as_deref())
+        .into_iter()
+        .map(|skill| skill.provider)
+        .collect()
+}
+
 fn refresh_installed_skills(
     installed: &[InstalledSkill],
     executable: &Path,

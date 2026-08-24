@@ -17,7 +17,7 @@ pub const LOCAL_SETTINGS_FILE: &str = ".foac.toml";
 
 #[derive(Subcommand)]
 pub enum Cmd {
-    /// List providers and whether they are enabled
+    /// List providers with their enabled, authenticated, and skill state
     List,
     /// Enable a provider
     Enable {
@@ -209,12 +209,45 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
 }
 
 fn statuses(settings: &Settings) -> serde_json::Value {
+    statuses_with(
+        settings,
+        authenticated,
+        &crate::update::installed_skill_providers(),
+    )
+}
+
+fn statuses_with(
+    settings: &Settings,
+    authenticated: impl Fn(&str) -> bool,
+    installed_skills: &[&str],
+) -> serde_json::Value {
     serde_json::Value::Object(
         PROVIDERS
             .iter()
-            .map(|name| (name.to_string(), json!({"enabled": settings.enabled(name)})))
+            .map(|name| {
+                (
+                    name.to_string(),
+                    json!({
+                        "enabled": settings.enabled(name),
+                        "authenticated": authenticated(name),
+                        "skill_installed": installed_skills.contains(name),
+                    }),
+                )
+            })
             .collect(),
     )
+}
+
+/// Whether a credential resolves for the provider; no network validation.
+fn authenticated(name: &str) -> bool {
+    match name {
+        "github" => crate::github::authenticated(),
+        "jira" => crate::jira::authenticated(),
+        "linear" => crate::linear::authenticated(),
+        "sentry" => crate::sentry::authenticated(),
+        "slack" => crate::slack::authenticated(),
+        _ => false,
+    }
 }
 
 fn set_enabled(
@@ -1033,13 +1066,13 @@ mod tests {
         let mut settings = Settings::default();
         settings.set_enabled("sentry", false);
         assert_eq!(
-            statuses(&settings),
+            statuses_with(&settings, |name| name == "github", &["linear"]),
             json!({
-                "github": {"enabled": true},
-                "jira": {"enabled": true},
-                "linear": {"enabled": true},
-                "sentry": {"enabled": false},
-                "slack": {"enabled": true},
+                "github": {"enabled": true, "authenticated": true, "skill_installed": false},
+                "jira": {"enabled": true, "authenticated": false, "skill_installed": false},
+                "linear": {"enabled": true, "authenticated": false, "skill_installed": true},
+                "sentry": {"enabled": false, "authenticated": false, "skill_installed": false},
+                "slack": {"enabled": true, "authenticated": false, "skill_installed": false},
             })
         );
     }

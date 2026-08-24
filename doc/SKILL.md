@@ -87,7 +87,9 @@ foac <provider> <resource> <verb> [flags]
   credential. Use `foac auth --help` to list auth targets.
 - **Provider toggles**: `foac provider <enable|disable> <name>` turns a provider
   on or off (state kept in `~/.config/foac/config.toml`) and prints the same
-  per-provider enabled map as `foac provider list`. Disabled providers are
+  per-provider map as `foac provider list`, which reports each provider's
+  `enabled`, `authenticated` (a credential resolves; not validated against the
+  API), and `skill_installed` state. Disabled providers are
   hidden from discovery and their commands refuse to run. A `.foac.toml` file
   with `enabled_providers` and/or `disabled_providers` string arrays, found in
   the working directory or the nearest parent, overrides the global toggles
