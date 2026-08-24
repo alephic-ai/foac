@@ -8,5 +8,5 @@
    (JSON or table per `--format`), so commands never print success output
    themselves.
 4. Update `doc/SKILL.md` in the same change if the CLI surface or conventions
-   changed — it is compiled into the binary (`foac skill print linear`) and
+   changed. It is compiled into the binary (`foac skill print linear`) and
    installed into agents' skill folders, so it must always match the CLI.

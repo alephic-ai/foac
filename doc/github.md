@@ -6,8 +6,8 @@ Repository-scoped commands accept `--repo OWNER/NAME`; without it, foac uses the
 current checkout's GitHub remote.
 
 For classic tokens, the `repo` scope covers private-repository commands. For
-fine-grained tokens, grant Metadata read plus read or write access—matching the
-commands you will use—to Issues, Pull requests, Actions, Checks, Commit
+fine-grained tokens, grant Metadata read plus read or write access (matching the
+commands you will use) to Issues, Pull requests, Actions, Checks, Commit
 statuses, Contents, and Administration. Branch protection and collaborator
 changes require Administration write access.
 

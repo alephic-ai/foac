@@ -10,7 +10,7 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   inline in each module's `#[cfg(test)]` block.
 - Linear queries live in `graphql/linear/queries.graphql`, and `graphql_client`
   generates their Rust types at compile time against the vendored
-  `graphql/linear/schema.graphql` (51k lines — grep it, don't read it whole).
+  `graphql/linear/schema.graphql` (51k lines; grep it, don't read it whole).
   It can be refreshed from
   <https://raw.githubusercontent.com/linear/linear/master/packages/sdk/src/schema.graphql>.
 - Table-mode details of the shared printer (`src/output.rs`): the table is
