@@ -111,6 +111,13 @@ foac update
 `foac update` downloads the latest GitHub release for this platform, replaces
 the running binary, and refreshes any foac provider skills already installed.
 
+foac stores editable provider settings in
+`~/.config/foac/config.toml` and machine-managed credentials in
+`~/.config/foac/credentials.json` (or the equivalent paths under
+`XDG_CONFIG_HOME`). The credentials file is atomically replaced and kept mode
+`0600` on Unix. Legacy `config.json` files are intentionally ignored and are
+not migrated or deleted.
+
 Other commands check GitHub for a newer release at most once a day, and print a notice on stderr while one exists. They never auto-install. Set `FOAC_NO_UPDATE_CHECK` (or `CI`) to skip the check.
 
 Humans get auto-rendered tables at an interactive terminal instead of JSON;

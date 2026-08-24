@@ -37,9 +37,9 @@ struct ProviderCmd {
 enum ProviderAction {
     /// Check authentication for this provider
     Status,
-    /// Validate and save a token in foac's config file
+    /// Validate and save a token in foac's credentials file
     Login,
-    /// Remove foac's token from the config file
+    /// Remove foac's token from the credentials file
     Logout,
 }
 
@@ -75,13 +75,13 @@ struct SentryCmd {
 enum SentryAction {
     /// Check authentication for this provider
     Status,
-    /// Validate and save a token in foac's config file
+    /// Validate and save a token in foac's credentials file
     Login {
         /// Sentry hostname to log in to, skipping the prompt
         #[arg(long)]
         host: Option<String>,
     },
-    /// Remove foac's token from the config file
+    /// Remove foac's token from the credentials file
     Logout,
 }
 
@@ -388,6 +388,14 @@ fn login(
         (Provider::Sentry, None) => read_sentry_host()?,
         _ => None,
     };
+    if provider == Provider::Sentry {
+        store
+            .get(provider.credential())
+            .map_err(|error| format!("could not read Sentry credential: {error}"))?;
+        if url.is_some() {
+            crate::provider::SettingsStore.load()?;
+        }
+    }
     print_login_help(provider, url.as_deref())?;
     let token = read_token()?;
     if token.is_empty() {
@@ -819,7 +827,7 @@ fn resolve_stored(
             provider.display_name(),
         ))),
         Err(error) => Err(ResolveError::Failed(format!(
-            "could not read {} credential from the config file: {error}",
+            "could not read {} credential from the credentials file: {error}",
             provider.display_name(),
         ))),
     }
@@ -906,7 +914,7 @@ fn resolve_named_stored(
             Ok(None) => {}
             Err(error) => {
                 return Err(ResolveError::Failed(format!(
-                    "could not read {display_name} credential from the config file: {error}"
+                    "could not read {display_name} credential from the credentials file: {error}"
                 )));
             }
         }
@@ -945,7 +953,7 @@ where
         }),
         Ok(None) => match store_error {
             Some(error) => Err(ResolveError::Failed(format!(
-                "could not read GitHub credential from the config file: {error}"
+                "could not read GitHub credential from the credentials file: {error}"
             ))),
             None => Err(ResolveError::Missing(
                 "GITHUB_TOKEN is not set, no GitHub credential is stored, and `gh auth token` did not return a token".into(),
@@ -953,7 +961,7 @@ where
         },
         Err(error) => Err(ResolveError::Failed(match store_error {
             Some(store_error) => format!(
-                "could not read GitHub credential from the config file ({store_error}) or GitHub CLI ({error})"
+                "could not read GitHub credential from the credentials file ({store_error}) or GitHub CLI ({error})"
             ),
             None => format!("could not read GitHub CLI credential: {error}"),
         })),
@@ -1062,7 +1070,7 @@ fn github_cli_token() -> Result<Option<String>, String> {
 
 /// Ask which Sentry host to log in to, defaulting to sentry.io. Skipped when
 /// stdin is redirected: piped input stays token-only, and the host falls back
-/// to `SENTRY_URL`, then the config file, then the default.
+/// to `SENTRY_URL`, then the settings file, then the default.
 fn read_sentry_host() -> Result<Option<String>, Box<dyn std::error::Error>> {
     if !std::io::stdin().is_terminal() {
         return Ok(None);

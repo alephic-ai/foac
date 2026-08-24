@@ -18,15 +18,18 @@ fn foac(args: &[&str]) -> Command {
     cmd
 }
 
-fn malformed_config(test_name: &str) -> (PathBuf, PathBuf, Vec<u8>) {
+fn config_home(test_name: &str) -> PathBuf {
     let id = NEXT_CONFIG_DIR.fetch_add(1, Ordering::Relaxed);
-    let config_home =
-        std::env::temp_dir().join(format!("foac-cli-{test_name}-{}-{id}", std::process::id()));
-    let config_path = config_home.join("foac/config.json");
-    let original = br#"{"credentials":"sensitive-token-not-for-errors"}"#.to_vec();
-    std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
-    std::fs::write(&config_path, &original).unwrap();
-    (config_home, config_path, original)
+    std::env::temp_dir().join(format!("foac-cli-{test_name}-{}-{id}", std::process::id()))
+}
+
+fn malformed_settings(test_name: &str) -> (PathBuf, PathBuf, Vec<u8>) {
+    let config_home = config_home(test_name);
+    let settings_path = config_home.join("foac/config.toml");
+    let original = b"disabled_providers = [\"github\"".to_vec();
+    std::fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
+    std::fs::write(&settings_path, &original).unwrap();
+    (config_home, settings_path, original)
 }
 
 #[test]
@@ -52,7 +55,7 @@ fn provider_list_defaults_to_all_enabled_json() {
 
 #[test]
 fn provider_list_reports_a_malformed_config() {
-    let (config_home, config_path, _) = malformed_config("provider-list");
+    let (config_home, config_path, _) = malformed_settings("provider-list");
 
     let out = foac(&["provider", "list"])
         .env("XDG_CONFIG_HOME", &config_home)
@@ -63,21 +66,21 @@ fn provider_list_reports_a_malformed_config() {
     assert!(out.stdout.is_empty());
     let stderr = String::from_utf8(out.stderr).unwrap();
     assert!(stderr.contains(&config_path.display().to_string()));
-    assert!(stderr.contains("could not parse config file"));
-    assert!(!stderr.contains("sensitive-token-not-for-errors"));
+    assert!(stderr.contains("could not parse settings file"));
 
     std::fs::remove_dir_all(config_home).unwrap();
 }
 
 #[test]
 fn sentry_auth_status_represents_a_malformed_config_as_an_error() {
-    let (config_home, config_path, _) = malformed_config("sentry-status");
+    let (config_home, config_path, _) = malformed_settings("sentry-status");
 
     let out = foac(&["auth", "sentry", "status"])
         .env("XDG_CONFIG_HOME", &config_home)
         .env_remove("LINEAR_API_KEY")
         .env_remove("GITHUB_TOKEN")
-        .env_remove("SENTRY_AUTH_TOKEN")
+        .env("SENTRY_AUTH_TOKEN", "environment-token")
+        .env_remove("SENTRY_URL")
         .env_remove("SLACK_BOT_TOKEN")
         .env_remove("SLACK_USER_TOKEN")
         .output()
@@ -87,18 +90,17 @@ fn sentry_auth_status_represents_a_malformed_config_as_an_error() {
     assert!(out.stderr.is_empty());
     let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(report["sentry"]["status"], "error");
-    assert_eq!(report["sentry"]["source"], serde_json::Value::Null);
+    assert_eq!(report["sentry"]["source"], "environment");
     let error = report["sentry"]["error"].as_str().unwrap();
     assert!(error.contains(&config_path.display().to_string()));
-    assert!(error.contains("could not parse config file"));
-    assert!(!error.contains("sensitive-token-not-for-errors"));
+    assert!(error.contains("could not parse settings file"));
 
     std::fs::remove_dir_all(config_home).unwrap();
 }
 
 #[test]
 fn provider_mutation_does_not_overwrite_a_malformed_config() {
-    let (config_home, config_path, original) = malformed_config("provider-mutation");
+    let (config_home, config_path, original) = malformed_settings("provider-mutation");
 
     let out = foac(&["provider", "disable", "github"])
         .env("XDG_CONFIG_HOME", &config_home)
@@ -108,6 +110,86 @@ fn provider_mutation_does_not_overwrite_a_malformed_config() {
     assert!(!out.status.success());
     assert!(out.stdout.is_empty());
     assert_eq!(std::fs::read(&config_path).unwrap(), original);
+
+    std::fs::remove_dir_all(config_home).unwrap();
+}
+
+#[test]
+fn malformed_credentials_do_not_block_settings_mutations() {
+    let config_home = config_home("credential-isolation");
+    let credentials_path = config_home.join("foac/credentials.json");
+    let original = br#"{"github":"sensitive-token","linear":42}"#;
+    std::fs::create_dir_all(credentials_path.parent().unwrap()).unwrap();
+    std::fs::write(&credentials_path, original).unwrap();
+
+    let out = foac(&["provider", "disable", "github"])
+        .env("XDG_CONFIG_HOME", &config_home)
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert_eq!(std::fs::read(&credentials_path).unwrap(), original);
+    assert!(config_home.join("foac/config.toml").exists());
+
+    std::fs::remove_dir_all(config_home).unwrap();
+}
+
+#[test]
+fn sentry_login_preflights_both_stores_before_mutating() {
+    let (config_home, settings_path, settings_original) = malformed_settings("sentry-login");
+    let credentials_path = config_home.join("foac/credentials.json");
+    let credentials_original = br#"{"sentry":"old-token"}"#;
+    std::fs::write(&credentials_path, credentials_original).unwrap();
+
+    let out = foac(&["auth", "sentry", "login", "--host", "sentry.example.com"])
+        .env("XDG_CONFIG_HOME", &config_home)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            child.stdin.take().unwrap().write_all(b"new-token\n")?;
+            child.wait_with_output()
+        })
+        .unwrap();
+
+    assert!(!out.status.success());
+    assert_eq!(std::fs::read(&settings_path).unwrap(), settings_original);
+    assert_eq!(
+        std::fs::read(&credentials_path).unwrap(),
+        credentials_original
+    );
+
+    std::fs::remove_dir_all(config_home).unwrap();
+}
+
+#[test]
+fn lone_legacy_config_is_ignored_and_unchanged() {
+    let config_home = config_home("legacy-config");
+    let legacy_path = config_home.join("foac/config.json");
+    let original = br#"{"disabled_providers":["github"],"credentials":{"linear":"legacy-token"}}"#;
+    std::fs::create_dir_all(legacy_path.parent().unwrap()).unwrap();
+    std::fs::write(&legacy_path, original).unwrap();
+
+    let providers = foac(&["provider", "list"])
+        .env("XDG_CONFIG_HOME", &config_home)
+        .output()
+        .unwrap();
+    assert!(providers.status.success());
+    let providers: serde_json::Value = serde_json::from_slice(&providers.stdout).unwrap();
+    assert_eq!(providers["github"]["enabled"], true);
+
+    let auth = foac(&["auth", "linear", "status"])
+        .env("XDG_CONFIG_HOME", &config_home)
+        .env_remove("LINEAR_API_KEY")
+        .output()
+        .unwrap();
+    assert!(auth.status.success());
+    assert!(auth.stderr.is_empty());
+    let auth: serde_json::Value = serde_json::from_slice(&auth.stdout).unwrap();
+    assert_eq!(auth["linear"]["status"], "unauthenticated");
+    assert_eq!(std::fs::read(&legacy_path).unwrap(), original);
 
     std::fs::remove_dir_all(config_home).unwrap();
 }
