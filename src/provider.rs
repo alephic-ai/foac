@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::fs::{File, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
@@ -157,14 +159,36 @@ fn write(path: &Path, config: &Config) -> Result<(), Box<dyn std::error::Error>>
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    std::fs::write(path, serde_json::to_vec_pretty(config)?)?;
-    // The file can hold credentials, so keep it readable by the owner only.
+    let bytes = serde_json::to_vec_pretty(config)?;
+    write_private(path, |file| {
+        file.set_len(0)?;
+        file.write_all(&bytes)
+    })?;
+    Ok(())
+}
+
+fn write_private(
+    path: &Path,
+    write_body: impl FnOnce(&mut File) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    let mut options = OpenOptions::new();
+    options.write(true).create(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+
+    // Existing files may have permissive modes, so tighten them before the
+    // callback can truncate the file or write credentials.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
     }
-    Ok(())
+
+    write_body(&mut file)
 }
 
 #[cfg(test)]
@@ -286,6 +310,57 @@ mod tests {
         );
         assert_eq!(read(&path).unwrap(), Some(config));
 
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_writer_creates_file_with_private_mode_before_writing() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!(
+            "foac-provider-private-create-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+
+        write_private(&path, |file| {
+            let mode = file.metadata().unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+            assert_eq!(std::fs::read(&path).unwrap(), b"");
+            file.write_all(b"secret")
+        })
+        .unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"secret");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_writer_tightens_existing_file_before_replacing_contents() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!(
+            "foac-provider-private-existing-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        std::fs::write(&path, b"old secret").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o666)).unwrap();
+
+        write_private(&path, |file| {
+            let mode = file.metadata().unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+            assert_eq!(std::fs::read(&path).unwrap(), b"old secret");
+            file.set_len(0)?;
+            file.write_all(b"new secret")
+        })
+        .unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"new secret");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
