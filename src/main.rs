@@ -1,6 +1,6 @@
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
-use foac::{auth, github, jira, linear, output, provider, sentry, slack, update};
+use foac::{auth, confluence, github, jira, linear, output, provider, sentry, slack, update};
 
 #[derive(Parser)]
 #[command(about, arg_required_else_help = true)]
@@ -33,6 +33,8 @@ impl Provider {
 enum Command {
     /// Check and configure provider authentication
     Auth(auth::Cmd),
+    /// Interact with Confluence
+    Confluence(confluence::Cmd),
     /// Interact with GitHub
     Github(github::Cmd),
     /// Interact with Jira
@@ -87,6 +89,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let skip_check = matches!(command, Command::Update);
     let result = match command {
         Command::Auth(cmd) => auth::run(cmd, format),
+        Command::Confluence(cmd) => {
+            provider::ensure_enabled(&provider::SettingsStore.load()?, "confluence")?;
+            confluence::run(cmd, format)
+        }
         Command::Github(cmd) => {
             provider::ensure_enabled(&provider::SettingsStore.load()?, "github")?;
             github::run(cmd, format)
@@ -141,14 +147,18 @@ enum SkillCmd {
     Install,
 }
 
-fn providers() -> Result<[Provider; 5], Box<dyn std::error::Error>> {
+fn providers() -> Result<[Provider; 6], Box<dyn std::error::Error>> {
     let settings = provider::SettingsStore.load()?;
     Ok(providers_where(|name| settings.enabled(name)))
 }
 
-fn providers_where(enabled: impl Fn(&str) -> bool) -> [Provider; 5] {
+fn providers_where(enabled: impl Fn(&str) -> bool) -> [Provider; 6] {
     // Settings first: short-circuit skips the keychain/`gh` probe when disabled.
     [
+        Provider::new(
+            "confluence",
+            enabled("confluence") && confluence::authenticated(),
+        ),
         Provider::new("github", enabled("github") && github::authenticated()),
         Provider::new("jira", enabled("jira") && jira::authenticated()),
         Provider::new("linear", enabled("linear") && linear::authenticated()),
@@ -349,26 +359,28 @@ mod tests {
 
     #[test]
     fn help_only_lists_authenticated_providers() {
-        for (linear, github, sentry, slack, jira, expected) in [
-            (false, false, false, false, false, vec![]),
-            (true, false, false, false, false, vec!["linear"]),
-            (false, true, false, false, false, vec!["github"]),
-            (false, false, true, false, false, vec!["sentry"]),
-            (false, false, false, true, false, vec!["slack"]),
-            (false, false, false, false, true, vec!["jira"]),
+        for (linear, github, sentry, slack, jira, confluence, expected) in [
+            (false, false, false, false, false, false, vec![]),
+            (true, false, false, false, false, false, vec!["linear"]),
+            (false, true, false, false, false, false, vec!["github"]),
+            (false, false, true, false, false, false, vec!["sentry"]),
+            (false, false, false, true, false, false, vec!["slack"]),
+            (false, false, false, false, true, false, vec!["jira"]),
+            (false, false, false, false, false, true, vec!["confluence"]),
             (
                 true,
                 true,
                 true,
                 true,
                 true,
-                vec!["github", "jira", "linear", "sentry", "slack"],
+                true,
+                vec!["confluence", "github", "jira", "linear", "sentry", "slack"],
             ),
         ] {
-            let providers = test_providers(linear, github, sentry, slack, jira);
+            let providers = test_providers(linear, github, sentry, slack, jira, confluence);
             for args in [vec!["foac"], vec!["foac", "--help"]] {
                 let help = parse_error(&providers, args).to_string();
-                for name in ["github", "jira", "linear", "sentry", "slack"] {
+                for name in ["confluence", "github", "jira", "linear", "sentry", "slack"] {
                     assert_eq!(help_lists(&help, name), expected.contains(&name));
                 }
                 for name in ["auth", "provider", "skill", "update", "version", "help"] {
@@ -380,8 +392,9 @@ mod tests {
 
     #[test]
     fn hidden_providers_still_parse() {
-        let providers = test_providers(false, false, false, false, false);
+        let providers = test_providers(false, false, false, false, false, false);
         for args in [
+            vec!["foac", "confluence", "page", "list"],
             vec!["foac", "github", "issue", "list", "--repo", "owner/repo"],
             vec!["foac", "jira", "issue", "list", "--jql", "project = ENG"],
             vec!["foac", "linear", "team", "list"],
@@ -394,8 +407,12 @@ mod tests {
 
     #[test]
     fn hidden_provider_help_remains_available() {
-        let providers = test_providers(false, false, false, false, false);
+        let providers = test_providers(false, false, false, false, false, false);
         for (args, usage) in [
+            (
+                vec!["foac", "confluence", "--help"],
+                "Usage: foac confluence",
+            ),
             (vec!["foac", "github", "--help"], "Usage: foac github"),
             (vec!["foac", "jira", "--help"], "Usage: foac jira"),
             (vec!["foac", "linear", "--help"], "Usage: foac linear"),
@@ -411,14 +428,14 @@ mod tests {
     #[test]
     fn hidden_providers_are_not_suggested() {
         let error = parse_error(
-            &test_providers(false, false, false, false, false),
+            &test_providers(false, false, false, false, false, false),
             ["foac", "githu"],
         )
         .to_string();
         assert!(!error.contains("github"));
 
         let error = parse_error(
-            &test_providers(false, true, false, false, false),
+            &test_providers(false, true, false, false, false, false),
             ["foac", "githu"],
         )
         .to_string();
@@ -428,6 +445,7 @@ mod tests {
     #[test]
     fn skill_documents_one_provider() {
         let examples = [
+            ("confluence", "foac confluence page list"),
             ("github", "foac github issue list"),
             ("jira", "foac jira issue list"),
             ("linear", "foac linear issue list"),
@@ -457,6 +475,7 @@ mod tests {
             vec!["foac", "auth", "linear"],
             vec!["foac", "auth", "github"],
             vec!["foac", "auth", "jira"],
+            vec!["foac", "auth", "confluence"],
             vec!["foac", "auth", "sentry"],
             vec!["foac", "auth", "slack"],
         ] {
@@ -494,6 +513,19 @@ mod tests {
                 "user@example.com",
             ],
             vec!["foac", "auth", "jira", "logout"],
+            vec!["foac", "auth", "confluence", "status"],
+            vec!["foac", "auth", "confluence", "login"],
+            vec![
+                "foac",
+                "auth",
+                "confluence",
+                "login",
+                "--host",
+                "acme.atlassian.net",
+                "--email",
+                "user@example.com",
+            ],
+            vec!["foac", "auth", "confluence", "logout"],
             vec!["foac", "auth", "sentry", "status"],
             vec!["foac", "auth", "sentry", "login"],
             vec![
@@ -541,6 +573,8 @@ mod tests {
             vec!["foac", "provider", "disable", "linear"],
             vec!["foac", "provider", "enable", "jira"],
             vec!["foac", "provider", "disable", "jira"],
+            vec!["foac", "provider", "enable", "confluence"],
+            vec!["foac", "provider", "disable", "confluence"],
             vec!["foac", "provider", "enable", "sentry"],
             vec!["foac", "provider", "disable", "sentry"],
             vec!["foac", "provider", "enable", "slack"],
@@ -639,7 +673,10 @@ mod tests {
             .unwrap()
             .to_string();
         assert!(missing_provider.contains("<PROVIDER>"));
-        assert!(missing_provider.contains("possible values: github, jira, linear, sentry, slack"));
+        assert!(
+            missing_provider
+                .contains("possible values: confluence, github, jira, linear, sentry, slack")
+        );
         assert!(Cli::try_parse_from(["foac", "skill", "print", "nope"]).is_err());
         assert!(matches!(
             Cli::try_parse_from(["foac", "skill", "print", "linear"])
@@ -727,8 +764,10 @@ mod tests {
         sentry: bool,
         slack: bool,
         jira: bool,
-    ) -> [Provider; 5] {
+        confluence: bool,
+    ) -> [Provider; 6] {
         [
+            Provider::new("confluence", confluence),
             Provider::new("github", github),
             Provider::new("jira", jira),
             Provider::new("linear", linear),

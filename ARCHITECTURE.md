@@ -1,7 +1,7 @@
 # foac
 
 foac, the Father Of All CLIs, wraps external SaaS APIs (Linear, GitHub, Jira,
-Sentry, Slack, more to come) behind one command grammar:
+Confluence, Sentry, Slack, more to come) behind one command grammar:
 `foac <provider> <resource> <verb>`. The primary consumer is an LLM agent
 working in a shell. Humans at a TTY get a rendering layer on top of the same
 output. foac makes any provider's API discoverable, uniform, and already
@@ -29,13 +29,13 @@ and output (JSON for machines, tables for humans, decided per invocation).
 ```text
                  main.rs  (parse, dispatch, provider hiding, skill render)
                     │
-   ┌────────────┬────────────┬────────────┬────────────┬────────────┬─────────────┐
-   │ linear.rs  │ github.rs  │ jira.rs    │ sentry.rs  │ slack.rs   │ auth.rs     │
-   │ (GraphQL,  │ (REST,     │ (REST,     │ (REST,     │ (REST,     │ provider.rs │
-   │  codegen)  │  untyped)  │  untyped)  │  untyped)  │  untyped)  │ update.rs   │
-   └─────┬──────┴─────┬──────┴─────┬──────┴─────┬──────┴─────┬──────┴─────────────┘
-         └────────────┴────────────┴────────────┴──────┬─────┘
-                                                       ▼
+   ┌────────────┬────────────┬───────────────┬────────────┬────────────┬─────────────┐
+   │ linear.rs  │ github.rs  │ jira.rs       │ sentry.rs  │ slack.rs   │ auth.rs     │
+   │ (GraphQL,  │ (REST,     │ confluence.rs │ (REST,     │ (REST,     │ provider.rs │
+   │  codegen)  │  untyped)  │ (REST,untyped)│  untyped)  │  untyped)  │ update.rs   │
+   └─────┬──────┴─────┬──────┴───────┬───────┴─────┬──────┴─────┬──────┴─────────────┘
+         └────────────┴──────────────┴─────────────┴──────┬─────┘
+                                                          ▼
                         output.rs  (single shared printer: JSON | table)
 ```
 
@@ -53,6 +53,7 @@ src/
 ├── linear.rs    # Linear provider: GraphQL via graphql_client codegen
 ├── github.rs    # GitHub provider: REST passthrough on rest.rs
 ├── jira.rs      # Jira provider: REST passthrough on rest.rs, Basic auth
+├── confluence.rs # Confluence provider: REST passthrough on rest.rs, shares Jira's Atlassian auth
 ├── sentry.rs    # Sentry provider: REST passthrough on rest.rs
 ├── slack.rs     # Slack provider: REST with Slack's HTTP-200 ok/error envelope
 ├── rest.rs      # Shared REST core: Api/send, list wrapping, payload helpers, auth-identity HTTP

@@ -7,7 +7,7 @@ use clap::{Args, Subcommand};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
-use crate::rest::{self, Api, Auth, BodyInput, insert_opt, push_query};
+use crate::rest::{self, Api, Auth, BodyInput, id_string, insert_opt, is_numeric_id, push_query};
 
 #[derive(Args)]
 pub struct Cmd {
@@ -239,7 +239,10 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
         email,
         command,
     } = cmd;
-    let api = api(crate::auth::jira_credentials(host, email)?, format)?;
+    let api = api(
+        crate::auth::atlassian_credentials(host, email, "foac auth jira login")?,
+        format,
+    )?;
     match command {
         Resource::Issue(cmd) => run_issue(&api, cmd),
         Resource::Comment(cmd) => run_comment(&api, cmd),
@@ -251,7 +254,7 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
 }
 
 pub fn authenticated() -> bool {
-    crate::auth::jira_authenticated()
+    crate::auth::atlassian_authenticated()
 }
 
 pub(crate) fn auth_identity(
@@ -484,7 +487,7 @@ fn run_transition(api: &Api, cmd: TransitionCmd) -> Result<(), Box<dyn std::erro
 }
 
 fn api(
-    credentials: crate::auth::JiraCredentials,
+    credentials: crate::auth::AtlassianCredentials,
     format: crate::output::Format,
 ) -> Result<Api, Box<dyn std::error::Error>> {
     Ok(Api {
@@ -585,10 +588,6 @@ fn name_or_id(value: String) -> Value {
     }
 }
 
-fn is_numeric_id(value: &str) -> bool {
-    !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
-}
-
 fn resolve_transition_id(
     api: &Api,
     key: &str,
@@ -639,14 +638,6 @@ fn resolve_board_id(api: &Api, board: &str) -> Result<String, Box<dyn std::error
         .or_else(|| (values.len() == 1).then(|| &values[0]))
         .and_then(|candidate| id_string(&candidate["id"]))
         .ok_or_else(|| format!("could not resolve board {board}").into())
-}
-
-fn id_string(value: &Value) -> Option<String> {
-    match value {
-        Value::String(id) => Some(id.clone()),
-        Value::Number(id) => Some(id.to_string()),
-        _ => None,
-    }
 }
 
 #[cfg(test)]

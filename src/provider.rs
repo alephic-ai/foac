@@ -9,7 +9,7 @@ use toml_edit::{Array, DocumentMut, Item, Value, value};
 
 use crate::auth::Provider;
 
-pub const PROVIDERS: [&str; 5] = ["github", "jira", "linear", "sentry", "slack"];
+pub const PROVIDERS: [&str; 6] = ["confluence", "github", "jira", "linear", "sentry", "slack"];
 
 /// Per-folder settings file, looked up from the working directory to `/`;
 /// the nearest file wins and overrides the global toggles.
@@ -87,8 +87,8 @@ pub(crate) enum Credential {
     Sentry,
     SlackBot,
     SlackUser,
-    // Atlassian credentials are vendor-level: Jira and (future) Confluence
-    // share the same host, email, and API token.
+    // Atlassian credentials are vendor-level: Jira and Confluence share the
+    // same host, email, and API token.
     AtlassianHost,
     AtlassianEmail,
     AtlassianToken,
@@ -241,6 +241,7 @@ fn statuses_with(
 /// Whether a credential resolves for the provider; no network validation.
 fn authenticated(name: &str) -> bool {
     match name {
+        "confluence" => crate::confluence::authenticated(),
         "github" => crate::github::authenticated(),
         "jira" => crate::jira::authenticated(),
         "linear" => crate::linear::authenticated(),
@@ -1068,6 +1069,7 @@ mod tests {
         assert_eq!(
             statuses_with(&settings, |name| name == "github", &["linear"]),
             json!({
+                "confluence": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "github": {"enabled": true, "authenticated": true, "skill_installed": false},
                 "jira": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "linear": {"enabled": true, "authenticated": false, "skill_installed": true},

@@ -36,7 +36,15 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   (email + API token) against the tenant host. Issue search paginates with
   `nextPageToken`; other lists use `startAt`/`maxResults`. The three
   Atlassian credentials are stored under vendor-level `atlassian_*` keys,
-  shared with future Atlassian providers.
+  shared with Confluence.
+- Confluence uses REST API v2 for spaces, pages, and footer comments, and the
+  v1 root for CQL search (never ported to v2), with the same HTTP Basic
+  Atlassian credentials as Jira. Bodies are written as wiki markup and read
+  back in the storage representation; `page update` and `comment update`
+  fetch the current version and re-send omitted fields, since the v2 PUT
+  requires status, title, and body alongside the incremented version. v2
+  lists paginate with a cursor extracted from `_links.next`; search uses
+  `start`/`limit`.
 - Slack uses its Web API's HTTP-200 `ok` envelope and cursor pagination.
   Ordinary commands resolve conversation and user names by paging through the
   relevant list method. Message search prefers `SLACK_USER_TOKEN`, then the

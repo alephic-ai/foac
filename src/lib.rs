@@ -3,6 +3,7 @@
 //! only intended consumer.
 
 pub mod auth;
+pub mod confluence;
 pub mod github;
 pub mod jira;
 pub mod linear;

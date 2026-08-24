@@ -1,4 +1,8 @@
 ---
+<!-- foac-provider:confluence -->
+name: foac-confluence
+description: Use the foac CLI to interact with Confluence from the shell. Covers spaces, pages, footer comments, and CQL search.
+<!-- /foac-provider:confluence -->
 <!-- foac-provider:github -->
 name: foac-github
 description: Use the foac CLI to interact with GitHub from the shell. Covers repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, and collaborators.
@@ -22,6 +26,9 @@ description: Use the foac CLI to interact with Slack from the shell. Covers conv
 ---
 
 <!-- rumdl-disable MD022 MD025 -->
+<!-- foac-provider:confluence -->
+# foac-confluence
+<!-- /foac-provider:confluence -->
 <!-- foac-provider:github -->
 # foac-github
 <!-- /foac-provider:github -->
@@ -62,6 +69,9 @@ foac <provider> <resource> <verb> [flags]
 - `github`: repositories, issues, pull requests, reviews, Actions, branches,
   commits, checks, releases, labels, artifacts, and collaborators.
 <!-- /foac-provider:github -->
+<!-- foac-provider:confluence -->
+- `confluence`: spaces, pages, footer comments, and CQL search.
+<!-- /foac-provider:confluence -->
 <!-- foac-provider:jira -->
 - `jira`: issues, comments, projects, sprints, users, and workflow
   transitions.
@@ -117,8 +127,20 @@ foac <provider> <resource> <verb> [flags]
   all three, or reads one line per missing value from redirected stdin in
   host, email, token order). A token that is neither in the environment nor
   stored is read from redirected stdin, so it never has to appear in shell
-  history. The stored credential is shared at the Atlassian vendor level.
+  history. The stored credential is shared at the Atlassian vendor level:
+  logging in or out through Jira or Confluence covers both.
 <!-- /foac-provider:jira -->
+<!-- foac-provider:confluence -->
+- **Confluence auth**: every command needs an Atlassian host, email, and API
+  token. Each resolves independently: `--host`/`--email` flags, then
+  `ATLASSIAN_HOST`/`ATLASSIAN_EMAIL`/`ATLASSIAN_API_TOKEN`, then the
+  `atlassian` credentials saved by `foac auth confluence login` (which prompts
+  for all three, or reads one line per missing value from redirected stdin in
+  host, email, token order). A token that is neither in the environment nor
+  stored is read from redirected stdin, so it never has to appear in shell
+  history. The stored credential is shared at the Atlassian vendor level:
+  logging in or out through Jira or Confluence covers both.
+<!-- /foac-provider:confluence -->
 <!-- foac-provider:sentry -->
 - **Sentry auth precedence**: `SENTRY_AUTH_TOKEN`, then the credentials file.
 <!-- /foac-provider:sentry -->
@@ -204,6 +226,22 @@ foac <provider> <resource> <verb> [flags]
 - **Jira text**: issue descriptions and comments accept mutually exclusive
   `--body` and `--body-file` (plain text or Jira wiki markup).
 <!-- /foac-provider:jira -->
+<!-- foac-provider:confluence -->
+- **Confluence pagination**: `space`, `page`, and `comment` lists take
+  `--limit N` and an opaque `--after CURSOR`; follow `pageInfo.endCursor`
+  while `hasNextPage` is true. `search` is offset-paged with `--limit N` and
+  `--start-at N`; follow `pageInfo.nextStartAt`. Output is
+  `{"items":[...],"pageInfo":{...}}`.
+- **Confluence identifiers**: spaces accept a key like `ENG` or a numeric ID;
+  pages and comments use numeric IDs (find pages with `page list --space` or
+  `search --cql`). `search --cql` takes raw CQL such as
+  `type = page AND text ~ "login"`.
+- **Confluence text**: page and comment bodies are written as Confluence wiki
+  markup via mutually exclusive `--body` and `--body-file`, and read back in
+  the storage representation. `page update` and `comment update` fetch the
+  current version internally and re-send omitted fields unchanged, so there is
+  no version flag to manage.
+<!-- /foac-provider:confluence -->
 <!-- foac-provider:sentry -->
 - **Sentry organization**: pass `--org SLUG` anywhere after `sentry`, or set
   `SENTRY_ORG`; only `org list` works without it. On a TTY,
@@ -267,6 +305,20 @@ Use `foac jira <resource> --help` for flags and required arguments. Issue
 list.
 <!-- /foac-provider:jira -->
 
+<!-- foac-provider:confluence -->
+## Confluence resources
+
+- Spaces: `space list|get`.
+- Pages: `page list|get|create|update|delete` (`create` takes `--space`,
+  `--title`, and optional `--parent`).
+- Footer comments: `comment list|create|update|delete` (`list` and `create`
+  take `--page`).
+- Discovery: `search --cql`.
+
+Use `foac confluence <resource> --help` for flags and required arguments.
+Inline comments, attachments, whiteboards, and databases are not covered.
+<!-- /foac-provider:confluence -->
+
 <!-- foac-provider:slack -->
 ## Slack resources
 
@@ -320,6 +372,17 @@ foac jira comment create --issue ENG-123 --body "Done, see PR #42"
 ```
 
 <!-- /foac-provider:jira -->
+
+<!-- foac-provider:confluence -->
+
+```sh
+foac confluence page list --space ENG
+foac confluence page create --space ENG --title "Runbook" --body-file /tmp/runbook.wiki
+foac confluence comment create --page 12345 --body "Updated, see PR #42"
+foac confluence search --cql 'type = page AND text ~ "login"'
+```
+
+<!-- /foac-provider:confluence -->
 
 <!-- foac-provider:sentry -->
 

@@ -50,7 +50,7 @@ fn provider_list_defaults_to_all_enabled_json() {
     let out = foac(&["provider", "list"]).output().unwrap();
     assert!(out.status.success());
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    for name in ["github", "jira", "linear", "sentry", "slack"] {
+    for name in ["confluence", "github", "jira", "linear", "sentry", "slack"] {
         assert_eq!(json[name]["enabled"], serde_json::Value::Bool(true));
     }
 }
@@ -289,6 +289,21 @@ fn jira_commands_name_the_first_missing_credential() {
     let stderr = String::from_utf8(out.stderr).unwrap();
     assert!(stderr.contains("ATLASSIAN_HOST"));
     assert!(stderr.contains("foac auth jira login"));
+}
+
+#[test]
+fn confluence_commands_name_their_own_login_command() {
+    let out = foac(&["confluence", "page", "list"])
+        .env_remove("ATLASSIAN_HOST")
+        .env_remove("ATLASSIAN_EMAIL")
+        .env_remove("ATLASSIAN_API_TOKEN")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(stderr.contains("ATLASSIAN_HOST"));
+    assert!(stderr.contains("foac auth confluence login"));
 }
 
 #[test]
