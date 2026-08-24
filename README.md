@@ -40,6 +40,10 @@ graph LR
     class Linear,GitHub,Jira,Confluence,Sentry,Slack provider
 ```
 
+Five harnesses and six providers is thirty integrations to configure and
+keep authenticated. Every harness or provider you add multiplies that
+number.
+
 With foac, install once and log in once; every harness talks to every
 provider through the same binary:
 
