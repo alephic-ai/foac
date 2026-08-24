@@ -260,12 +260,12 @@ fn skill_install_cmd() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
     let home = std::env::home_dir().ok_or("could not determine the home directory")?;
-    let installed = skill_install(&home, &active)?;
-    if installed.is_empty() {
+    let events = skill_install(&home, &active)?;
+    if events.is_empty() {
         return Err("no supported agent found; install manually with: foac skill print <provider> > <agent skills dir>/foac-<provider>/SKILL.md".into());
     }
-    for path in installed {
-        println!("Installed {}", path.display());
+    for (action, path) in events {
+        println!("{action} {}", path.display());
     }
     Ok(())
 }
@@ -278,7 +278,7 @@ fn skill_install_cmd() -> Result<(), Box<dyn std::error::Error>> {
 fn skill_install(
     home: &std::path::Path,
     active: &[&str],
-) -> Result<Vec<std::path::PathBuf>, Box<dyn std::error::Error>> {
+) -> Result<Vec<(&'static str, std::path::PathBuf)>, Box<dyn std::error::Error>> {
     let shared_agent_roots = [
         ".agents",
         ".cursor",
@@ -295,23 +295,30 @@ fn skill_install(
     if shared_agent_roots.iter().any(|r| home.join(r).is_dir()) {
         targets.push(home.join(".agents/skills"));
     }
-    let mut installed = Vec::new();
+    let mut events = Vec::new();
     for skills_dir in targets {
         for name in provider::PROVIDERS {
             let dir = skills_dir.join(format!("foac-{name}"));
             if active.contains(&name) {
                 std::fs::create_dir_all(&dir)?;
                 let path = dir.join("SKILL.md");
+                let action = if path.is_file() {
+                    "Updated"
+                } else {
+                    "Installed"
+                };
                 std::fs::write(&path, render_provider_skill(name))?;
-                installed.push(path);
-            } else if let Err(err) = std::fs::remove_dir_all(&dir)
-                && err.kind() != std::io::ErrorKind::NotFound
-            {
-                return Err(err.into());
+                events.push((action, path));
+            } else {
+                match std::fs::remove_dir_all(&dir) {
+                    Ok(()) => events.push(("Removed", dir)),
+                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(err) => return Err(err.into()),
+                }
             }
         }
     }
-    Ok(installed)
+    Ok(events)
 }
 
 #[cfg(test)]
@@ -620,17 +627,30 @@ mod tests {
         let stale = home.join(".agents/skills/foac-sentry");
         std::fs::create_dir_all(&stale).unwrap();
         std::fs::write(stale.join("SKILL.md"), "stale").unwrap();
-        let installed = skill_install(&home, &["github", "linear"]).unwrap();
+        let existing = home.join(".claude/skills/foac-github");
+        std::fs::create_dir_all(&existing).unwrap();
+        std::fs::write(existing.join("SKILL.md"), "stale").unwrap();
+        let events = skill_install(&home, &["github", "linear"]).unwrap();
         assert_eq!(
-            installed,
+            events,
             vec![
-                home.join(".claude/skills/foac-github/SKILL.md"),
-                home.join(".claude/skills/foac-linear/SKILL.md"),
-                home.join(".agents/skills/foac-github/SKILL.md"),
-                home.join(".agents/skills/foac-linear/SKILL.md"),
+                ("Updated", home.join(".claude/skills/foac-github/SKILL.md")),
+                (
+                    "Installed",
+                    home.join(".claude/skills/foac-linear/SKILL.md")
+                ),
+                (
+                    "Installed",
+                    home.join(".agents/skills/foac-github/SKILL.md")
+                ),
+                (
+                    "Installed",
+                    home.join(".agents/skills/foac-linear/SKILL.md")
+                ),
+                ("Removed", stale.clone()),
             ]
         );
-        for path in &installed {
+        for (_, path) in events.iter().filter(|(action, _)| *action != "Removed") {
             let name = path
                 .parent()
                 .unwrap()
