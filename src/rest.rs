@@ -4,28 +4,10 @@
 
 use serde_json::{Map, Value, json};
 
-pub(crate) enum Auth {
-    Bearer(String),
-    /// Token sent in a custom header, e.g. Figma's `X-Figma-Token`.
-    Header(&'static str, String),
-}
-
-impl Auth {
-    fn apply(
-        &self,
-        request: reqwest::blocking::RequestBuilder,
-    ) -> reqwest::blocking::RequestBuilder {
-        match self {
-            Self::Bearer(token) => request.bearer_auth(token),
-            Self::Header(name, token) => request.header(*name, token.as_str()),
-        }
-    }
-}
-
 pub(crate) struct Api {
     pub(crate) client: reqwest::blocking::Client,
     pub(crate) base_url: reqwest::Url,
-    pub(crate) auth: Auth,
+    pub(crate) token: String,
     pub(crate) format: crate::output::Format,
     /// Provider-specific static headers, e.g. GitHub's Accept and API version.
     pub(crate) headers: &'static [(&'static str, &'static str)],
@@ -61,8 +43,9 @@ impl Api {
         body: Option<Value>,
     ) -> Result<ApiResponse, Box<dyn std::error::Error>> {
         let mut request = self
-            .auth
-            .apply(self.client.request(method, self.url(segments)?))
+            .client
+            .request(method, self.url(segments)?)
+            .bearer_auth(&self.token)
             .header("User-Agent", "foac")
             .query(query);
         for (name, value) in self.headers {
@@ -141,11 +124,12 @@ pub(crate) fn insert_opt<T: Into<Value>>(
 pub(crate) fn fetch_identity(
     method: reqwest::Method,
     url: reqwest::Url,
-    auth: &Auth,
+    token: &str,
     headers: &'static [(&'static str, &'static str)],
 ) -> Result<(reqwest::StatusCode, Value), crate::auth::ValidationError> {
-    let mut request = auth
-        .apply(reqwest::blocking::Client::new().request(method, url))
+    let mut request = reqwest::blocking::Client::new()
+        .request(method, url)
+        .bearer_auth(token)
         .header("User-Agent", "foac");
     for (name, value) in headers {
         request = request.header(*name, *value);
@@ -164,11 +148,11 @@ pub(crate) fn fetch_identity(
 /// other failure is an error.
 pub(crate) fn identity(
     url: reqwest::Url,
-    auth: &Auth,
+    token: &str,
     headers: &'static [(&'static str, &'static str)],
     rejected: &[reqwest::StatusCode],
 ) -> Result<Value, crate::auth::ValidationError> {
-    let (status, body) = fetch_identity(reqwest::Method::GET, url, auth, headers)?;
+    let (status, body) = fetch_identity(reqwest::Method::GET, url, token, headers)?;
     if rejected.contains(&status) {
         return Err(crate::auth::ValidationError::Rejected(body.to_string()));
     }
@@ -240,11 +224,11 @@ mod tests {
     use reqwest::Method;
     use serde_json::json;
 
-    fn test_api(url: reqwest::Url, auth: Auth, trailing_slash: bool) -> Api {
+    fn test_api(url: reqwest::Url, trailing_slash: bool) -> Api {
         Api {
             client: reqwest::blocking::Client::new(),
             base_url: url,
-            auth,
+            token: "secret-token".into(),
             format: crate::output::Format::Json,
             headers: &[("X-Test-Header", "test-value")],
             trailing_slash,
@@ -254,7 +238,7 @@ mod tests {
     #[test]
     fn sends_bearer_auth_static_headers_and_parses_json() {
         let (url, request_rx, server) = testing::test_server("200 OK", "{\"ok\":true}", "");
-        let api = test_api(url, Auth::Bearer("secret-token".into()), false);
+        let api = test_api(url, false);
         let response = api
             .send(
                 Method::GET,
@@ -274,33 +258,15 @@ mod tests {
     }
 
     #[test]
-    fn sends_custom_header_auth_without_authorization() {
-        let (url, request_rx, server) = testing::test_server("200 OK", "{}", "");
-        let api = test_api(
-            url,
-            Auth::Header("X-Figma-Token", "figma-token".into()),
-            false,
-        );
-        api.send(Method::GET, &["v1".into(), "me".into()], &[], None)
-            .unwrap();
-        server.join().unwrap();
-
-        let request = request_rx.recv().unwrap().to_ascii_lowercase();
-        assert!(request.starts_with("get /v1/me http/1.1"));
-        assert!(request.contains("x-figma-token: figma-token"));
-        assert!(!request.contains("authorization:"));
-    }
-
-    #[test]
     fn builds_urls_with_an_optional_trailing_slash() {
         let base = reqwest::Url::parse("https://api.example.com").unwrap();
-        let api = test_api(base.clone(), Auth::Bearer("t".into()), true);
+        let api = test_api(base.clone(), true);
         let segments = ["organizations".to_owned(), "acme".to_owned()];
         assert_eq!(
             api.url(&segments).unwrap().as_str(),
             "https://api.example.com/organizations/acme/"
         );
-        let api = test_api(base, Auth::Bearer("t".into()), false);
+        let api = test_api(base, false);
         assert_eq!(
             api.url(&segments).unwrap().as_str(),
             "https://api.example.com/organizations/acme"
@@ -311,7 +277,7 @@ mod tests {
     fn propagates_error_bodies_and_represents_empty_success_as_json() {
         let (url, _, server) =
             testing::test_server("422 Unprocessable Entity", "{\"message\":\"invalid\"}", "");
-        let api = test_api(url, Auth::Bearer("t".into()), false);
+        let api = test_api(url, false);
         let error = api
             .send(Method::POST, &["resource".into()], &[], Some(json!({})))
             .unwrap_err();
@@ -319,7 +285,7 @@ mod tests {
         assert_eq!(error.to_string(), "{\"message\":\"invalid\"}");
 
         let (url, _, server) = testing::test_server("204 No Content", "", "");
-        let api = test_api(url, Auth::Bearer("t".into()), false);
+        let api = test_api(url, false);
         let response = api
             .send(Method::DELETE, &["resource".into()], &[], None)
             .unwrap();
@@ -329,15 +295,13 @@ mod tests {
 
     #[test]
     fn identity_maps_rejected_statuses_to_rejected() {
-        let (url, _, server) = testing::test_server("403 Forbidden", "{\"err\":\"bad token\"}", "");
+        let (url, _, server) =
+            testing::test_server("401 Unauthorized", "{\"err\":\"bad token\"}", "");
         let error = identity(
-            url.join("v1/me").unwrap(),
-            &Auth::Header("X-Figma-Token", "bad".into()),
+            url.join("user").unwrap(),
+            "bad",
             &[],
-            &[
-                reqwest::StatusCode::UNAUTHORIZED,
-                reqwest::StatusCode::FORBIDDEN,
-            ],
+            &[reqwest::StatusCode::UNAUTHORIZED],
         )
         .unwrap_err();
         server.join().unwrap();
@@ -345,8 +309,8 @@ mod tests {
 
         let (url, _, server) = testing::test_server("500 Internal Server Error", "{}", "");
         let error = identity(
-            url.join("v1/me").unwrap(),
-            &Auth::Bearer("t".into()),
+            url.join("user").unwrap(),
+            "t",
             &[],
             &[reqwest::StatusCode::UNAUTHORIZED],
         )

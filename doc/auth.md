@@ -21,9 +21,6 @@ foac auth sentry logout
 foac auth slack status
 foac auth slack login
 foac auth slack logout
-foac auth figma status
-foac auth figma login
-foac auth figma logout
 ```
 
 `login` prints a link and permission guidance, securely prompts for a personal

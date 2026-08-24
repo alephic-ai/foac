@@ -4,7 +4,7 @@ use clap::{Args, Subcommand, ValueEnum};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
-use crate::rest::{self, Auth, insert_opt, parse_response};
+use crate::rest::{self, insert_opt, parse_response};
 
 const API_URL: &str = "https://slack.com/api/";
 
@@ -261,8 +261,7 @@ pub(crate) fn auth_identity(token: &str) -> Result<Value, crate::auth::Validatio
 }
 
 fn auth_identity_at(token: &str, url: reqwest::Url) -> Result<Value, crate::auth::ValidationError> {
-    let (status, body) =
-        rest::fetch_identity(Method::POST, url, &Auth::Bearer(token.to_owned()), &[])?;
+    let (status, body) = rest::fetch_identity(Method::POST, url, token, &[])?;
     if !status.is_success() {
         return Err(crate::auth::ValidationError::Failed(body.to_string()));
     }

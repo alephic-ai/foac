@@ -13,8 +13,8 @@
 ## Adding a REST provider
 
 Follow `src/sentry.rs`'s shape on top of `src/rest.rs`: a `Cmd` clap tree, a
-`run` that builds a `rest::Api` (bearer or custom-header auth, static
-provider headers, optional trailing slash), `authenticated()`, an
+`run` that builds a `rest::Api` (bearer auth, static provider headers,
+optional trailing slash), `authenticated()`, an
 `auth_identity` built on `rest::identity`, and a provider-local `print_list`
 that wraps arrays with `rest::wrap_list` and the provider's own `pageInfo`
 parsing. Every provider addition also touches: `src/lib.rs`, `auth.rs`

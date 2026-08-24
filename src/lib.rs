@@ -3,7 +3,6 @@
 //! only intended consumer.
 
 pub mod auth;
-pub mod figma;
 pub mod github;
 pub mod linear;
 pub mod output;

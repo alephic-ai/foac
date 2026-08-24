@@ -5,7 +5,7 @@ use clap::{Args, Subcommand, ValueEnum};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
-use crate::rest::{self, Api, Auth, insert_opt, push_query};
+use crate::rest::{self, Api, insert_opt, push_query};
 
 const API_URL: &str = "https://api.github.com/";
 const API_VERSION: &str = "2026-03-10";
@@ -775,12 +775,7 @@ pub(crate) fn auth_identity(token: &str) -> Result<Value, crate::auth::Validatio
 }
 
 fn auth_identity_at(token: &str, url: reqwest::Url) -> Result<Value, crate::auth::ValidationError> {
-    rest::identity(
-        url,
-        &Auth::Bearer(token.to_owned()),
-        HEADERS,
-        &[reqwest::StatusCode::UNAUTHORIZED],
-    )
+    rest::identity(url, token, HEADERS, &[reqwest::StatusCode::UNAUTHORIZED])
 }
 
 fn run_repo(
@@ -1730,7 +1725,7 @@ fn api(token: String, format: crate::output::Format) -> Result<Api, Box<dyn std:
     Ok(Api {
         client: reqwest::blocking::Client::new(),
         base_url: reqwest::Url::parse(API_URL)?,
-        auth: Auth::Bearer(token),
+        token,
         format,
         headers: HEADERS,
         trailing_slash: false,
@@ -2160,7 +2155,7 @@ mod tests {
             client: reqwest::blocking::Client::new(),
             format: crate::output::Format::Json,
             base_url: url,
-            auth: Auth::Bearer("secret-token".into()),
+            token: "secret-token".into(),
             headers: HEADERS,
             trailing_slash: false,
         };

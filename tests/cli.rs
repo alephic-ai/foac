@@ -50,7 +50,7 @@ fn provider_list_defaults_to_all_enabled_json() {
     let out = foac(&["provider", "list"]).output().unwrap();
     assert!(out.status.success());
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    for name in ["figma", "github", "linear", "sentry", "slack"] {
+    for name in ["github", "linear", "sentry", "slack"] {
         assert_eq!(json[name]["enabled"], serde_json::Value::Bool(true));
     }
 }

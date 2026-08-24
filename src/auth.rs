@@ -16,8 +16,6 @@ pub struct Cmd {
 enum AuthCmd {
     /// Check authentication for every provider
     Status,
-    /// Configure Figma authentication
-    Figma(ProviderCmd),
     /// Configure Linear authentication
     Linear(ProviderCmd),
     /// Configure GitHub authentication
@@ -93,7 +91,6 @@ pub enum Provider {
     Github,
     Slack,
     Sentry,
-    Figma,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -176,7 +173,6 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
             print_all_statuses(&store, format);
             Ok(())
         }
-        AuthCmd::Figma(cmd) => run_provider(Provider::Figma, cmd.command, &store, format),
         AuthCmd::Linear(cmd) => run_provider(Provider::Linear, cmd.command, &store, format),
         AuthCmd::Github(cmd) => run_provider(Provider::Github, cmd.command, &store, format),
         AuthCmd::Slack(cmd) => run_slack(cmd.command, &store, format),
@@ -195,16 +191,6 @@ pub(crate) fn linear_token() -> Result<String, Box<dyn std::error::Error>> {
     resolve_stored(
         Provider::Linear,
         environment_token(Provider::Linear),
-        &crate::provider::CredentialStore,
-    )
-    .map(|credential| credential.token)
-    .map_err(Into::into)
-}
-
-pub(crate) fn figma_token() -> Result<String, Box<dyn std::error::Error>> {
-    resolve_stored(
-        Provider::Figma,
-        environment_token(Provider::Figma),
         &crate::provider::CredentialStore,
     )
     .map(|credential| credential.token)
@@ -277,7 +263,6 @@ impl Provider {
             Self::Github => "github",
             Self::Slack => "slack",
             Self::Sentry => "sentry",
-            Self::Figma => "figma",
         }
     }
 
@@ -287,7 +272,6 @@ impl Provider {
             Self::Github => "GitHub",
             Self::Slack => "Slack",
             Self::Sentry => "Sentry",
-            Self::Figma => "Figma",
         }
     }
 
@@ -297,7 +281,6 @@ impl Provider {
             Self::Github => "GITHUB_TOKEN",
             Self::Slack => "SLACK_BOT_TOKEN",
             Self::Sentry => "SENTRY_AUTH_TOKEN",
-            Self::Figma => "FIGMA_ACCESS_TOKEN",
         }
     }
 
@@ -307,7 +290,6 @@ impl Provider {
             Self::Github => crate::provider::Credential::Github,
             Self::Slack => crate::provider::Credential::SlackBot,
             Self::Sentry => crate::provider::Credential::Sentry,
-            Self::Figma => crate::provider::Credential::Figma,
         }
     }
 }
@@ -624,7 +606,6 @@ fn flatten_accounts_for_table(statuses: &Value) -> Value {
         Provider::Github,
         Provider::Slack,
         Provider::Sentry,
-        Provider::Figma,
     ] {
         let Some(obj) = out
             .get_mut(provider.as_str())
@@ -678,18 +659,6 @@ fn account_identity(provider: Provider, account: &Value) -> String {
         Provider::Github => github_identity(account),
         Provider::Slack => slack_identity(account),
         Provider::Sentry => sentry_identity(account),
-        Provider::Figma => figma_identity(account),
-    }
-}
-
-fn figma_identity(account: &Value) -> String {
-    let handle = text_field(account, "handle");
-    let email = text_field(account, "email");
-    match (handle, email) {
-        (Some(handle), Some(email)) => format!("{handle} <{email}>"),
-        (Some(handle), None) => handle.to_owned(),
-        (None, Some(email)) => email.to_owned(),
-        (None, None) => String::new(),
     }
 }
 
@@ -757,7 +726,7 @@ fn text_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
 
 fn provider_status(provider: Provider, store: &dyn SecretStore) -> Value {
     let resolved = match provider {
-        Provider::Linear | Provider::Sentry | Provider::Figma => {
+        Provider::Linear | Provider::Sentry => {
             resolve_stored(provider, environment_token(provider), store)
         }
         Provider::Github => resolve_github(environment_token(provider), store, github_cli_token),
@@ -776,7 +745,6 @@ fn all_provider_statuses(store: &dyn SecretStore) -> Value {
         "github": provider_status(Provider::Github, store),
         "slack": provider_status(Provider::Slack, store),
         "sentry": provider_status(Provider::Sentry, store),
-        "figma": provider_status(Provider::Figma, store),
     })
 }
 
@@ -1010,16 +978,7 @@ fn validate(
         Provider::Github => crate::github::auth_identity(token).map(github_account),
         Provider::Slack => crate::slack::auth_identity(token).map(slack_account),
         Provider::Sentry => crate::sentry::auth_identity(token, sentry_url).map(sentry_account),
-        Provider::Figma => crate::figma::auth_identity(token).map(figma_account),
     }
-}
-
-fn figma_account(identity: Value) -> Value {
-    json!({
-        "id": identity["id"],
-        "email": identity["email"],
-        "handle": identity["handle"],
-    })
 }
 
 fn linear_account(identity: Value) -> Value {
@@ -1154,9 +1113,6 @@ fn print_login_help(
                 "Create a user auth token at {url}/settings/account/api/auth-tokens/ and grant the scopes needed by your foac commands."
             );
         }
-        Provider::Figma => eprintln!(
-            "Create a personal access token in Figma under Settings > Security > Personal access tokens (https://www.figma.com/developers/api#access-tokens).\nGrant the scopes for the commands you use:\n  current_user:read    required, login validates against /v1/me\n  folders:read         project list, file list\n  file_content:read    file get, file nodes, image export\n  file_versions:read   file versions\n  file_comments:read   comment list\n  file_comments:write  comment create, comment delete"
-        ),
     }
     Ok(())
 }
