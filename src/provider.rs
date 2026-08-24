@@ -21,17 +21,13 @@ pub enum Cmd {
     Disable { provider: Provider },
 }
 
-#[derive(Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Config {
-    #[serde(default)]
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Settings {
     disabled_providers: Vec<String>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    credentials: BTreeMap<String, String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     sentry_url: Option<String>,
 }
 
-impl Config {
+impl Settings {
     pub fn enabled(&self, name: &str) -> bool {
         !self.disabled_providers.iter().any(|p| p == name)
     }
@@ -43,18 +39,6 @@ impl Config {
         }
     }
 
-    pub(crate) fn credential(&self, name: &str) -> Option<&str> {
-        self.credentials.get(name).map(String::as_str)
-    }
-
-    pub(crate) fn set_credential(&mut self, name: &str, token: String) {
-        self.credentials.insert(name.to_owned(), token);
-    }
-
-    pub(crate) fn remove_credential(&mut self, name: &str) -> bool {
-        self.credentials.remove(name).is_some()
-    }
-
     pub(crate) fn sentry_url(&self) -> Option<&str> {
         self.sentry_url.as_deref().filter(|url| !url.is_empty())
     }
@@ -64,10 +48,137 @@ impl Config {
     }
 }
 
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub(crate) enum Credential {
+    Linear,
+    Github,
+    Sentry,
+    SlackBot,
+    SlackUser,
+}
+
+impl Credential {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Linear => "linear",
+            Self::Github => "github",
+            Self::Sentry => "sentry",
+            Self::SlackBot => "slack_bot",
+            Self::SlackUser => "slack_user",
+        }
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct Credentials {
+    values: BTreeMap<String, String>,
+}
+
+impl Credentials {
+    pub(crate) fn get(&self, credential: Credential) -> Option<&str> {
+        self.values.get(credential.as_str()).map(String::as_str)
+    }
+
+    fn set(&mut self, credential: Credential, token: String) {
+        self.values.insert(credential.as_str().to_owned(), token);
+    }
+
+    fn remove(&mut self, credential: Credential) -> bool {
+        self.values.remove(credential.as_str()).is_some()
+    }
+}
+
+/// Settings and credentials still serialize through this compatibility model
+/// until their persistence formats are separated.
+#[derive(Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+struct ConfigFile {
+    #[serde(default)]
+    disabled_providers: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    credentials: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sentry_url: Option<String>,
+}
+
+impl ConfigFile {
+    fn settings(&self) -> Settings {
+        Settings {
+            disabled_providers: self.disabled_providers.clone(),
+            sentry_url: self.sentry_url.clone(),
+        }
+    }
+
+    fn set_settings(&mut self, settings: Settings) {
+        self.disabled_providers = settings.disabled_providers;
+        self.sentry_url = settings.sentry_url;
+    }
+
+    fn credentials(&self) -> Credentials {
+        Credentials {
+            values: self.credentials.clone(),
+        }
+    }
+
+    fn set_credentials(&mut self, credentials: Credentials) {
+        self.credentials = credentials.values;
+    }
+}
+
+pub struct SettingsStore;
+
+impl SettingsStore {
+    pub fn load(&self) -> Result<Settings, Box<dyn std::error::Error>> {
+        let path = path().ok_or("could not determine the config path")?;
+        load_settings_from(&path)
+    }
+
+    fn set_enabled(
+        &self,
+        name: &str,
+        enabled: bool,
+    ) -> Result<Settings, Box<dyn std::error::Error>> {
+        let path = path().ok_or("could not determine the config path")?;
+        set_enabled_at(&path, name, enabled)
+    }
+
+    pub(crate) fn set_sentry_url(
+        &self,
+        url: Option<String>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let path = path().ok_or("could not determine the config path")?;
+        set_sentry_url_at(&path, url)
+    }
+}
+
+pub(crate) struct CredentialStore;
+
+impl CredentialStore {
+    pub(crate) fn load(&self) -> Result<Credentials, Box<dyn std::error::Error>> {
+        let path = path().ok_or("could not determine the config path")?;
+        load_credentials_from(&path)
+    }
+
+    pub(crate) fn set_many(
+        &self,
+        credentials: &[(Credential, &str)],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let path = path().ok_or("could not determine the config path")?;
+        set_credentials_at(&path, credentials)
+    }
+
+    pub(crate) fn delete_many(
+        &self,
+        credentials: &[Credential],
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        let path = path().ok_or("could not determine the config path")?;
+        delete_credentials_at(&path, credentials)
+    }
+}
+
 pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
         Cmd::List => {
-            crate::output::print(&statuses(&load()?), format);
+            crate::output::print(&statuses(&SettingsStore.load()?), format);
             Ok(())
         }
         Cmd::Enable { provider } => set_enabled(provider, true, format),
@@ -75,11 +186,11 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
     }
 }
 
-fn statuses(config: &Config) -> serde_json::Value {
+fn statuses(settings: &Settings) -> serde_json::Value {
     serde_json::Value::Object(
         PROVIDERS
             .iter()
-            .map(|name| (name.to_string(), json!({"enabled": config.enabled(name)})))
+            .map(|name| (name.to_string(), json!({"enabled": settings.enabled(name)})))
             .collect(),
     )
 }
@@ -89,29 +200,17 @@ fn set_enabled(
     enabled: bool,
     format: crate::output::Format,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut config = load()?;
-    config.set_enabled(provider.as_str(), enabled);
-    save(&config)?;
-    crate::output::print_highlighting(&statuses(&config), format, provider.as_str());
+    let settings = SettingsStore.set_enabled(provider.as_str(), enabled)?;
+    crate::output::print_highlighting(&statuses(&settings), format, provider.as_str());
     Ok(())
 }
 
-pub fn ensure_enabled(config: &Config, name: &str) -> Result<(), Box<dyn std::error::Error>> {
-    if config.enabled(name) {
+pub fn ensure_enabled(settings: &Settings, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    if settings.enabled(name) {
         Ok(())
     } else {
         Err(format!("{name} is disabled; run `foac provider enable {name}` to enable it").into())
     }
-}
-
-pub fn load() -> Result<Config, Box<dyn std::error::Error>> {
-    let path = path().ok_or("could not determine the config path")?;
-    load_from(&path)
-}
-
-pub(crate) fn save(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    let path = path().ok_or("could not determine the config path")?;
-    write(&path, config)
 }
 
 fn path() -> Option<PathBuf> {
@@ -126,11 +225,11 @@ fn config_path(xdg_config_home: Option<&str>, home: Option<&Path>) -> Option<Pat
     Some(home?.join(".config/foac/config.json"))
 }
 
-fn load_from(path: &Path) -> Result<Config, Box<dyn std::error::Error>> {
+fn load_from(path: &Path) -> Result<ConfigFile, Box<dyn std::error::Error>> {
     Ok(read(path)?.unwrap_or_default())
 }
 
-fn read(path: &Path) -> Result<Option<Config>, Box<dyn std::error::Error>> {
+fn read(path: &Path) -> Result<Option<ConfigFile>, Box<dyn std::error::Error>> {
     let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -155,13 +254,72 @@ fn read(path: &Path) -> Result<Option<Config>, Box<dyn std::error::Error>> {
     })
 }
 
-fn write(path: &Path, config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+fn write(path: &Path, config: &ConfigFile) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
     let bytes = serde_json::to_vec_pretty(config)?;
     write_private(path, |file| file.write_all(&bytes))?;
     Ok(())
+}
+
+fn load_settings_from(path: &Path) -> Result<Settings, Box<dyn std::error::Error>> {
+    Ok(load_from(path)?.settings())
+}
+
+fn set_enabled_at(
+    path: &Path,
+    name: &str,
+    enabled: bool,
+) -> Result<Settings, Box<dyn std::error::Error>> {
+    let mut config = load_from(path)?;
+    let mut settings = config.settings();
+    settings.set_enabled(name, enabled);
+    config.set_settings(settings);
+    write(path, &config)?;
+    Ok(config.settings())
+}
+
+fn set_sentry_url_at(path: &Path, url: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = load_from(path)?;
+    let mut settings = config.settings();
+    settings.set_sentry_url(url);
+    config.set_settings(settings);
+    write(path, &config)
+}
+
+fn load_credentials_from(path: &Path) -> Result<Credentials, Box<dyn std::error::Error>> {
+    Ok(load_from(path)?.credentials())
+}
+
+fn set_credentials_at(
+    path: &Path,
+    updates: &[(Credential, &str)],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = load_from(path)?;
+    let mut credentials = config.credentials();
+    for (credential, token) in updates {
+        credentials.set(*credential, (*token).to_owned());
+    }
+    config.set_credentials(credentials);
+    write(path, &config)
+}
+
+fn delete_credentials_at(
+    path: &Path,
+    removals: &[Credential],
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let mut config = load_from(path)?;
+    let mut credentials = config.credentials();
+    let mut removed = false;
+    for credential in removals {
+        removed = credentials.remove(*credential) || removed;
+    }
+    if removed {
+        config.set_credentials(credentials);
+        write(path, &config)?;
+    }
+    Ok(removed)
 }
 
 fn write_private(
@@ -223,90 +381,127 @@ mod tests {
     }
 
     #[test]
-    fn config_round_trip() {
-        let dir = std::env::temp_dir().join(format!("foac-provider-test-{}", std::process::id()));
+    fn settings_updates_preserve_credentials_and_compatibility_bytes() {
+        let dir =
+            std::env::temp_dir().join(format!("foac-settings-store-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.json");
-        assert_eq!(read(&path).unwrap(), None);
-        assert!(Config::default().enabled("github"));
+        std::fs::write(
+            &path,
+            concat!(
+                "{\n",
+                "  \"disabled_providers\": [],\n",
+                "  \"credentials\": {\n",
+                "    \"github\": \"github-token\",\n",
+                "    \"linear\": \"linear-token\",\n",
+                "    \"sentry\": \"sentry-token\",\n",
+                "    \"slack_bot\": \"xoxb-bot\",\n",
+                "    \"slack_user\": \"xoxp-user\"\n",
+                "  },\n",
+                "  \"sentry_url\": \"https://sentry.example.com\"\n",
+                "}"
+            ),
+        )
+        .unwrap();
 
-        let mut config = Config::default();
-        config.set_enabled("github", false);
-        config.set_enabled("github", false);
-        write(&path, &config).unwrap();
+        set_enabled_at(&path, "github", false).unwrap();
+        set_sentry_url_at(&path, Some("https://sentry.changed.example.com".into())).unwrap();
+
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
-            "{\n  \"disabled_providers\": [\n    \"github\"\n  ]\n}"
+            concat!(
+                "{\n",
+                "  \"disabled_providers\": [\n",
+                "    \"github\"\n",
+                "  ],\n",
+                "  \"credentials\": {\n",
+                "    \"github\": \"github-token\",\n",
+                "    \"linear\": \"linear-token\",\n",
+                "    \"sentry\": \"sentry-token\",\n",
+                "    \"slack_bot\": \"xoxb-bot\",\n",
+                "    \"slack_user\": \"xoxp-user\"\n",
+                "  },\n",
+                "  \"sentry_url\": \"https://sentry.changed.example.com\"\n",
+                "}"
+            )
         );
-
-        let config = read(&path).unwrap().unwrap();
-        assert!(!config.enabled("github"));
-        assert!(config.enabled("linear"));
-
-        let mut config = config;
-        config.set_enabled("github", true);
-        assert!(config.enabled("github"));
-        assert!(config.disabled_providers.is_empty());
-
-        config.set_credential("linear", "lin_api_token".into());
-        write(&path, &config).unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
-            assert_eq!(mode & 0o777, 0o600);
-        }
-        let config = read(&path).unwrap().unwrap();
-        assert_eq!(config.credential("linear"), Some("lin_api_token"));
-        assert_eq!(config.credential("github"), None);
-
-        let mut config = config;
-        config.set_credential("slack_bot", "xoxb-bot".into());
-        config.set_credential("slack_user", "xoxp-user".into());
-        write(&path, &config).unwrap();
-        let config = read(&path).unwrap().unwrap();
-        assert_eq!(config.credential("slack_bot"), Some("xoxb-bot"));
-        assert_eq!(config.credential("slack_user"), Some("xoxp-user"));
-
-        let mut config = config;
-        assert!(config.remove_credential("slack_bot"));
-        assert!(config.remove_credential("slack_user"));
-        assert!(config.remove_credential("linear"));
-        assert!(!config.remove_credential("linear"));
-        write(&path, &config).unwrap();
-        assert_eq!(
-            std::fs::read_to_string(&path).unwrap(),
-            "{\n  \"disabled_providers\": []\n}"
-        );
-
-        config.set_sentry_url(Some("https://sentry.example.com".into()));
-        write(&path, &config).unwrap();
-        let config = read(&path).unwrap().unwrap();
-        assert_eq!(config.sentry_url(), Some("https://sentry.example.com"));
-        assert_eq!(Config::default().sentry_url(), None);
+        let credentials = load_credentials_from(&path).unwrap();
+        assert_eq!(credentials.get(Credential::Github), Some("github-token"));
+        assert_eq!(credentials.get(Credential::Linear), Some("linear-token"));
+        assert_eq!(credentials.get(Credential::Sentry), Some("sentry-token"));
+        assert_eq!(credentials.get(Credential::SlackBot), Some("xoxb-bot"));
+        assert_eq!(credentials.get(Credential::SlackUser), Some("xoxp-user"));
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
-    fn config_write_pretty_prints_and_round_trips_populated_fields() {
+    fn credential_updates_preserve_settings_and_slack_tokens_are_independent() {
         let dir =
-            std::env::temp_dir().join(format!("foac-provider-pretty-test-{}", std::process::id()));
+            std::env::temp_dir().join(format!("foac-credential-store-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.json");
+        std::fs::write(
+            &path,
+            concat!(
+                "{\n",
+                "  \"disabled_providers\": [\n",
+                "    \"github\"\n",
+                "  ],\n",
+                "  \"sentry_url\": \"https://sentry.example.com\"\n",
+                "}"
+            ),
+        )
+        .unwrap();
 
-        let mut config = Config::default();
-        config.set_enabled("github", false);
-        config.set_credential("slack_user", "xoxp-user".into());
-        config.set_credential("linear", "lin_api_token".into());
-        config.set_sentry_url(Some("https://sentry.example.com".into()));
+        set_credentials_at(
+            &path,
+            &[
+                (Credential::SlackBot, "xoxb-bot"),
+                (Credential::SlackUser, "xoxp-user"),
+            ],
+        )
+        .unwrap();
+        assert!(delete_credentials_at(&path, &[Credential::SlackBot]).unwrap());
 
-        write(&path, &config).unwrap();
-
+        let config = load_from(&path).unwrap();
+        assert!(!config.settings().enabled("github"));
         assert_eq!(
-            std::fs::read(&path).unwrap(),
-            serde_json::to_string_pretty(&config).unwrap().as_bytes()
+            config.settings().sentry_url(),
+            Some("https://sentry.example.com")
         );
-        assert_eq!(read(&path).unwrap(), Some(config));
+        assert_eq!(
+            config.credentials().get(Credential::SlackUser),
+            Some("xoxp-user")
+        );
+        assert_eq!(config.credentials().get(Credential::SlackBot), None);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            concat!(
+                "{\n",
+                "  \"disabled_providers\": [\n",
+                "    \"github\"\n",
+                "  ],\n",
+                "  \"credentials\": {\n",
+                "    \"slack_user\": \"xoxp-user\"\n",
+                "  },\n",
+                "  \"sentry_url\": \"https://sentry.example.com\"\n",
+                "}"
+            )
+        );
+
+        assert!(delete_credentials_at(&path, &[Credential::SlackUser]).unwrap());
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            concat!(
+                "{\n",
+                "  \"disabled_providers\": [\n",
+                "    \"github\"\n",
+                "  ],\n",
+                "  \"sentry_url\": \"https://sentry.example.com\"\n",
+                "}"
+            )
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -398,7 +593,7 @@ mod tests {
             std::env::temp_dir().join(format!("foac-provider-read-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let missing = dir.join("missing.json");
-        assert_eq!(load_from(&missing).unwrap(), Config::default());
+        assert_eq!(load_from(&missing).unwrap(), ConfigFile::default());
 
         let unreadable = dir.join("unreadable.json");
         std::fs::create_dir(&unreadable).unwrap();
@@ -423,10 +618,10 @@ mod tests {
 
     #[test]
     fn ensure_enabled_reports_disabled_providers() {
-        let mut config = Config::default();
-        assert!(ensure_enabled(&config, "github").is_ok());
-        config.set_enabled("github", false);
-        let error = ensure_enabled(&config, "github").unwrap_err().to_string();
+        let mut settings = Settings::default();
+        assert!(ensure_enabled(&settings, "github").is_ok());
+        settings.set_enabled("github", false);
+        let error = ensure_enabled(&settings, "github").unwrap_err().to_string();
         assert_eq!(
             error,
             "github is disabled; run `foac provider enable github` to enable it"
@@ -435,10 +630,10 @@ mod tests {
 
     #[test]
     fn statuses_lists_every_provider() {
-        let mut config = Config::default();
-        config.set_enabled("sentry", false);
+        let mut settings = Settings::default();
+        settings.set_enabled("sentry", false);
         assert_eq!(
-            statuses(&config),
+            statuses(&settings),
             json!({
                 "github": {"enabled": true},
                 "linear": {"enabled": true},

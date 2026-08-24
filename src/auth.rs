@@ -118,8 +118,6 @@ struct ResolvedCredential {
     source: CredentialSource,
 }
 
-const SLACK_BOT_CREDENTIAL: &str = "slack_bot";
-const SLACK_USER_CREDENTIAL: &str = "slack_user";
 const SLACK_APP_MANIFEST: &str = r#"{
   "_metadata": {
     "major_version": 1
@@ -163,15 +161,13 @@ const SLACK_APP_MANIFEST: &str = r#"{
 }"#;
 
 trait SecretStore {
-    fn get(&self, name: &str) -> Result<Option<String>, String>;
-    fn set_many(&self, credentials: &[(&str, &str)]) -> Result<(), String>;
-    fn delete_many(&self, names: &[&str]) -> Result<bool, String>;
+    fn get(&self, credential: crate::provider::Credential) -> Result<Option<String>, String>;
+    fn set_many(&self, credentials: &[(crate::provider::Credential, &str)]) -> Result<(), String>;
+    fn delete_many(&self, credentials: &[crate::provider::Credential]) -> Result<bool, String>;
 }
 
-struct ConfigFileStore;
-
 pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
-    let store = ConfigFileStore;
+    let store = crate::provider::CredentialStore;
     match cmd.command {
         AuthCmd::Status => {
             print_all_statuses(&store, format);
@@ -195,7 +191,7 @@ pub(crate) fn linear_token() -> Result<String, Box<dyn std::error::Error>> {
     resolve_stored(
         Provider::Linear,
         environment_token(Provider::Linear),
-        &ConfigFileStore,
+        &crate::provider::CredentialStore,
     )
     .map(|credential| credential.token)
     .map_err(Into::into)
@@ -205,7 +201,7 @@ pub(crate) fn sentry_token() -> Result<String, Box<dyn std::error::Error>> {
     resolve_stored(
         Provider::Sentry,
         environment_token(Provider::Sentry),
-        &ConfigFileStore,
+        &crate::provider::CredentialStore,
     )
     .map(|credential| credential.token)
     .map_err(Into::into)
@@ -215,22 +211,25 @@ pub(crate) fn slack_token() -> Result<String, Box<dyn std::error::Error>> {
     resolve_slack(
         environment_token(Provider::Slack),
         environment_slack_user_token(),
-        &ConfigFileStore,
+        &crate::provider::CredentialStore,
     )
     .map(|credential| credential.token)
     .map_err(Into::into)
 }
 
 pub(crate) fn slack_user_token() -> Result<String, Box<dyn std::error::Error>> {
-    resolve_slack_user(environment_slack_user_token(), &ConfigFileStore)
-        .map(|credential| credential.token)
-        .map_err(Into::into)
+    resolve_slack_user(
+        environment_slack_user_token(),
+        &crate::provider::CredentialStore,
+    )
+    .map(|credential| credential.token)
+    .map_err(Into::into)
 }
 
 pub(crate) fn github_token() -> Result<String, Box<dyn std::error::Error>> {
     resolve_github(
         environment_token(Provider::Github),
-        &ConfigFileStore,
+        &crate::provider::CredentialStore,
         github_cli_token,
     )
     .map(|credential| credential.token)
@@ -284,6 +283,15 @@ impl Provider {
             Self::Sentry => "SENTRY_AUTH_TOKEN",
         }
     }
+
+    fn credential(self) -> crate::provider::Credential {
+        match self {
+            Self::Linear => crate::provider::Credential::Linear,
+            Self::Github => crate::provider::Credential::Github,
+            Self::Slack => crate::provider::Credential::SlackBot,
+            Self::Sentry => crate::provider::Credential::Sentry,
+        }
+    }
 }
 
 impl CredentialSource {
@@ -296,33 +304,24 @@ impl CredentialSource {
     }
 }
 
-impl SecretStore for ConfigFileStore {
-    fn get(&self, name: &str) -> Result<Option<String>, String> {
-        Ok(crate::provider::load()
+impl SecretStore for crate::provider::CredentialStore {
+    fn get(&self, credential: crate::provider::Credential) -> Result<Option<String>, String> {
+        Ok(self
+            .load()
             .map_err(|error| error.to_string())?
-            .credential(name)
+            .get(credential)
             .filter(|token| !token.is_empty())
             .map(str::to_owned))
     }
 
-    fn set_many(&self, credentials: &[(&str, &str)]) -> Result<(), String> {
-        let mut config = crate::provider::load().map_err(|error| error.to_string())?;
-        for (name, token) in credentials {
-            config.set_credential(name, (*token).to_owned());
-        }
-        crate::provider::save(&config).map_err(|error| error.to_string())
+    fn set_many(&self, credentials: &[(crate::provider::Credential, &str)]) -> Result<(), String> {
+        self.set_many(credentials)
+            .map_err(|error| error.to_string())
     }
 
-    fn delete_many(&self, names: &[&str]) -> Result<bool, String> {
-        let mut config = crate::provider::load().map_err(|error| error.to_string())?;
-        let mut removed = false;
-        for name in names {
-            removed = config.remove_credential(name) || removed;
-        }
-        if removed {
-            crate::provider::save(&config).map_err(|error| error.to_string())?;
-        }
-        Ok(removed)
+    fn delete_many(&self, credentials: &[crate::provider::Credential]) -> Result<bool, String> {
+        self.delete_many(credentials)
+            .map_err(|error| error.to_string())
     }
 }
 
@@ -362,14 +361,16 @@ fn logout(
     store: &dyn SecretStore,
     format: crate::output::Format,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let provider_name = provider.as_str();
-    let names: &[&str] = if provider == Provider::Slack {
-        &[SLACK_BOT_CREDENTIAL, SLACK_USER_CREDENTIAL]
+    let credentials: &[crate::provider::Credential] = if provider == Provider::Slack {
+        &[
+            crate::provider::Credential::SlackBot,
+            crate::provider::Credential::SlackUser,
+        ]
     } else {
-        &[provider_name]
+        &[provider.credential()]
     };
     let removed = store
-        .delete_many(names)
+        .delete_many(credentials)
         .map_err(|error| format!("could not delete {} credential: {error}", provider.as_str()))?;
     let report = logout_report(provider, removed);
     crate::output::print_text(&logout_summary(removed), &report, format);
@@ -392,13 +393,11 @@ fn login(
     if token.is_empty() {
         return Err("token cannot be empty".into());
     }
-    let account = validate_and_store(provider, provider.as_str(), &token, store, |token| {
+    let account = validate_and_store(provider, provider.credential(), &token, store, |token| {
         validate(provider, token, url.as_deref())
     })?;
     if let Some(url) = &url {
-        let mut config = crate::provider::load()?;
-        config.set_sentry_url(Some(url.clone()));
-        crate::provider::save(&config)?;
+        crate::provider::SettingsStore.set_sentry_url(Some(url.clone()))?;
         if std::env::var("SENTRY_URL").is_ok_and(|url| !url.is_empty()) {
             eprintln!("Warning: SENTRY_URL is set and takes precedence over the stored URL.");
         }
@@ -500,10 +499,10 @@ where
 
     let mut credentials = Vec::with_capacity(2);
     if let Some(token) = tokens.bot.as_deref() {
-        credentials.push((SLACK_BOT_CREDENTIAL, token));
+        credentials.push((crate::provider::Credential::SlackBot, token));
     }
     if let Some(token) = tokens.user.as_deref() {
-        credentials.push((SLACK_USER_CREDENTIAL, token));
+        credentials.push((crate::provider::Credential::SlackUser, token));
     }
     store
         .set_many(&credentials)
@@ -743,7 +742,7 @@ fn all_provider_statuses(store: &dyn SecretStore) -> Value {
 
 fn validate_and_store<F>(
     provider: Provider,
-    credential_name: &str,
+    credential: crate::provider::Credential,
     token: &str,
     store: &dyn SecretStore,
     validate: F,
@@ -753,7 +752,7 @@ where
 {
     let account = validate(token)?;
     store
-        .set_many(&[(credential_name, token)])
+        .set_many(&[(credential, token)])
         .map_err(|error| format!("could not store {} credential: {error}", provider.as_str()))?;
     Ok(account)
 }
@@ -809,7 +808,7 @@ fn resolve_stored(
             source: CredentialSource::Environment,
         });
     }
-    match store.get(provider.as_str()) {
+    match store.get(provider.credential()) {
         Ok(Some(token)) => Ok(ResolvedCredential {
             token,
             source: CredentialSource::ConfigFile,
@@ -851,7 +850,7 @@ fn resolve_slack_bot(
 ) -> Result<ResolvedCredential, ResolveError> {
     let credential = resolve_named_stored(
         environment,
-        &[SLACK_BOT_CREDENTIAL],
+        &[crate::provider::Credential::SlackBot],
         "SLACK_BOT_TOKEN is not set and no Slack bot credential is stored",
         "Slack bot",
         store,
@@ -870,7 +869,7 @@ fn resolve_slack_user(
 ) -> Result<ResolvedCredential, ResolveError> {
     let credential = resolve_named_stored(
         environment,
-        &[SLACK_USER_CREDENTIAL],
+        &[crate::provider::Credential::SlackUser],
         "SLACK_USER_TOKEN is not set and no Slack user credential is stored; Slack search requires a user token with search:read",
         "Slack user",
         store,
@@ -885,7 +884,7 @@ fn resolve_slack_user(
 
 fn resolve_named_stored(
     environment: Option<String>,
-    stored_names: &[&str],
+    stored_credentials: &[crate::provider::Credential],
     missing: &str,
     display_name: &str,
     store: &dyn SecretStore,
@@ -896,8 +895,8 @@ fn resolve_named_stored(
             source: CredentialSource::Environment,
         });
     }
-    for name in stored_names {
-        match store.get(name) {
+    for credential in stored_credentials {
+        match store.get(*credential) {
             Ok(Some(token)) => {
                 return Ok(ResolvedCredential {
                     token,
@@ -929,7 +928,7 @@ where
             source: CredentialSource::Environment,
         });
     }
-    let store_error = match store.get(Provider::Github.as_str()) {
+    let store_error = match store.get(Provider::Github.credential()) {
         Ok(Some(token)) => {
             return Ok(ResolvedCredential {
                 token,
@@ -1117,33 +1116,42 @@ mod tests {
 
     use super::*;
 
+    const LINEAR_CREDENTIAL: crate::provider::Credential = crate::provider::Credential::Linear;
+    const GITHUB_CREDENTIAL: crate::provider::Credential = crate::provider::Credential::Github;
+    const SLACK_BOT_CREDENTIAL: crate::provider::Credential = crate::provider::Credential::SlackBot;
+    const SLACK_USER_CREDENTIAL: crate::provider::Credential =
+        crate::provider::Credential::SlackUser;
+
     #[derive(Default)]
     struct MemoryStore {
-        credentials: RefCell<HashMap<String, String>>,
+        credentials: RefCell<HashMap<crate::provider::Credential, String>>,
         get_error: Option<String>,
     }
 
     impl SecretStore for MemoryStore {
-        fn get(&self, name: &str) -> Result<Option<String>, String> {
+        fn get(&self, credential: crate::provider::Credential) -> Result<Option<String>, String> {
             if let Some(error) = &self.get_error {
                 return Err(error.clone());
             }
-            Ok(self.credentials.borrow().get(name).cloned())
+            Ok(self.credentials.borrow().get(&credential).cloned())
         }
 
-        fn set_many(&self, credentials: &[(&str, &str)]) -> Result<(), String> {
+        fn set_many(
+            &self,
+            credentials: &[(crate::provider::Credential, &str)],
+        ) -> Result<(), String> {
             let mut stored = self.credentials.borrow_mut();
-            for (name, token) in credentials {
-                stored.insert((*name).to_owned(), (*token).to_owned());
+            for (credential, token) in credentials {
+                stored.insert(*credential, (*token).to_owned());
             }
             Ok(())
         }
 
-        fn delete_many(&self, names: &[&str]) -> Result<bool, String> {
+        fn delete_many(&self, credentials: &[crate::provider::Credential]) -> Result<bool, String> {
             let mut stored = self.credentials.borrow_mut();
             let mut removed = false;
-            for name in names {
-                removed = stored.remove(*name).is_some() || removed;
+            for credential in credentials {
+                removed = stored.remove(credential).is_some() || removed;
             }
             Ok(removed)
         }
@@ -1152,7 +1160,7 @@ mod tests {
     #[test]
     fn linear_credentials_prefer_environment_then_secret_store() {
         let store = MemoryStore::default();
-        store.set_many(&[("linear", "stored")]).unwrap();
+        store.set_many(&[(LINEAR_CREDENTIAL, "stored")]).unwrap();
         let resolved =
             resolve_stored(Provider::Linear, Some("environment".into()), &store).unwrap();
         assert_eq!(resolved.token, "environment");
@@ -1424,9 +1432,9 @@ mod tests {
     #[test]
     fn memory_store_logout_is_idempotent() {
         let store = MemoryStore::default();
-        store.set_many(&[("github", "token")]).unwrap();
-        assert!(store.delete_many(&["github"]).unwrap());
-        assert!(!store.delete_many(&["github"]).unwrap());
+        store.set_many(&[(GITHUB_CREDENTIAL, "token")]).unwrap();
+        assert!(store.delete_many(&[GITHUB_CREDENTIAL]).unwrap());
+        assert!(!store.delete_many(&[GITHUB_CREDENTIAL]).unwrap());
     }
 
     #[test]
@@ -1682,23 +1690,36 @@ mod tests {
     #[test]
     fn login_validates_before_replacing_a_stored_credential() {
         let store = MemoryStore::default();
-        store.set_many(&[("linear", "existing-token")]).unwrap();
+        store
+            .set_many(&[(LINEAR_CREDENTIAL, "existing-token")])
+            .unwrap();
 
-        let result = validate_and_store(Provider::Linear, "linear", "bad-token", &store, |_| {
-            Err(ValidationError::Rejected("rejected".into()))
-        });
+        let result = validate_and_store(
+            Provider::Linear,
+            LINEAR_CREDENTIAL,
+            "bad-token",
+            &store,
+            |_| Err(ValidationError::Rejected("rejected".into())),
+        );
         assert!(result.is_err());
         assert_eq!(
-            store.get("linear").unwrap().as_deref(),
+            store.get(LINEAR_CREDENTIAL).unwrap().as_deref(),
             Some("existing-token")
         );
 
         let account = json!({ "id": "user-id" });
-        let result = validate_and_store(Provider::Linear, "linear", "new-token", &store, |_| {
-            Ok(account.clone())
-        })
+        let result = validate_and_store(
+            Provider::Linear,
+            LINEAR_CREDENTIAL,
+            "new-token",
+            &store,
+            |_| Ok(account.clone()),
+        )
         .unwrap();
         assert_eq!(result, account);
-        assert_eq!(store.get("linear").unwrap().as_deref(), Some("new-token"));
+        assert_eq!(
+            store.get(LINEAR_CREDENTIAL).unwrap().as_deref(),
+            Some("new-token")
+        );
     }
 }

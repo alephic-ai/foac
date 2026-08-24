@@ -86,19 +86,19 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let result = match command {
         Command::Auth(cmd) => auth::run(cmd, format),
         Command::Github(cmd) => {
-            provider::ensure_enabled(&provider::load()?, "github")?;
+            provider::ensure_enabled(&provider::SettingsStore.load()?, "github")?;
             github::run(cmd, format)
         }
         Command::Linear(cmd) => {
-            provider::ensure_enabled(&provider::load()?, "linear")?;
+            provider::ensure_enabled(&provider::SettingsStore.load()?, "linear")?;
             linear::run(cmd, format)
         }
         Command::Sentry(cmd) => {
-            provider::ensure_enabled(&provider::load()?, "sentry")?;
+            provider::ensure_enabled(&provider::SettingsStore.load()?, "sentry")?;
             sentry::run(cmd, format)
         }
         Command::Slack(cmd) => {
-            provider::ensure_enabled(&provider::load()?, "slack")?;
+            provider::ensure_enabled(&provider::SettingsStore.load()?, "slack")?;
             slack::run(cmd, format)
         }
         Command::Provider(cmd) => provider::run(cmd, format),
@@ -135,22 +135,22 @@ enum SkillCmd {
 }
 
 fn providers() -> Result<[Provider; 4], Box<dyn std::error::Error>> {
-    let config = provider::load()?;
+    let settings = provider::SettingsStore.load()?;
     Ok([
-        // Config first: short-circuit skips the keychain/`gh` probe when disabled.
+        // Settings first: short-circuit skips the keychain/`gh` probe when disabled.
         Provider::new(
             "github",
-            config.enabled("github") && github::authenticated(),
+            settings.enabled("github") && github::authenticated(),
         ),
         Provider::new(
             "linear",
-            config.enabled("linear") && linear::authenticated(),
+            settings.enabled("linear") && linear::authenticated(),
         ),
         Provider::new(
             "sentry",
-            config.enabled("sentry") && sentry::authenticated(),
+            settings.enabled("sentry") && sentry::authenticated(),
         ),
-        Provider::new("slack", config.enabled("slack") && slack::authenticated()),
+        Provider::new("slack", settings.enabled("slack") && slack::authenticated()),
     ])
 }
 
