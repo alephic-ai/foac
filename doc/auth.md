@@ -1,5 +1,10 @@
 # Authentication
 
+Log in once per provider; every agent harness and script on the machine
+reuses the same stored credential. Provider toggles are independent of auth:
+`foac provider disable` hides a provider without touching its credentials, so
+re-enabling never means re-authenticating.
+
 foac can validate every provider at once or manage each provider separately:
 
 ```sh

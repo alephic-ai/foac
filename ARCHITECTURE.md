@@ -146,6 +146,10 @@ REST core module.
 
 ## Where this system is meant to grow
 
+- Per-project provider toggles. Today enable/disable lives only in the global
+  config file; the promise is that each project can enable a different set of
+  providers, with credentials always shared and untouched by toggling. The
+  project-level toggle layer goes in `provider.rs` on top of the global one.
 - More providers. Candidates are tracked in
   [GitHub issues](https://github.com/lra/foac/issues). A new REST provider
   follows `sentry.rs`'s shape but first extracts the shared REST core out of
