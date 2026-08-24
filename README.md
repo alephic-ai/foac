@@ -3,7 +3,7 @@
 foac, the Father Of All CLIs: one CLI for all your SaaS providers (Linear,
 GitHub, Jira, Sentry, Slack, and more on the way), built for the coding agents on
 your machine rather than for you. Install it once, log in once, and every
-harness (Claude Code, Cursor, Codex, Gemini CLI, ...) can use all your
+harness (Claude Code, Cursor, Codex, Gemini CLI, Grok Build, ...) can use all your
 providers without any setup of its own. Humans at a TTY
 get readable tables from the same commands.
 
@@ -19,23 +19,22 @@ and one-off CLIs, each with its own config and its own copy of your tokens:
 ```mermaid
 graph LR
     CC([Claude Code]) --> LMCP & GHCLI & JMCP & SMCP & SLMCP
-    CU([Cursor]) --> LMCP & GHMCP & JMCP & SCLI & SLMCP
+    CU([Cursor]) --> LMCP & GHCLI & JMCP & SMCP & SLMCP
+    GRK([Grok Build]) --> LMCP & GHCLI & JMCP & SMCP & SLMCP
     CX([Codex]) --> LMCP & GHCLI & JMCP & SMCP & SLMCP
-    GEM([Gemini CLI]) --> LMCP & GHMCP & JMCP & SMCP & SLMCP
+    GEM([Gemini CLI]) --> LMCP & GHCLI & JMCP & SMCP & SLMCP
     LMCP{{Linear MCP server}} --> Linear[(Linear)]
-    GHMCP{{GitHub MCP server}} --> GitHub[(GitHub)]
-    GHCLI[[gh CLI]] --> GitHub
+    GHCLI[[gh CLI]] --> GitHub[(GitHub)]
     JMCP{{Jira MCP server}} --> Jira[(Jira)]
     SMCP{{Sentry MCP server}} --> Sentry[(Sentry)]
-    SCLI[[sentry-cli]] --> Sentry
     SLMCP{{Slack MCP server}} --> Slack[(Slack)]
     classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
     classDef mcp fill:#ffe0b2,stroke:#e65100,color:#000
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
-    class CC,CU,CX,GEM harness
-    class LMCP,GHMCP,JMCP,SMCP,SLMCP mcp
-    class GHCLI,SCLI cli
+    class CC,CU,GRK,CX,GEM harness
+    class LMCP,JMCP,SMCP,SLMCP mcp
+    class GHCLI cli
     class Linear,GitHub,Jira,Sentry,Slack provider
 ```
 
@@ -46,13 +45,14 @@ provider through the same binary:
 graph LR
     CC([Claude Code]) --> F
     CU([Cursor]) --> F
+    GRK([Grok Build]) --> F
     CX([Codex]) --> F
     GEM([Gemini CLI]) --> F[[foac]]
     F --> Linear[(Linear)] & GitHub[(GitHub)] & Jira[(Jira)] & Sentry[(Sentry)] & Slack[(Slack)]
     classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
-    class CC,CU,CX,GEM harness
+    class CC,CU,GRK,CX,GEM harness
     class F cli
     class Linear,GitHub,Jira,Sentry,Slack provider
 ```
