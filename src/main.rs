@@ -48,7 +48,7 @@ enum Command {
     /// Manage the per-provider agent skills describing how to use this CLI
     #[command(subcommand, arg_required_else_help = true)]
     Skill(SkillCmd),
-    /// Download and replace this binary with the latest GitHub release
+    /// Download the latest release and refresh any installed foac skills
     Update,
     /// Print the version
     Version,

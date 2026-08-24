@@ -47,8 +47,8 @@ APIs.
   active provider for Claude Code and every agent reading
   `~/.agents/skills/`, and removes the skills of inactive providers. See
   [doc/agent-skills.md](doc/agent-skills.md).
-- **Self-updating.** `foac update` pulls the latest release for your
-  platform.
+- **Self-updating.** `foac update` pulls the latest release for your platform
+  and refreshes any installed foac skills.
 
 ## Providers
 
@@ -108,7 +108,8 @@ foac provider disable slack                           # auth stays; re-enable an
 foac update
 ```
 
-`foac update` downloads the latest GitHub release for this platform and replaces the running binary.
+`foac update` downloads the latest GitHub release for this platform, replaces
+the running binary, and refreshes any foac provider skills already installed.
 
 Other commands check GitHub for a newer release at most once a day, and print a notice on stderr while one exists. They never auto-install. Set `FOAC_NO_UPDATE_CHECK` (or `CI`) to skip the check.
 
