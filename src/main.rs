@@ -502,6 +502,8 @@ mod tests {
             vec!["foac", "provider", "disable", "sentry"],
             vec!["foac", "provider", "enable", "slack"],
             vec!["foac", "provider", "disable", "slack"],
+            vec!["foac", "provider", "enable", "github", "--local"],
+            vec!["foac", "provider", "disable", "slack", "--local"],
         ] {
             Cli::try_parse_from(args).unwrap();
         }

@@ -86,6 +86,56 @@ fn local_settings_toggle_providers_per_folder() {
 }
 
 #[test]
+fn provider_local_toggles_write_the_nearest_local_file() {
+    let root = config_home("local-toggle");
+    let xdg = root.join("xdg");
+    std::fs::create_dir_all(xdg.join("foac")).unwrap();
+    let global = xdg.join("foac/config.toml");
+    std::fs::write(&global, "disabled_providers = [\"github\"]\n").unwrap();
+    let work = root.join("project");
+    let sub = work.join("sub");
+    std::fs::create_dir_all(&sub).unwrap();
+
+    // No local file yet: --local creates one in the working directory and the
+    // local enable overrides the global disable.
+    let out = foac(&["provider", "enable", "github", "--local"])
+        .env("XDG_CONFIG_HOME", &xdg)
+        .current_dir(&work)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["github"]["enabled"], true);
+    assert_eq!(
+        std::fs::read_to_string(work.join(".foac.toml")).unwrap(),
+        "enabled_providers = [\"github\"]\n"
+    );
+
+    // From a subfolder, --local edits the nearest existing file, not cwd.
+    let out = foac(&["provider", "disable", "github", "--local"])
+        .env("XDG_CONFIG_HOME", &xdg)
+        .current_dir(&sub)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["github"]["enabled"], false);
+    assert!(!sub.join(".foac.toml").exists());
+    assert_eq!(
+        std::fs::read_to_string(work.join(".foac.toml")).unwrap(),
+        "enabled_providers = []\ndisabled_providers = [\"github\"]\n"
+    );
+
+    // The global config is never touched by --local.
+    assert_eq!(
+        std::fs::read_to_string(&global).unwrap(),
+        "disabled_providers = [\"github\"]\n"
+    );
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn provider_list_reports_a_malformed_config() {
     let (config_home, config_path, _) = malformed_settings("provider-list");
 

@@ -80,7 +80,9 @@ foac <provider> <resource> <verb> [flags]
   hidden from discovery and their commands refuse to run. A `.foac.toml` file
   with `enabled_providers` and/or `disabled_providers` string arrays, found in
   the working directory or the nearest parent, overrides the global toggles
-  for that folder tree.
+  for that folder tree. Add `--local` to enable/disable to write the toggle to
+  that nearest `.foac.toml` instead (created in the working directory if none
+  exists).
 - **Storage**: Credentials are pretty-printed in
   `~/.config/foac/credentials.json`, atomically replaced, and mode `0600`
   before secret bytes are written on Unix. Settings use comment-preserving

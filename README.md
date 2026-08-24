@@ -127,6 +127,8 @@ disabled_providers = ["slack"]   # off here even if enabled globally
 
 foac uses the nearest `.foac.toml` found from the working directory up to `/`;
 its toggles override the global ones, and auth is never affected.
+`foac provider <enable|disable> <name> --local` edits that nearest file for
+you, creating `./.foac.toml` when none exists.
 
 Other commands check GitHub for a newer release at most once a day, and print a notice on stderr while one exists. They never auto-install. Set `FOAC_NO_UPDATE_CHECK` (or `CI`) to skip the check.
 

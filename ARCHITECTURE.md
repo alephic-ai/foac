@@ -109,10 +109,13 @@ REST core module.
   fresh-start format: it is never read, migrated, deleted, or used as fallback.
 - Provider toggles layer per folder. The nearest `.foac.toml` from the working
   directory up to `/` overrides the global toggles via its `enabled_providers`
-  and `disabled_providers` arrays (a provider in both is enabled). foac never
-  writes that file, and credentials are shared and untouched by toggling. The
-  layering lives in `provider.rs`: settings loads attach the local overrides,
-  so every consumer of `Settings::enabled` sees the effective state.
+  and `disabled_providers` arrays (a provider in both is enabled).
+  `foac provider <enable|disable> <name> --local` edits that nearest file
+  (creating one in the working directory when none exists) with the same
+  comment-preserving TOML machinery as the global config; credentials are
+  shared and untouched by toggling. The layering lives in `provider.rs`:
+  settings loads attach the local overrides, so every consumer of
+  `Settings::enabled` sees the effective state.
 - Inactive providers are invisible. Unauthenticated or disabled providers
   are hidden from `--help`, from suggestions, and from the rendered skill, but
   their commands still parse and their `--help` still works. Auth probing is
