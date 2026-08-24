@@ -51,9 +51,10 @@ machine-managed credentials in `~/.config/foac/credentials.json`.
 src/
 ├── main.rs      # CLI root: dispatch, hiding inactive providers, skill render/install
 ├── linear.rs    # Linear provider: GraphQL via graphql_client codegen
-├── github.rs    # GitHub provider: REST passthrough (also hosts shared REST helpers, see drift note)
-├── sentry.rs    # Sentry provider: REST passthrough, same pattern as github.rs
+├── github.rs    # GitHub provider: REST passthrough on rest.rs
+├── sentry.rs    # Sentry provider: REST passthrough on rest.rs
 ├── slack.rs     # Slack provider: REST with Slack's HTTP-200 ok/error envelope
+├── rest.rs      # Shared REST core: Api/send, list wrapping, payload helpers, auth-identity HTTP
 ├── auth.rs      # Credential resolution (env > credentials file > gh CLI), validation, auth commands
 ├── provider.rs  # Comment-preserving TOML settings + private JSON credentials
 ├── output.rs    # The one success printer: compact JSON, or shape-heuristic tables on a TTY
@@ -63,10 +64,13 @@ graphql/linear/  # Vendored schema (51k lines; grep it) + queries.graphql (compi
 doc/SKILL.md     # Agent skill, compiled into the binary; must track every CLI surface change
 ```
 
-Known drift: `sentry.rs` imports `insert_opt`/`push_query` from `github.rs`,
-while Sentry and Slack each retain provider-specific request plumbing. Do not
-copy this again. The next REST provider is the trigger to extract a shared
-REST core module.
+`rest.rs` owns the REST boilerplate: the `Api` struct and `send` (bearer or
+custom-header auth, static provider headers, optional trailing slash), the
+`{items, pageInfo}` list wrapper, payload helpers, and the auth-identity
+HTTP. Providers keep only what is genuinely theirs (pagination parsing, list
+shapes, ID resolution). Slack's `send` stays provider-local on purpose: its
+HTTP-200 `ok`/error envelope and method-string URLs are a different protocol,
+not duplication.
 
 ## Key decisions
 
@@ -164,11 +168,8 @@ REST core module.
 
 - More providers. Candidates are tracked in
   [GitHub issues](https://github.com/lra/foac/issues). A new REST provider
-  follows `sentry.rs`'s shape but first extracts the shared REST core out of
-  the existing REST providers. The core owns any shared boilerplate: the
-  `Api` struct, list wrapping, payload helpers, and the hand-rolled
-  auth-identity HTTP each provider duplicates today. Write the REST
-  adding-a-command recipe down at the same time. A new GraphQL provider copies
+  follows `sentry.rs`'s shape on top of the shared core in `rest.rs`
+  (recipe: `doc/adding-a-rest-command.md`). A new GraphQL provider copies
   Linear's setup: vendored schema, `queries.graphql`, codegen macro. Every
   provider addition also touches: `auth.rs` (Provider enum, token resolution, identity),
   `provider.rs`'s `PROVIDERS`, `main.rs`'s `providers()`, and `doc/SKILL.md`
@@ -181,8 +182,8 @@ REST core module.
   no longer sustainable. Don't split a provider file into a module directory
   preemptively.
 - Deeper coverage of existing providers (new resources/verbs) follows
-  `doc/adding-a-command.md` for Linear; REST resources follow any existing
-  resource in the provider's file.
+  `doc/adding-a-command.md` for Linear and `doc/adding-a-rest-command.md`
+  for REST providers.
 - Binary transfer and log streaming are on the backlog. Add them if they can
   be made explicit and discoverable in the command grammar (today's commands
   are JSON metadata only).

@@ -2,7 +2,7 @@ use clap::{Args, Subcommand};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
-use crate::github::{insert_opt, push_query};
+use crate::rest::{self, Api, Auth, insert_opt, push_query};
 
 pub(crate) const DEFAULT_HOST: &str = "sentry.io";
 const DEFAULT_URL: &str = "https://sentry.io";
@@ -142,19 +142,6 @@ enum ReleaseCmd {
     Get { version: String },
 }
 
-struct Api {
-    client: reqwest::blocking::Client,
-    base_url: reqwest::Url,
-    token: String,
-    format: crate::output::Format,
-}
-
-#[derive(Debug)]
-struct ApiResponse {
-    body: Value,
-    link: Option<String>,
-}
-
 macro_rules! path {
     ($($segment:expr),* $(,)?) => {{
         let mut segments = vec!["api".to_owned(), "0".to_owned()];
@@ -165,7 +152,7 @@ macro_rules! path {
 
 pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
     let Cmd { org, command } = cmd;
-    let api = Api::sentry(crate::auth::sentry_token()?, format)?;
+    let api = api(crate::auth::sentry_token()?, format)?;
     match command {
         Resource::Org(cmd) => run_org(&api, org, cmd),
         Resource::Project(cmd) => run_project(&api, selected_org(org)?, cmd),
@@ -195,35 +182,18 @@ pub(crate) fn auth_identity(
 }
 
 fn auth_identity_at(token: &str, url: reqwest::Url) -> Result<Value, crate::auth::ValidationError> {
-    let response = reqwest::blocking::Client::new()
-        .get(url)
-        .bearer_auth(token)
-        .header("User-Agent", "foac")
-        .send()
-        .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
-    let status = response.status();
-    let text = response
-        .text()
-        .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
-    let body: Value = serde_json::from_str(&text).unwrap_or_else(|_| {
-        json!({
-            "status": status.as_u16(),
-            "body": text,
-        })
-    });
-    if status == reqwest::StatusCode::UNAUTHORIZED {
-        return Err(crate::auth::ValidationError::Rejected(body.to_string()));
-    }
-    if !status.is_success() {
-        return Err(crate::auth::ValidationError::Failed(body.to_string()));
-    }
-    Ok(body)
+    rest::identity(
+        url,
+        &Auth::Bearer(token.to_owned()),
+        &[],
+        &[reqwest::StatusCode::UNAUTHORIZED],
+    )
 }
 
 fn run_org(api: &Api, org: Option<String>, cmd: OrgCmd) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
         OrgCmd::List { page } => {
-            api.print_list(Method::GET, path!["organizations"], page_query(page))
+            print_list(api, Method::GET, path!["organizations"], page_query(page))
         }
         OrgCmd::Get => api.print(
             Method::GET,
@@ -236,7 +206,8 @@ fn run_org(api: &Api, org: Option<String>, cmd: OrgCmd) -> Result<(), Box<dyn st
 
 fn run_project(api: &Api, org: String, cmd: ProjectCmd) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
-        ProjectCmd::List { page } => api.print_list(
+        ProjectCmd::List { page } => print_list(
+            api,
             Method::GET,
             path!["organizations", org, "projects"],
             page_query(page),
@@ -263,7 +234,7 @@ fn run_issue(api: &Api, org: String, cmd: IssueCmd) -> Result<(), Box<dyn std::e
             let mut parameters = page_query(page);
             push_query(&mut parameters, "query", query);
             push_query(&mut parameters, "statsPeriod", stats_period);
-            api.print_list(Method::GET, segments, parameters)
+            print_list(api, Method::GET, segments, parameters)
         }
         IssueCmd::Get { id } => {
             let id = resolve_issue_id(api, &org, &id)?;
@@ -315,7 +286,7 @@ fn run_event(api: &Api, org: String, cmd: EventCmd) -> Result<(), Box<dyn std::e
                 (None, Some(project)) => path!["projects", org, project, "events"],
                 _ => unreachable!("clap enforces --issue xor --project"),
             };
-            api.print_list(Method::GET, segments, page_query(page))
+            print_list(api, Method::GET, segments, page_query(page))
         }
         EventCmd::Get { id, project } => api.print(
             Method::GET,
@@ -331,7 +302,8 @@ fn run_release(api: &Api, org: String, cmd: ReleaseCmd) -> Result<(), Box<dyn st
         ReleaseCmd::List { query, page } => {
             let mut parameters = page_query(page);
             push_query(&mut parameters, "query", query);
-            api.print_list(
+            print_list(
+                api,
                 Method::GET,
                 path!["organizations", org, "releases"],
                 parameters,
@@ -346,99 +318,36 @@ fn run_release(api: &Api, org: String, cmd: ReleaseCmd) -> Result<(), Box<dyn st
     }
 }
 
-impl Api {
-    fn sentry(
-        token: String,
-        format: crate::output::Format,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self {
-            client: reqwest::blocking::Client::new(),
-            base_url: reqwest::Url::parse(&base_url()?)?,
-            token,
-            format,
-        })
-    }
+fn api(token: String, format: crate::output::Format) -> Result<Api, Box<dyn std::error::Error>> {
+    Ok(Api {
+        client: reqwest::blocking::Client::new(),
+        base_url: reqwest::Url::parse(&base_url()?)?,
+        auth: Auth::Bearer(token),
+        format,
+        headers: &[],
+        // Sentry requires the trailing slash; without it the API redirects
+        // and some proxies drop the request body.
+        trailing_slash: true,
+    })
+}
 
-    fn print(
-        &self,
-        method: Method,
-        segments: Vec<String>,
-        query: Vec<(&'static str, String)>,
-        body: Option<Value>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let response = self.send(method, &segments, &query, body)?;
-        crate::output::print(&response.body, self.format);
-        Ok(())
-    }
-
-    fn print_list(
-        &self,
-        method: Method,
-        segments: Vec<String>,
-        query: Vec<(&'static str, String)>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let response = self.send(method, &segments, &query, None)?;
-        let items = response
-            .body
-            .as_array()
-            .cloned()
-            .ok_or("Sentry list response was not an array")?;
-        crate::output::print(
-            &json!({
-                "items": items,
-                "pageInfo": page_info(response.link.as_deref()),
-            }),
-            self.format,
-        );
-        Ok(())
-    }
-
-    fn send(
-        &self,
-        method: Method,
-        segments: &[String],
-        query: &[(&'static str, String)],
-        body: Option<Value>,
-    ) -> Result<ApiResponse, Box<dyn std::error::Error>> {
-        let mut request = self
-            .client
-            .request(method, self.url(segments)?)
-            .bearer_auth(&self.token)
-            .header("User-Agent", "foac")
-            .query(query);
-        if let Some(body) = body {
-            request = request.json(&body);
-        }
-        let response = request.send()?;
-        let status = response.status();
-        let link = response
-            .headers()
-            .get(reqwest::header::LINK)
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_owned);
-        let text = response.text()?;
-        let body = if text.is_empty() {
-            json!({})
-        } else {
-            serde_json::from_str(&text)
-                .unwrap_or_else(|_| json!({ "status": status.as_u16(), "body": text }))
-        };
-        if !status.is_success() {
-            return Err(body.to_string().into());
-        }
-        Ok(ApiResponse { body, link })
-    }
-
-    // Sentry requires the trailing slash; without it the API redirects and
-    // some proxies drop the request body.
-    fn url(&self, segments: &[String]) -> Result<reqwest::Url, Box<dyn std::error::Error>> {
-        let mut url = self.base_url.clone();
-        url.path_segments_mut()
-            .map_err(|_| "Sentry API base URL cannot be a base")?
-            .extend(segments)
-            .push("");
-        Ok(url)
-    }
+fn print_list(
+    api: &Api,
+    method: Method,
+    segments: Vec<String>,
+    query: Vec<(&'static str, String)>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let response = api.send(method, &segments, &query, None)?;
+    let items = response
+        .body
+        .as_array()
+        .cloned()
+        .ok_or("Sentry list response was not an array")?;
+    crate::output::print(
+        &rest::wrap_list(items, page_info(response.link.as_deref())),
+        api.format,
+    );
+    Ok(())
 }
 
 pub(crate) fn base_url() -> Result<String, Box<dyn std::error::Error>> {
@@ -570,23 +479,6 @@ mod tests {
         assert_eq!(info["hasPreviousPage"], false);
         assert_eq!(info["previousCursor"], Value::Null);
         assert_eq!(page_info(None)["hasNextPage"], false);
-    }
-
-    #[test]
-    fn builds_urls_with_a_trailing_slash() {
-        let api = Api {
-            client: reqwest::blocking::Client::new(),
-            base_url: reqwest::Url::parse("https://sentry.example.com").unwrap(),
-            token: "token".into(),
-            format: crate::output::Format::Json,
-        };
-        let url = api
-            .url(&path!["organizations", "acme", "issues", "42"])
-            .unwrap();
-        assert_eq!(
-            url.as_str(),
-            "https://sentry.example.com/api/0/organizations/acme/issues/42/"
-        );
     }
 
     #[test]

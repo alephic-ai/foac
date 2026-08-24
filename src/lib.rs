@@ -7,6 +7,7 @@ pub mod github;
 pub mod linear;
 pub mod output;
 pub mod provider;
+pub mod rest;
 pub mod sentry;
 pub mod slack;
 pub mod update;

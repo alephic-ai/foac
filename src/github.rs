@@ -5,8 +5,14 @@ use clap::{Args, Subcommand, ValueEnum};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
+use crate::rest::{self, Api, Auth, insert_opt, push_query};
+
 const API_URL: &str = "https://api.github.com/";
 const API_VERSION: &str = "2026-03-10";
+const HEADERS: &[(&str, &str)] = &[
+    ("Accept", "application/vnd.github+json"),
+    ("X-GitHub-Api-Version", API_VERSION),
+];
 
 #[derive(Args)]
 pub struct Cmd {
@@ -715,19 +721,6 @@ struct Repo {
     name: String,
 }
 
-struct Api {
-    client: reqwest::blocking::Client,
-    base_url: reqwest::Url,
-    token: String,
-    format: crate::output::Format,
-}
-
-#[derive(Debug)]
-struct ApiResponse {
-    body: Value,
-    link: Option<String>,
-}
-
 #[derive(Clone, Copy)]
 enum ListShape {
     Array,
@@ -745,7 +738,7 @@ macro_rules! path {
 
 pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
     let Cmd { repo, command } = cmd;
-    let api = Api::github(crate::auth::github_token()?, format)?;
+    let api = api(crate::auth::github_token()?, format)?;
     match command {
         Resource::Repo(cmd) => run_repo(&api, repo, cmd),
         Resource::Issue(cmd) => run_issue(&api, selected_repo(repo)?, cmd),
@@ -782,31 +775,12 @@ pub(crate) fn auth_identity(token: &str) -> Result<Value, crate::auth::Validatio
 }
 
 fn auth_identity_at(token: &str, url: reqwest::Url) -> Result<Value, crate::auth::ValidationError> {
-    let response = reqwest::blocking::Client::new()
-        .get(url)
-        .bearer_auth(token)
-        .header("Accept", "application/vnd.github+json")
-        .header("X-GitHub-Api-Version", API_VERSION)
-        .header("User-Agent", "foac")
-        .send()
-        .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
-    let status = response.status();
-    let text = response
-        .text()
-        .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
-    let body: Value = serde_json::from_str(&text).unwrap_or_else(|_| {
-        json!({
-            "status": status.as_u16(),
-            "body": text,
-        })
-    });
-    if status == reqwest::StatusCode::UNAUTHORIZED {
-        return Err(crate::auth::ValidationError::Rejected(body.to_string()));
-    }
-    if !status.is_success() {
-        return Err(crate::auth::ValidationError::Failed(body.to_string()));
-    }
-    Ok(body)
+    rest::identity(
+        url,
+        &Auth::Bearer(token.to_owned()),
+        HEADERS,
+        &[reqwest::StatusCode::UNAUTHORIZED],
+    )
 }
 
 fn run_repo(
@@ -827,7 +801,8 @@ fn run_repo(
             push_query(&mut query, "affiliation", affiliation);
             push_query(&mut query, "sort", sort);
             push_query(&mut query, "direction", direction);
-            api.print_list(
+            print_list(
+                api,
                 Method::GET,
                 vec!["user".into(), "repos".into()],
                 query,
@@ -872,7 +847,8 @@ fn run_issue(api: &Api, repo: Repo, cmd: IssueCmd) -> Result<(), Box<dyn std::er
             push_query(&mut query, "sort", sort);
             push_query(&mut query, "direction", direction);
             push_query(&mut query, "since", since);
-            api.print_list(
+            print_list(
+                api,
                 Method::GET,
                 path!(&repo, "issues"),
                 query,
@@ -942,7 +918,8 @@ fn run_issue(api: &Api, repo: Repo, cmd: IssueCmd) -> Result<(), Box<dyn std::er
 
 fn run_comment(api: &Api, repo: Repo, cmd: CommentCmd) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
-        CommentCmd::List { issue, page } => api.print_list(
+        CommentCmd::List { issue, page } => print_list(
+            api,
             Method::GET,
             path!(&repo, "issues", issue, "comments"),
             page_query(page),
@@ -985,7 +962,13 @@ fn run_pull(api: &Api, repo: Repo, cmd: PullCmd) -> Result<(), Box<dyn std::erro
             push_query(&mut query, "base", base);
             push_query(&mut query, "sort", sort);
             push_query(&mut query, "direction", direction);
-            api.print_list(Method::GET, path!(&repo, "pulls"), query, ListShape::Array)
+            print_list(
+                api,
+                Method::GET,
+                path!(&repo, "pulls"),
+                query,
+                ListShape::Array,
+            )
         }
         PullCmd::Get { number } => {
             api.print(Method::GET, path!(&repo, "pulls", number), Vec::new(), None)
@@ -1037,7 +1020,8 @@ fn run_pull(api: &Api, repo: Repo, cmd: PullCmd) -> Result<(), Box<dyn std::erro
                 Some(payload.into()),
             )
         }
-        PullCmd::Files { number, page } => api.print_list(
+        PullCmd::Files { number, page } => print_list(
+            api,
             Method::GET,
             path!(&repo, "pulls", number, "files"),
             page_query(page),
@@ -1067,7 +1051,8 @@ fn run_pull(api: &Api, repo: Repo, cmd: PullCmd) -> Result<(), Box<dyn std::erro
 
 fn run_review(api: &Api, repo: Repo, cmd: ReviewCmd) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
-        ReviewCmd::List { pull, page } => api.print_list(
+        ReviewCmd::List { pull, page } => print_list(
+            api,
             Method::GET,
             path!(&repo, "pulls", pull, "reviews"),
             page_query(page),
@@ -1128,7 +1113,8 @@ fn run_review(api: &Api, repo: Repo, cmd: ReviewCmd) -> Result<(), Box<dyn std::
 
 fn run_workflow(api: &Api, repo: Repo, cmd: WorkflowCmd) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
-        WorkflowCmd::List { page } => api.print_list(
+        WorkflowCmd::List { page } => print_list(
+            api,
             Method::GET,
             path!(&repo, "actions", "workflows"),
             page_query(page),
@@ -1195,7 +1181,8 @@ fn run_actions_run(api: &Api, repo: Repo, cmd: RunCmd) -> Result<(), Box<dyn std
             push_query(&mut query, "branch", branch);
             push_query(&mut query, "event", event);
             push_query(&mut query, "status", status);
-            api.print_list(
+            print_list(
+                api,
                 Method::GET,
                 segments,
                 query,
@@ -1211,7 +1198,8 @@ fn run_actions_run(api: &Api, repo: Repo, cmd: RunCmd) -> Result<(), Box<dyn std
         RunCmd::Jobs { id, filter, page } => {
             let mut query = page_query(page);
             push_query(&mut query, "filter", filter);
-            api.print_list(
+            print_list(
+                api,
                 Method::GET,
                 path!(&repo, "actions", "runs", id, "jobs"),
                 query,
@@ -1246,7 +1234,8 @@ fn run_branch(api: &Api, repo: Repo, cmd: BranchCmd) -> Result<(), Box<dyn std::
         BranchCmd::List { protected, page } => {
             let mut query = page_query(page);
             push_query(&mut query, "protected", protected);
-            api.print_list(
+            print_list(
+                api,
                 Method::GET,
                 path!(&repo, "branches"),
                 query,
@@ -1322,7 +1311,8 @@ fn run_commit(api: &Api, repo: Repo, cmd: CommitCmd) -> Result<(), Box<dyn std::
             push_query(&mut query, "author", author);
             push_query(&mut query, "since", since);
             push_query(&mut query, "until", until);
-            api.print_list(
+            print_list(
+                api,
                 Method::GET,
                 path!(&repo, "commits"),
                 query,
@@ -1344,7 +1334,8 @@ fn run_commit_comment(
     cmd: CommitCommentCmd,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
-        CommitCommentCmd::List { commit, page } => api.print_list(
+        CommitCommentCmd::List { commit, page } => print_list(
+            api,
             Method::GET,
             if let Some(commit) = commit {
                 path!(&repo, "commits", commit, "comments")
@@ -1393,7 +1384,8 @@ fn run_commit_comment(
 
 fn run_status(api: &Api, repo: Repo, cmd: StatusCmd) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
-        StatusCmd::List { r#ref, page } => api.print_list(
+        StatusCmd::List { r#ref, page } => print_list(
+            api,
             Method::GET,
             path!(&repo, "commits", r#ref, "statuses"),
             page_query(page),
@@ -1438,7 +1430,8 @@ fn run_check_run(
             push_query(&mut query, "check_name", check_name);
             push_query(&mut query, "status", status);
             push_query(&mut query, "filter", filter);
-            api.print_list(
+            print_list(
+                api,
                 Method::GET,
                 path!(&repo, "commits", r#ref, "check-runs"),
                 query,
@@ -1466,7 +1459,8 @@ fn run_check_suite(
     cmd: CheckSuiteCmd,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
-        CheckSuiteCmd::List { r#ref, page } => api.print_list(
+        CheckSuiteCmd::List { r#ref, page } => print_list(
+            api,
             Method::GET,
             path!(&repo, "commits", r#ref, "check-suites"),
             page_query(page),
@@ -1489,7 +1483,8 @@ fn run_check_suite(
 
 fn run_release(api: &Api, repo: Repo, cmd: ReleaseCmd) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
-        ReleaseCmd::List { page } => api.print_list(
+        ReleaseCmd::List { page } => print_list(
+            api,
             Method::GET,
             path!(&repo, "releases"),
             page_query(page),
@@ -1577,7 +1572,8 @@ fn run_release_asset(
     cmd: ReleaseAssetCmd,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
-        ReleaseAssetCmd::List { release, page } => api.print_list(
+        ReleaseAssetCmd::List { release, page } => print_list(
+            api,
             Method::GET,
             path!(&repo, "releases", release, "assets"),
             page_query(page),
@@ -1603,7 +1599,8 @@ fn run_artifact(api: &Api, repo: Repo, cmd: ArtifactCmd) -> Result<(), Box<dyn s
         ArtifactCmd::List { name, page } => {
             let mut query = page_query(page);
             push_query(&mut query, "name", name);
-            api.print_list(
+            print_list(
+                api,
                 Method::GET,
                 path!(&repo, "actions", "artifacts"),
                 query,
@@ -1627,7 +1624,8 @@ fn run_artifact(api: &Api, repo: Repo, cmd: ArtifactCmd) -> Result<(), Box<dyn s
 
 fn run_label(api: &Api, repo: Repo, cmd: LabelCmd) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
-        LabelCmd::List { page } => api.print_list(
+        LabelCmd::List { page } => print_list(
+            api,
             Method::GET,
             path!(&repo, "labels"),
             page_query(page),
@@ -1692,7 +1690,8 @@ fn run_collaborator(
             let mut query = page_query(page);
             push_query(&mut query, "affiliation", affiliation);
             push_query(&mut query, "permission", permission);
-            api.print_list(
+            print_list(
+                api,
                 Method::GET,
                 path!(&repo, "collaborators"),
                 query,
@@ -1727,91 +1726,31 @@ fn run_collaborator(
     }
 }
 
-impl Api {
-    fn github(
-        token: String,
-        format: crate::output::Format,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self {
-            client: reqwest::blocking::Client::new(),
-            base_url: reqwest::Url::parse(API_URL)?,
-            token,
-            format,
-        })
-    }
+fn api(token: String, format: crate::output::Format) -> Result<Api, Box<dyn std::error::Error>> {
+    Ok(Api {
+        client: reqwest::blocking::Client::new(),
+        base_url: reqwest::Url::parse(API_URL)?,
+        auth: Auth::Bearer(token),
+        format,
+        headers: HEADERS,
+        trailing_slash: false,
+    })
+}
 
-    fn print(
-        &self,
-        method: Method,
-        segments: Vec<String>,
-        query: Vec<(&'static str, String)>,
-        body: Option<Value>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let response = self.send(method, &segments, &query, body)?;
-        crate::output::print(&response.body, self.format);
-        Ok(())
-    }
-
-    fn print_list(
-        &self,
-        method: Method,
-        segments: Vec<String>,
-        query: Vec<(&'static str, String)>,
-        shape: ListShape,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let response = self.send(method, &segments, &query, None)?;
-        let items = list_items(response.body, shape)?;
-        crate::output::print(
-            &json!({
-                "items": items,
-                "pageInfo": page_info(response.link.as_deref()),
-            }),
-            self.format,
-        );
-        Ok(())
-    }
-
-    fn send(
-        &self,
-        method: Method,
-        segments: &[String],
-        query: &[(&'static str, String)],
-        body: Option<Value>,
-    ) -> Result<ApiResponse, Box<dyn std::error::Error>> {
-        let mut url = self.base_url.clone();
-        url.path_segments_mut()
-            .map_err(|_| "GitHub API base URL cannot be a base")?
-            .extend(segments);
-        let mut request = self
-            .client
-            .request(method, url)
-            .bearer_auth(&self.token)
-            .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", API_VERSION)
-            .header("User-Agent", "foac")
-            .query(query);
-        if let Some(body) = body {
-            request = request.json(&body);
-        }
-        let response = request.send()?;
-        let status = response.status();
-        let link = response
-            .headers()
-            .get(reqwest::header::LINK)
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_owned);
-        let text = response.text()?;
-        let body = if text.is_empty() {
-            json!({})
-        } else {
-            serde_json::from_str(&text)
-                .unwrap_or_else(|_| json!({ "status": status.as_u16(), "body": text }))
-        };
-        if !status.is_success() {
-            return Err(body.to_string().into());
-        }
-        Ok(ApiResponse { body, link })
-    }
+fn print_list(
+    api: &Api,
+    method: Method,
+    segments: Vec<String>,
+    query: Vec<(&'static str, String)>,
+    shape: ListShape,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let response = api.send(method, &segments, &query, None)?;
+    let items = list_items(response.body, shape)?;
+    crate::output::print(
+        &rest::wrap_list(items, page_info(response.link.as_deref())),
+        api.format,
+    );
+    Ok(())
 }
 
 impl BodyInput {
@@ -1892,26 +1831,6 @@ fn page_query(page: Page) -> Vec<(&'static str, String)> {
         ("per_page", page.limit.to_string()),
         ("page", page.page.to_string()),
     ]
-}
-
-pub(crate) fn push_query<T: ToString>(
-    query: &mut Vec<(&'static str, String)>,
-    name: &'static str,
-    value: Option<T>,
-) {
-    if let Some(value) = value {
-        query.push((name, value.to_string()));
-    }
-}
-
-pub(crate) fn insert_opt<T: Into<Value>>(
-    object: &mut Map<String, Value>,
-    name: &str,
-    value: Option<T>,
-) {
-    if let Some(value) = value {
-        object.insert(name.to_owned(), value.into());
-    }
 }
 
 fn insert_vec(object: &mut Map<String, Value>, name: &str, values: Vec<String>) {
@@ -2019,8 +1938,6 @@ fn short_ref(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
     use std::sync::mpsc;
 
     use super::*;
@@ -2238,45 +2155,14 @@ mod tests {
         body: &str,
         extra_headers: &str,
     ) -> (Api, mpsc::Receiver<String>, std::thread::JoinHandle<()>) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
-        let (request_tx, request_rx) = mpsc::channel();
-        let response = format!(
-            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\n{extra_headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
-            body.len()
-        );
-        let server = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut request = Vec::new();
-            let mut buffer = [0; 1024];
-            loop {
-                let read = stream.read(&mut buffer).unwrap();
-                request.extend_from_slice(&buffer[..read]);
-                let complete = request
-                    .windows(4)
-                    .position(|window| window == b"\r\n\r\n")
-                    .is_some_and(|header_end| {
-                        let headers = String::from_utf8_lossy(&request[..header_end]);
-                        let content_length = headers.lines().find_map(|line| {
-                            let (name, value) = line.split_once(':')?;
-                            name.eq_ignore_ascii_case("content-length")
-                                .then(|| value.trim().parse::<usize>().ok())
-                                .flatten()
-                        });
-                        request.len() >= header_end + 4 + content_length.unwrap_or(0)
-                    });
-                if read == 0 || complete {
-                    break;
-                }
-            }
-            let _ = request_tx.send(String::from_utf8(request).unwrap());
-            stream.write_all(response.as_bytes()).unwrap();
-        });
+        let (url, request_rx, server) = rest::testing::test_server(status, body, extra_headers);
         let api = Api {
             client: reqwest::blocking::Client::new(),
             format: crate::output::Format::Json,
-            base_url: reqwest::Url::parse(&format!("http://{address}/")).unwrap(),
-            token: "secret-token".into(),
+            base_url: url,
+            auth: Auth::Bearer("secret-token".into()),
+            headers: HEADERS,
+            trailing_slash: false,
         };
         (api, request_rx, server)
     }
