@@ -11,6 +11,37 @@ If your agents spend their context loading MCP tool catalogs and fetching API
 docs, foac replaces all of that with a single binary that already knows the
 APIs.
 
+## The picture
+
+Without foac, every harness wires up its own adapters — a mix of MCP servers
+and one-off CLIs, each with its own config and its own copy of your tokens:
+
+```mermaid
+graph LR
+    CC[Claude Code] --> LMCP & GHCLI & SMCP & SLMCP
+    CU[Cursor] --> LMCP & GHMCP & SCLI & SLMCP
+    CX[Codex] --> LMCP & GHCLI & SMCP & SLMCP
+    GEM[Gemini CLI] --> LMCP & GHMCP & SMCP & SLMCP
+    LMCP[Linear MCP server] --> Linear
+    GHMCP[GitHub MCP server] --> GitHub
+    GHCLI[gh CLI] --> GitHub
+    SMCP[Sentry MCP server] --> Sentry
+    SCLI[sentry-cli] --> Sentry
+    SLMCP[Slack MCP server] --> Slack
+```
+
+With foac, install once and log in once; every harness talks to every
+provider through the same binary:
+
+```mermaid
+graph LR
+    CC[Claude Code] --> F
+    CU[Cursor] --> F
+    CX[Codex] --> F
+    GEM[Gemini CLI] --> F[foac]
+    F --> Linear & GitHub & Sentry & Slack
+```
+
 ## Why harnesses like foac
 
 - **Install once, auth once, share everywhere.** `foac auth <provider> login`
