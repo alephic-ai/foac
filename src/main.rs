@@ -266,10 +266,10 @@ fn skill_install_cmd() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
     let home = std::env::home_dir().ok_or("could not determine the home directory")?;
-    let events = skill_install(&home, &active)?;
-    if events.is_empty() {
+    if agent_skill_dirs(&home).is_empty() {
         return Err("no supported agent found; install manually with: foac skill print <provider> > <agent skills dir>/foac-<provider>/SKILL.md".into());
     }
+    let events = skill_install(&home, &active)?;
     for (action, path) in events {
         println!("{action} {}", path.display());
     }
@@ -281,10 +281,7 @@ fn skill_install_cmd() -> Result<(), Box<dyn std::error::Error>> {
 /// Claude Code only reads its own folder; every other major agent (Cursor,
 /// Codex, Gemini CLI, Copilot, OpenCode, Amp, Cline, ...) reads the
 /// cross-agent standard ~/.agents/skills, so two targets cover them all.
-fn skill_install(
-    home: &std::path::Path,
-    active: &[&str],
-) -> Result<Vec<(&'static str, std::path::PathBuf)>, Box<dyn std::error::Error>> {
+fn agent_skill_dirs(home: &std::path::Path) -> Vec<std::path::PathBuf> {
     let shared_agent_roots = [
         ".agents",
         ".cursor",
@@ -301,19 +298,31 @@ fn skill_install(
     if shared_agent_roots.iter().any(|r| home.join(r).is_dir()) {
         targets.push(home.join(".agents/skills"));
     }
+    targets
+}
+
+fn skill_install(
+    home: &std::path::Path,
+    active: &[&str],
+) -> Result<Vec<(&'static str, std::path::PathBuf)>, Box<dyn std::error::Error>> {
     let mut events = Vec::new();
-    for skills_dir in targets {
+    for skills_dir in agent_skill_dirs(home) {
         for name in provider::PROVIDERS {
             let dir = skills_dir.join(format!("foac-{name}"));
             if active.contains(&name) {
                 std::fs::create_dir_all(&dir)?;
                 let path = dir.join("SKILL.md");
-                let action = if path.is_file() {
-                    "Updated"
-                } else {
-                    "Installed"
+                let contents = render_provider_skill(name);
+                let action = match std::fs::read(&path) {
+                    Ok(existing) if existing == contents.as_bytes() => {
+                        events.push(("Unchanged", path));
+                        continue;
+                    }
+                    Ok(_) => "Updated",
+                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => "Installed",
+                    Err(err) => return Err(err.into()),
                 };
-                std::fs::write(&path, render_provider_skill(name))?;
+                std::fs::write(&path, contents)?;
                 events.push((action, path));
             } else {
                 match std::fs::remove_dir_all(&dir) {
@@ -737,6 +746,23 @@ mod tests {
         }
         assert!(!stale.exists());
         std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
+    fn skill_install_skips_identical_skills() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+        let skill = home.path().join(".claude/skills/foac-github/SKILL.md");
+        std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
+        std::fs::write(&skill, render_provider_skill("github")).unwrap();
+
+        let events = skill_install(home.path(), &["github"]).unwrap();
+
+        assert_eq!(events, vec![("Unchanged", skill.clone())]);
+        assert_eq!(
+            std::fs::read_to_string(skill).unwrap(),
+            render_provider_skill("github")
+        );
     }
 
     fn test_providers(

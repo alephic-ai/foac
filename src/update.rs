@@ -73,7 +73,7 @@ fn installed_skills(home: Option<&Path>) -> Vec<InstalledSkill> {
 fn refresh_installed_skills(
     installed: &[InstalledSkill],
     executable: &Path,
-) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+) -> Result<Vec<(&'static str, PathBuf)>, Box<dyn std::error::Error>> {
     if installed.is_empty() {
         return Ok(Vec::new());
     }
@@ -96,23 +96,31 @@ fn refresh_installed_skills(
 fn refresh_installed_skills_with(
     installed: &[InstalledSkill],
     mut render: impl FnMut(&str) -> Result<Vec<u8>, Box<dyn std::error::Error>>,
-) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+) -> Result<Vec<(&'static str, PathBuf)>, Box<dyn std::error::Error>> {
     let rendered = installed
         .iter()
         .map(|skill| render(skill.provider).map(|contents| (skill, contents)))
         .collect::<Result<Vec<_>, _>>()?;
+    let mut events = Vec::new();
     for (skill, contents) in &rendered {
+        match std::fs::read(&skill.path) {
+            Ok(existing) if existing == *contents => {
+                events.push(("Unchanged", skill.path.clone()));
+                continue;
+            }
+            Ok(_) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err.into()),
+        }
         std::fs::write(&skill.path, contents)?;
+        events.push(("Updated", skill.path.clone()));
     }
-    Ok(rendered
-        .into_iter()
-        .map(|(skill, _)| skill.path.clone())
-        .collect())
+    Ok(events)
 }
 
-fn print_refreshed_skills(paths: Vec<PathBuf>) {
-    for path in paths {
-        println!("Updated {}", path.display());
+fn print_refreshed_skills(events: Vec<(&str, PathBuf)>) {
+    for (action, path) in events {
+        println!("{action} {}", path.display());
     }
 }
 
@@ -264,10 +272,30 @@ mod tests {
         })
         .unwrap();
 
-        assert_eq!(updated, vec![github.clone(), linear.clone()]);
+        assert_eq!(
+            updated,
+            vec![("Updated", github.clone()), ("Updated", linear.clone())]
+        );
         assert_eq!(std::fs::read_to_string(github).unwrap(), "fresh github");
         assert_eq!(std::fs::read_to_string(linear).unwrap(), "fresh linear");
         assert_eq!(std::fs::read_to_string(unrelated).unwrap(), "stale");
+    }
+
+    #[test]
+    fn skips_installed_skills_with_identical_contents() {
+        let home = tempfile::tempdir().unwrap();
+        let github = home.path().join(".claude/skills/foac-github/SKILL.md");
+        std::fs::create_dir_all(github.parent().unwrap()).unwrap();
+        std::fs::write(&github, "fresh github").unwrap();
+
+        let installed = installed_skills(Some(home.path()));
+        let updated = refresh_installed_skills_with(&installed, |provider| {
+            Ok(format!("fresh {provider}").into_bytes())
+        })
+        .unwrap();
+
+        assert_eq!(updated, vec![("Unchanged", github.clone())]);
+        assert_eq!(std::fs::read_to_string(github).unwrap(), "fresh github");
     }
 
     #[cfg(unix)]
@@ -296,7 +324,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(updated, vec![skill_path.clone()]);
+        assert_eq!(updated, vec![("Updated", skill_path.clone())]);
         assert_eq!(std::fs::read_to_string(skill_path).unwrap(), "fresh github");
     }
 
