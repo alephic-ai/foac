@@ -2,7 +2,11 @@
 //! cleanly are safe here: any parse error makes `run()` probe provider auth
 //! (keychain reads, a `gh` subprocess), which must not happen in tests.
 
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static NEXT_CONFIG_DIR: AtomicUsize = AtomicUsize::new(0);
 
 fn foac(args: &[&str]) -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_foac"));
@@ -12,6 +16,17 @@ fn foac(args: &[&str]) -> Command {
         // (disabled providers, credentials) can't affect the output.
         .env("XDG_CONFIG_HOME", env!("CARGO_TARGET_TMPDIR"));
     cmd
+}
+
+fn malformed_config(test_name: &str) -> (PathBuf, PathBuf, Vec<u8>) {
+    let id = NEXT_CONFIG_DIR.fetch_add(1, Ordering::Relaxed);
+    let config_home =
+        std::env::temp_dir().join(format!("foac-cli-{test_name}-{}-{id}", std::process::id()));
+    let config_path = config_home.join("foac/config.json");
+    let original = br#"{"credentials":"sensitive-token-not-for-errors"}"#.to_vec();
+    std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+    std::fs::write(&config_path, &original).unwrap();
+    (config_home, config_path, original)
 }
 
 #[test]
@@ -33,6 +48,68 @@ fn provider_list_defaults_to_all_enabled_json() {
     for name in ["github", "linear", "sentry", "slack"] {
         assert_eq!(json[name]["enabled"], serde_json::Value::Bool(true));
     }
+}
+
+#[test]
+fn provider_list_reports_a_malformed_config() {
+    let (config_home, config_path, _) = malformed_config("provider-list");
+
+    let out = foac(&["provider", "list"])
+        .env("XDG_CONFIG_HOME", &config_home)
+        .output()
+        .unwrap();
+
+    assert!(!out.status.success());
+    assert!(out.stdout.is_empty());
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(stderr.contains(&config_path.display().to_string()));
+    assert!(stderr.contains("could not parse config file"));
+    assert!(!stderr.contains("sensitive-token-not-for-errors"));
+
+    std::fs::remove_dir_all(config_home).unwrap();
+}
+
+#[test]
+fn sentry_auth_status_represents_a_malformed_config_as_an_error() {
+    let (config_home, config_path, _) = malformed_config("sentry-status");
+
+    let out = foac(&["auth", "sentry", "status"])
+        .env("XDG_CONFIG_HOME", &config_home)
+        .env_remove("LINEAR_API_KEY")
+        .env_remove("GITHUB_TOKEN")
+        .env_remove("SENTRY_AUTH_TOKEN")
+        .env_remove("SLACK_BOT_TOKEN")
+        .env_remove("SLACK_USER_TOKEN")
+        .output()
+        .unwrap();
+
+    assert!(out.status.success());
+    assert!(out.stderr.is_empty());
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["sentry"]["status"], "error");
+    assert_eq!(report["sentry"]["source"], serde_json::Value::Null);
+    let error = report["sentry"]["error"].as_str().unwrap();
+    assert!(error.contains(&config_path.display().to_string()));
+    assert!(error.contains("could not parse config file"));
+    assert!(!error.contains("sensitive-token-not-for-errors"));
+
+    std::fs::remove_dir_all(config_home).unwrap();
+}
+
+#[test]
+fn provider_mutation_does_not_overwrite_a_malformed_config() {
+    let (config_home, config_path, original) = malformed_config("provider-mutation");
+
+    let out = foac(&["provider", "disable", "github"])
+        .env("XDG_CONFIG_HOME", &config_home)
+        .output()
+        .unwrap();
+
+    assert!(!out.status.success());
+    assert!(out.stdout.is_empty());
+    assert_eq!(std::fs::read(&config_path).unwrap(), original);
+
+    std::fs::remove_dir_all(config_home).unwrap();
 }
 
 #[test]

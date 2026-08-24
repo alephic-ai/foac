@@ -299,13 +299,14 @@ impl CredentialSource {
 impl SecretStore for ConfigFileStore {
     fn get(&self, name: &str) -> Result<Option<String>, String> {
         Ok(crate::provider::load()
+            .map_err(|error| error.to_string())?
             .credential(name)
             .filter(|token| !token.is_empty())
             .map(str::to_owned))
     }
 
     fn set_many(&self, credentials: &[(&str, &str)]) -> Result<(), String> {
-        let mut config = crate::provider::load();
+        let mut config = crate::provider::load().map_err(|error| error.to_string())?;
         for (name, token) in credentials {
             config.set_credential(name, (*token).to_owned());
         }
@@ -313,7 +314,7 @@ impl SecretStore for ConfigFileStore {
     }
 
     fn delete_many(&self, names: &[&str]) -> Result<bool, String> {
-        let mut config = crate::provider::load();
+        let mut config = crate::provider::load().map_err(|error| error.to_string())?;
         let mut removed = false;
         for name in names {
             removed = config.remove_credential(name) || removed;
@@ -386,7 +387,7 @@ fn login(
         (Provider::Sentry, None) => read_sentry_host()?,
         _ => None,
     };
-    print_login_help(provider, url.as_deref());
+    print_login_help(provider, url.as_deref())?;
     let token = read_token()?;
     if token.is_empty() {
         return Err("token cannot be empty".into());
@@ -395,7 +396,7 @@ fn login(
         validate(provider, token, url.as_deref())
     })?;
     if let Some(url) = &url {
-        let mut config = crate::provider::load();
+        let mut config = crate::provider::load()?;
         config.set_sentry_url(Some(url.clone()));
         crate::provider::save(&config)?;
         if std::env::var("SENTRY_URL").is_ok_and(|url| !url.is_empty()) {
@@ -427,7 +428,7 @@ fn slack_login(
     store: &dyn SecretStore,
     format: crate::output::Format,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    print_login_help(Provider::Slack, None);
+    print_login_help(Provider::Slack, None)?;
     let tokens = read_slack_tokens()?;
     let (bot_account, user_account) =
         validate_and_store_slack(&tokens, store, validate_slack_login_token)?;
@@ -1082,7 +1083,10 @@ fn read_token() -> Result<String, Box<dyn std::error::Error>> {
     Ok(token.trim_end_matches(['\r', '\n']).to_owned())
 }
 
-fn print_login_help(provider: Provider, sentry_url: Option<&str>) {
+fn print_login_help(
+    provider: Provider,
+    sentry_url: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
     match provider {
         Provider::Linear => eprintln!(
             "Create a personal API key at https://linear.app/settings/account/security and grant the permissions needed by your foac commands."
@@ -1093,11 +1097,17 @@ fn print_login_help(provider: Provider, sentry_url: Option<&str>) {
         Provider::Slack => eprintln!(
             "Go to https://api.slack.com/apps and choose Create New App > From a manifest.\nSuggested manifest:\n{SLACK_APP_MANIFEST}\nInstall the app to your workspace from OAuth & Permissions, then enter its Bot User OAuth Token (xoxb-) and User OAuth Token (xoxp-). Leave either prompt blank if that token type is not needed."
         ),
-        Provider::Sentry => eprintln!(
-            "Create a user auth token at {}/settings/account/api/auth-tokens/ and grant the scopes needed by your foac commands.",
-            sentry_url.map_or_else(crate::sentry::base_url, str::to_owned)
-        ),
+        Provider::Sentry => {
+            let url = match sentry_url {
+                Some(url) => url.to_owned(),
+                None => crate::sentry::base_url()?,
+            };
+            eprintln!(
+                "Create a user auth token at {url}/settings/account/api/auth-tokens/ and grant the scopes needed by your foac commands."
+            );
+        }
     }
+    Ok(())
 }
 
 #[cfg(test)]

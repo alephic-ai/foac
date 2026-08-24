@@ -68,7 +68,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = match Cli::try_parse_from(std::env::args_os()) {
         Ok(cli) => cli,
         Err(_) => {
-            let providers = providers();
+            let providers = providers()?;
             match try_parse_from(&providers, std::env::args_os()) {
                 Ok(cli) => cli,
                 Err(error) => error.exit(),
@@ -86,19 +86,19 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let result = match command {
         Command::Auth(cmd) => auth::run(cmd, format),
         Command::Github(cmd) => {
-            provider::ensure_enabled(&provider::load(), "github")?;
+            provider::ensure_enabled(&provider::load()?, "github")?;
             github::run(cmd, format)
         }
         Command::Linear(cmd) => {
-            provider::ensure_enabled(&provider::load(), "linear")?;
+            provider::ensure_enabled(&provider::load()?, "linear")?;
             linear::run(cmd, format)
         }
         Command::Sentry(cmd) => {
-            provider::ensure_enabled(&provider::load(), "sentry")?;
+            provider::ensure_enabled(&provider::load()?, "sentry")?;
             sentry::run(cmd, format)
         }
         Command::Slack(cmd) => {
-            provider::ensure_enabled(&provider::load(), "slack")?;
+            provider::ensure_enabled(&provider::load()?, "slack")?;
             slack::run(cmd, format)
         }
         Command::Provider(cmd) => provider::run(cmd, format),
@@ -134,9 +134,9 @@ enum SkillCmd {
     Install,
 }
 
-fn providers() -> [Provider; 4] {
-    let config = provider::load();
-    [
+fn providers() -> Result<[Provider; 4], Box<dyn std::error::Error>> {
+    let config = provider::load()?;
+    Ok([
         // Config first: short-circuit skips the keychain/`gh` probe when disabled.
         Provider::new(
             "github",
@@ -151,7 +151,7 @@ fn providers() -> [Provider; 4] {
             config.enabled("sentry") && sentry::authenticated(),
         ),
         Provider::new("slack", config.enabled("slack") && slack::authenticated()),
-    ]
+    ])
 }
 
 fn cli_command(providers: &[Provider]) -> clap::Command {
@@ -249,7 +249,7 @@ fn render_provider_skill(name: &str) -> String {
 }
 
 fn skill_install_cmd() -> Result<(), Box<dyn std::error::Error>> {
-    let active: Vec<&str> = providers()
+    let active: Vec<&str> = providers()?
         .iter()
         .filter(|provider| provider.active)
         .map(|provider| provider.name)
