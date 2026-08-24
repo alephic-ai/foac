@@ -1,13 +1,18 @@
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use self_update::cargo_crate_version;
 use serde::{Deserialize, Serialize};
 
+use crate::provider;
+
 const CHECK_TTL_SECS: u64 = 24 * 60 * 60;
 const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/lra/foac/releases/latest";
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let installed_skills = installed_skills(std::env::home_dir().as_deref());
+    let executable = std::env::current_exe()?;
     let token = std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.is_empty());
     // Ask /releases/latest for the tag to install: that endpoint never returns
     // draft or prerelease releases, unlike the /releases listing self_update
@@ -15,6 +20,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let tag = latest_release_tag(token.as_deref(), None)?;
     if tag == format!("v{}", cargo_crate_version!()) {
         println!("Already up to date ({})", cargo_crate_version!());
+        print_refreshed_skills(refresh_installed_skills(&installed_skills, &executable)?);
         return Ok(());
     }
     let mut builder = self_update::backends::github::Update::configure();
@@ -39,7 +45,75 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         println!("Already up to date ({})", status.version());
     }
+    print_refreshed_skills(refresh_installed_skills(&installed_skills, &executable)?);
     Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct InstalledSkill {
+    provider: &'static str,
+    path: PathBuf,
+}
+
+fn installed_skills(home: Option<&Path>) -> Vec<InstalledSkill> {
+    let Some(home) = home else {
+        return Vec::new();
+    };
+    [".claude/skills", ".agents/skills"]
+        .into_iter()
+        .flat_map(|root| {
+            provider::PROVIDERS.into_iter().filter_map(move |provider| {
+                let path = home.join(root).join(format!("foac-{provider}/SKILL.md"));
+                path.is_file().then_some(InstalledSkill { provider, path })
+            })
+        })
+        .collect()
+}
+
+fn refresh_installed_skills(
+    installed: &[InstalledSkill],
+    executable: &Path,
+) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+    if installed.is_empty() {
+        return Ok(Vec::new());
+    }
+    refresh_installed_skills_with(installed, |provider| {
+        let output = Command::new(executable)
+            .args(["skill", "print", provider])
+            .env("FOAC_NO_UPDATE_CHECK", "1")
+            .output()?;
+        if !output.status.success() {
+            return Err(format!(
+                "could not refresh foac-{provider}: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )
+            .into());
+        }
+        Ok(output.stdout)
+    })
+}
+
+fn refresh_installed_skills_with(
+    installed: &[InstalledSkill],
+    mut render: impl FnMut(&str) -> Result<Vec<u8>, Box<dyn std::error::Error>>,
+) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+    let rendered = installed
+        .iter()
+        .map(|skill| render(skill.provider).map(|contents| (skill, contents)))
+        .collect::<Result<Vec<_>, _>>()?;
+    for (skill, contents) in &rendered {
+        std::fs::write(&skill.path, contents)?;
+    }
+    Ok(rendered
+        .into_iter()
+        .map(|(skill, _)| skill.path.clone())
+        .collect())
+}
+
+fn print_refreshed_skills(paths: Vec<PathBuf>) {
+    for path in paths {
+        println!("Updated {}", path.display());
+    }
 }
 
 /// Best-effort notice after a command. Never fails the caller, never writes stdout.
@@ -172,6 +246,59 @@ fn check(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn refreshes_only_installed_provider_skills() {
+        let home = tempfile::tempdir().unwrap();
+        let github = home.path().join(".claude/skills/foac-github/SKILL.md");
+        let linear = home.path().join(".agents/skills/foac-linear/SKILL.md");
+        let unrelated = home.path().join(".agents/skills/custom/SKILL.md");
+        for path in [&github, &linear, &unrelated] {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "stale").unwrap();
+        }
+
+        let installed = installed_skills(Some(home.path()));
+        let updated = refresh_installed_skills_with(&installed, |provider| {
+            Ok(format!("fresh {provider}").into_bytes())
+        })
+        .unwrap();
+
+        assert_eq!(updated, vec![github.clone(), linear.clone()]);
+        assert_eq!(std::fs::read_to_string(github).unwrap(), "fresh github");
+        assert_eq!(std::fs::read_to_string(linear).unwrap(), "fresh linear");
+        assert_eq!(std::fs::read_to_string(unrelated).unwrap(), "stale");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refreshes_skills_from_a_replacement_executable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let executable = dir.path().join("foac");
+        let replacement = dir.path().join("foac-new");
+        let skill_path = dir.path().join("foac-github/SKILL.md");
+        std::fs::create_dir_all(skill_path.parent().unwrap()).unwrap();
+        std::fs::write(&skill_path, "stale").unwrap();
+        std::fs::write(&executable, "#!/bin/sh\nprintf 'old %s' \"$3\"\n").unwrap();
+        std::fs::write(&replacement, "#!/bin/sh\nprintf 'fresh %s' \"$3\"\n").unwrap();
+        std::fs::set_permissions(&replacement, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let captured_executable = executable.clone();
+        std::fs::rename(replacement, executable).unwrap();
+
+        let updated = refresh_installed_skills(
+            &[InstalledSkill {
+                provider: "github",
+                path: skill_path.clone(),
+            }],
+            &captured_executable,
+        )
+        .unwrap();
+
+        assert_eq!(updated, vec![skill_path.clone()]);
+        assert_eq!(std::fs::read_to_string(skill_path).unwrap(), "fresh github");
+    }
 
     fn fetch_ok(tag: &str) -> impl FnOnce() -> Result<String, Box<dyn std::error::Error>> {
         let tag = tag.to_string();

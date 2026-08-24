@@ -274,9 +274,9 @@ foac slack reaction add '#eng' 1724432400.123456 eyes
 
 ## Maintenance
 
-`foac update` replaces the binary with the latest release; `foac version`
-prints the installed version. foac checks GitHub at most once a day and prints
-a two-line notice on stderr while a newer release exists. It never
-auto-installs, and the notice is not JSON. Set `FOAC_NO_UPDATE_CHECK` (or `CI`)
-to disable it.
-Reinstall the foac skills with `foac skill install` after updating.
+`foac update` replaces the binary with the latest release and refreshes any
+foac provider skills already installed in `~/.claude/skills` or
+`~/.agents/skills`; `foac version` prints the installed version. foac checks
+GitHub at most once a day and prints a two-line notice on stderr while a newer
+release exists. It never auto-installs, and the notice is not JSON. Set
+`FOAC_NO_UPDATE_CHECK` (or `CI`) to disable it.
