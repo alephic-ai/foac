@@ -31,3 +31,8 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   relevant list method. Message search prefers `SLACK_USER_TOKEN`, then the
   stored user credential, because Slack does not permit bot tokens for
   `search.messages`.
+- `provider.rs` keeps editable settings in comment-preserving `config.toml`
+  and credentials in pretty-printed `credentials.json`, both under the XDG
+  foac directory. Reads and failures are isolated per store; writes use the
+  shared atomic replacement path, with credentials mode `0600` before secret
+  bytes are written on Unix. Legacy `config.json` is ignored.

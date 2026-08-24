@@ -24,9 +24,12 @@ foac auth slack logout
 ```
 
 `login` prints a link and permission guidance, securely prompts for a personal
-API token, validates it, and stores it in foac's config file
-(`~/.config/foac/config.json`, or under `XDG_CONFIG_HOME`), which foac keeps
-readable by the owner only. Pipe a token to `login` for non-interactive use.
+API token, validates it, and stores it in foac's machine-managed credentials
+file (`~/.config/foac/credentials.json`, or under `XDG_CONFIG_HOME`), which
+foac atomically replaces and keeps mode `0600` on Unix before writing secret
+bytes. Editable provider settings live separately in
+`~/.config/foac/config.toml`. Legacy `config.json` files are intentionally not
+read, migrated, or deleted. Pipe a token to `login` for non-interactive use.
 Slack login prompts for both bot and user tokens; for non-interactive use, pipe
 two lines in that order (either line may be blank). It also links to Slack's app
 management page and prints a ready-to-paste JSON app manifest with foac's

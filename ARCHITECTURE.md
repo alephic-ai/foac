@@ -41,9 +41,9 @@ and output (JSON for machines, tables for humans, decided per invocation).
 
 Every provider command builds a request, gets back JSON, and returns it to its
 `run` function, which prints exactly once through `output.rs`. Auth resolution
-(`auth.rs`) and the config file (`provider.rs`, `~/.config/foac/config.json`,
-mode 0600: credentials, provider toggles, Sentry host) sit under all
-providers.
+(`auth.rs`) and the independent stores in `provider.rs` sit under all
+providers: editable settings in `~/.config/foac/config.toml`, and
+machine-managed credentials in `~/.config/foac/credentials.json`.
 
 ## Codemap
 
@@ -54,8 +54,8 @@ src/
 ├── github.rs    # GitHub provider: REST passthrough (also hosts shared REST helpers, see drift note)
 ├── sentry.rs    # Sentry provider: REST passthrough, same pattern as github.rs
 ├── slack.rs     # Slack provider: REST with Slack's HTTP-200 ok/error envelope
-├── auth.rs      # Credential resolution (env > config file > gh CLI), live validation, auth commands
-├── provider.rs  # The config file: enable/disable toggles + stored credentials
+├── auth.rs      # Credential resolution (env > credentials file > gh CLI), validation, auth commands
+├── provider.rs  # Comment-preserving TOML settings + private JSON credentials
 ├── output.rs    # The one success printer: compact JSON, or shape-heuristic tables on a TTY
 ├── update.rs    # Self-update from GitHub Releases + once-a-day version check
 └── lib.rs       # Library target so tests/ and doc tests can link; main.rs is the only consumer
@@ -90,16 +90,23 @@ REST core module.
   compile-time-checked queries via `graphql_client`. REST providers stay
   untyped passthrough. The less to maintain in foac, the better. Don't
   hand-write types for REST responses.
-- Auth is a proxy, resolved per provider as env var > config file (> `gh`
+- Auth is a proxy, resolved per provider as env var > credentials file (> `gh`
   CLI for GitHub). Log in once, reuse everywhere. Credentials live in the
-  0600 config file, not the OS keychain (rebuilt binaries lose macOS Keychain
-  ACL trust, #35). Tokens are never printed. Login validates before storing.
+  atomically replaced `credentials.json`, which is mode 0600 before secret
+  bytes are written on Unix, not the OS keychain (rebuilt binaries lose macOS
+  Keychain ACL trust, #35). Tokens are never printed. Login validates before
+  storing.
   Slack stores bot and user credentials independently. Ordinary commands resolve
   bot env > stored bot > user env > stored user; search resolves user env >
   stored user because Slack does not allow bot tokens to call `search.messages`.
-  Slack login asks for both and validates the pair before one atomic config
+  Slack login asks for both and validates the pair before one atomic credential
   write. This makes bot-only, user-only, both-token, and unauthenticated
   installations explicit capability modes.
+- Settings and credentials fail closed independently. Provider toggles and the
+  optional Sentry URL live in comment-preserving `config.toml`; credentials
+  for every provider live in pretty-printed `credentials.json`. Unknown TOML
+  keys are discarded on write. Legacy `config.json` is a deliberately ignored
+  fresh-start format: it is never read, migrated, deleted, or used as fallback.
 - Inactive providers are invisible. Unauthenticated or disabled providers
   are hidden from `--help`, from suggestions, and from the rendered skill, but
   their commands still parse and their `--help` still works. Auth probing is
@@ -131,7 +138,7 @@ REST core module.
    parse, no auth probe) → `provider::ensure_enabled` → `linear::run`.
 2. `linear.rs` builds the compile-time-checked `IssueList` query; `eq_filter!`
    turns `ENG` into a key filter (a UUID would become an id filter). Token
-   from `auth::linear_token` (env, else config file).
+   from `auth::linear_token` (env, else credentials file).
 3. Response `data` JSON returns to `run` → `output::print` → compact JSON on
    stdout (a TTY without `--format json` would get a table). Errors: provider
    JSON on stderr, exit 1.
@@ -147,7 +154,7 @@ REST core module.
 ## Where this system is meant to grow
 
 - Per-project provider toggles. Today enable/disable lives only in the global
-  config file; the promise is that each project can enable a different set of
+  settings file; the promise is that each project can enable a different set of
   providers, with credentials always shared and untouched by toggling. The
   project-level toggle layer goes in `provider.rs` on top of the global one.
 - More providers. Candidates are tracked in

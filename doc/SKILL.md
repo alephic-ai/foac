@@ -71,29 +71,32 @@ foac <provider> <resource> <verb> [flags]
 
 - **Auth commands**: Use `foac auth status` for all providers, or
   `foac auth <provider> <status|login|logout>` for one. Login securely reads and
-  validates a token before saving it in foac's config file; when stdin is
+  validates a token before saving it in foac's credentials file; when stdin is
   redirected, it reads the token from stdin. Logout removes only foac's stored
   credential. Use `foac auth --help` to list auth targets.
 - **Provider toggles**: `foac provider <enable|disable> <name>` turns a provider
-  on or off (state kept in `~/.config/foac/config.json`) and prints the same
+  on or off (state kept in `~/.config/foac/config.toml`) and prints the same
   per-provider enabled map as `foac provider list`. Disabled providers are
   hidden from discovery and their commands refuse to run.
-- **Configuration errors**: A missing config file is a valid first-run state.
-  An existing file that cannot be read or parsed fails closed with its path and
-  cause; foac never replaces it with defaults during a later mutation.
+- **Storage**: Credentials are pretty-printed in
+  `~/.config/foac/credentials.json`, atomically replaced, and mode `0600`
+  before secret bytes are written on Unix. Settings use comment-preserving
+  TOML. Missing files are valid first-run state; malformed stores fail closed
+  independently with their path and cause. Legacy `config.json` is ignored and
+  is not migrated or deleted.
 <!-- foac-provider:linear -->
-- **Linear auth precedence**: `LINEAR_API_KEY`, then the foac config file.
+- **Linear auth precedence**: `LINEAR_API_KEY`, then the credentials file.
 <!-- /foac-provider:linear -->
 <!-- foac-provider:github -->
-- **GitHub auth precedence**: `GITHUB_TOKEN`, then the foac config file, then
+- **GitHub auth precedence**: `GITHUB_TOKEN`, then the credentials file, then
   `gh auth token`.
 <!-- /foac-provider:github -->
 <!-- foac-provider:sentry -->
-- **Sentry auth precedence**: `SENTRY_AUTH_TOKEN`, then the foac config file.
+- **Sentry auth precedence**: `SENTRY_AUTH_TOKEN`, then the credentials file.
 <!-- /foac-provider:sentry -->
 <!-- foac-provider:slack -->
 - **Slack auth capabilities**: ordinary commands prefer `SLACK_BOT_TOKEN`
-  (`xoxb-`), then the bot credential in foac's config file, then
+  (`xoxb-`), then the bot credential in the credentials file, then
   `SLACK_USER_TOKEN` (`xoxp-`), then the stored user credential. `slack search`
   uses user env then stored user and requires `search:read`. Bot-only setups
   cannot search; user-only setups can use every command as the installing user;
