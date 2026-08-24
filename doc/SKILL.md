@@ -195,7 +195,8 @@ foac <provider> <resource> <verb> [flags]
   or numeric ID; issue types and priorities accept a name or numeric ID;
   assignees are account IDs (find them with `user list --query`); `--board`
   accepts a numeric ID or an exact board name. `issue list --jql` takes raw
-  JQL. To change status, list options with `transition list --issue ENG-123`,
+  JQL; Jira rejects unbounded queries, so without `--jql` it defaults to
+  `created >= -30d ORDER BY created DESC`. To change status, list options with `transition list --issue ENG-123`,
   then `issue transition ENG-123 --to <transition id, transition name, or
   destination status name>`.
 - **Jira text**: issue descriptions and comments accept mutually exclusive
