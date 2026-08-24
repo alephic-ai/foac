@@ -77,7 +77,10 @@ foac <provider> <resource> <verb> [flags]
 - **Provider toggles**: `foac provider <enable|disable> <name>` turns a provider
   on or off (state kept in `~/.config/foac/config.toml`) and prints the same
   per-provider enabled map as `foac provider list`. Disabled providers are
-  hidden from discovery and their commands refuse to run.
+  hidden from discovery and their commands refuse to run. A `.foac.toml` file
+  with `enabled_providers` and/or `disabled_providers` string arrays, found in
+  the working directory or the nearest parent, overrides the global toggles
+  for that folder tree.
 - **Storage**: Credentials are pretty-printed in
   `~/.config/foac/credentials.json`, atomically replaced, and mode `0600`
   before secret bytes are written on Unix. Settings use comment-preserving

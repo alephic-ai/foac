@@ -107,6 +107,12 @@ REST core module.
   for every provider live in pretty-printed `credentials.json`. Unknown TOML
   keys are discarded on write. Legacy `config.json` is a deliberately ignored
   fresh-start format: it is never read, migrated, deleted, or used as fallback.
+- Provider toggles layer per folder. The nearest `.foac.toml` from the working
+  directory up to `/` overrides the global toggles via its `enabled_providers`
+  and `disabled_providers` arrays (a provider in both is enabled). foac never
+  writes that file, and credentials are shared and untouched by toggling. The
+  layering lives in `provider.rs`: settings loads attach the local overrides,
+  so every consumer of `Settings::enabled` sees the effective state.
 - Inactive providers are invisible. Unauthenticated or disabled providers
   are hidden from `--help`, from suggestions, and from the rendered skill, but
   their commands still parse and their `--help` still works. Auth probing is
@@ -153,10 +159,6 @@ REST core module.
 
 ## Where this system is meant to grow
 
-- Per-project provider toggles. Today enable/disable lives only in the global
-  settings file; the promise is that each project can enable a different set of
-  providers, with credentials always shared and untouched by toggling. The
-  project-level toggle layer goes in `provider.rs` on top of the global one.
 - More providers. Candidates are tracked in
   [GitHub issues](https://github.com/lra/foac/issues). A new REST provider
   follows `sentry.rs`'s shape but first extracts the shared REST core out of
