@@ -130,28 +130,24 @@ enum SkillCmd {
         provider: String,
     },
     /// Install one skill per active provider for every supported agent found
-    /// on this machine, removing the skills of inactive providers
+    /// on this machine, removing the skills of inactive providers; uses the
+    /// global toggles only, ignoring .foac.toml overrides
     Install,
 }
 
 fn providers() -> Result<[Provider; 4], Box<dyn std::error::Error>> {
     let settings = provider::SettingsStore.load()?;
-    Ok([
-        // Settings first: short-circuit skips the keychain/`gh` probe when disabled.
-        Provider::new(
-            "github",
-            settings.enabled("github") && github::authenticated(),
-        ),
-        Provider::new(
-            "linear",
-            settings.enabled("linear") && linear::authenticated(),
-        ),
-        Provider::new(
-            "sentry",
-            settings.enabled("sentry") && sentry::authenticated(),
-        ),
-        Provider::new("slack", settings.enabled("slack") && slack::authenticated()),
-    ])
+    Ok(providers_where(|name| settings.enabled(name)))
+}
+
+fn providers_where(enabled: impl Fn(&str) -> bool) -> [Provider; 4] {
+    // Settings first: short-circuit skips the keychain/`gh` probe when disabled.
+    [
+        Provider::new("github", enabled("github") && github::authenticated()),
+        Provider::new("linear", enabled("linear") && linear::authenticated()),
+        Provider::new("sentry", enabled("sentry") && sentry::authenticated()),
+        Provider::new("slack", enabled("slack") && slack::authenticated()),
+    ]
 }
 
 fn cli_command(providers: &[Provider]) -> clap::Command {
@@ -249,7 +245,10 @@ fn render_provider_skill(name: &str) -> String {
 }
 
 fn skill_install_cmd() -> Result<(), Box<dyn std::error::Error>> {
-    let active: Vec<&str> = providers()?
+    // Skills are installed machine-wide, so use the global toggles only and
+    // ignore any per-folder .foac.toml override in effect here.
+    let settings = provider::SettingsStore.load()?;
+    let active: Vec<&str> = providers_where(|name| settings.enabled_globally(name))
         .iter()
         .filter(|provider| provider.active)
         .map(|provider| provider.name)
