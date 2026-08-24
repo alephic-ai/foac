@@ -131,7 +131,7 @@ fn write(path: &Path, config: &Config) -> Result<(), Box<dyn std::error::Error>>
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    std::fs::write(path, serde_json::to_vec(config)?)?;
+    std::fs::write(path, serde_json::to_vec_pretty(config)?)?;
     // The file can hold credentials, so keep it readable by the owner only.
     #[cfg(unix)]
     {
@@ -192,7 +192,7 @@ mod tests {
         write(&path, &config).unwrap();
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
-            r#"{"disabled_providers":["github"]}"#
+            "{\n  \"disabled_providers\": [\n    \"github\"\n  ]\n}"
         );
 
         let config = read(&path).unwrap();
@@ -232,7 +232,7 @@ mod tests {
         write(&path, &config).unwrap();
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
-            r#"{"disabled_providers":[]}"#
+            "{\n  \"disabled_providers\": []\n}"
         );
 
         config.set_sentry_url(Some("https://sentry.example.com".into()));
@@ -240,6 +240,29 @@ mod tests {
         let config = read(&path).unwrap();
         assert_eq!(config.sentry_url(), Some("https://sentry.example.com"));
         assert_eq!(Config::default().sentry_url(), None);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn config_write_pretty_prints_and_round_trips_populated_fields() {
+        let dir =
+            std::env::temp_dir().join(format!("foac-provider-pretty-test-{}", std::process::id()));
+        let path = dir.join("config.json");
+
+        let mut config = Config::default();
+        config.set_enabled("github", false);
+        config.set_credential("slack_user", "xoxp-user".into());
+        config.set_credential("linear", "lin_api_token".into());
+        config.set_sentry_url(Some("https://sentry.example.com".into()));
+
+        write(&path, &config).unwrap();
+
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            serde_json::to_string_pretty(&config).unwrap().as_bytes()
+        );
+        assert_eq!(read(&path), Some(config));
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
