@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
 use serde_json::json;
-use toml_edit::{Array, DocumentMut, Item, RawString, Value, value};
+use toml_edit::{Array, DocumentMut, Item, Value, value};
 
 use crate::auth::Provider;
 
@@ -205,7 +205,7 @@ fn store_path(
 fn read_file(path: &Path, kind: &str) -> Result<Option<Vec<u8>>, Box<dyn std::error::Error>> {
     match std::fs::read(path) {
         Ok(bytes) => Ok(Some(bytes)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(format!("could not read {kind} file {}: {error}", path.display()).into()),
     }
 }
@@ -421,7 +421,7 @@ fn remove_array_value_preserving_previous_decor(array: &mut Array, index: usize)
     let prefix = array
         .get(index)
         .and_then(|value| value.decor().prefix().cloned())
-        .unwrap_or_else(RawString::default);
+        .unwrap_or_default();
     array.remove(index);
     if let Some(next) = array.get_mut(index) {
         next.decor_mut().set_prefix(prefix);
