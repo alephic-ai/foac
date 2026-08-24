@@ -6,8 +6,10 @@ skill per active provider (`foac-github`, `foac-linear`, ...) into the skill
 folders of the agents found on the machine (`~/.claude/skills/` for Claude
 Code, and the cross-agent standard `~/.agents/skills/` read by Cursor, Codex,
 Gemini CLI, GitHub Copilot, OpenCode, Amp, and others) and removes the skills
-of providers that are disabled or unauthenticated.
+of providers that are disabled or unauthenticated. Existing skills are only
+written when their contents changed; byte-identical skills are reported as
+`Unchanged`.
 
 `foac update` refreshes the foac provider skills already installed in either
 location. It preserves the installed provider set instead of adding or removing
-skills.
+skills, and reports byte-identical skills as `Unchanged` without rewriting them.
