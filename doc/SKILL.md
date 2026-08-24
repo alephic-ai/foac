@@ -32,11 +32,11 @@ description: Use the foac CLI to interact with Slack from the shell. Covers conv
 <!-- /foac-provider:slack -->
 <!-- rumdl-enable MD022 MD025 -->
 
-foac wraps external provider APIs as CLI subcommands, designed for LLM agents:
-every command prints compact JSON on stdout (pass `--format json` when parsing
-— a human at an interactive terminal gets a table instead), errors go to
-stderr with exit code 1, and provider API commands are non-interactive. Auth login is the
-explicit exception: it securely prompts on a TTY or reads a token from
+foac wraps external provider APIs as CLI subcommands for LLM agents: every
+command prints compact JSON on stdout (pass `--format json` when parsing; a
+human at an interactive terminal gets a table instead), errors go to stderr
+with exit code 1, and provider API commands are non-interactive. Auth login is
+the explicit exception: it securely prompts on a TTY or reads a token from
 redirected stdin.
 
 ## Structure
@@ -63,8 +63,8 @@ foac <provider> <resource> <verb> [flags]
 <!-- /foac-provider:slack -->
 - Resources are nouns (`issue`, `project`, `team`, `user`, ...), verbs are
   `list`, `get`, `create`, `update`, `delete`.
-- `--help` at any level is the ground truth for what exists and which flags
-  each verb takes. Explore with `foac <provider> --help`, then
+- `--help` at any level lists what exists and which flags each verb takes.
+  Explore with `foac <provider> --help`, then
   `foac <provider> <resource> --help`.
 
 ## Conventions
@@ -129,7 +129,7 @@ foac <provider> <resource> <verb> [flags]
 - **Linear pagination**: `list` verbs take `--limit N` (default 50) and
   `--after CURSOR`; loop using `pageInfo.endCursor` while `hasNextPage` is true.
 - **Linear filters accept names**: filter flags on `list` verbs take a UUID or a
-  human value — a team key (`ENG`), a state name (`In Progress`), a user
+  human value: a team key (`ENG`), a state name (`In Progress`), a user
   email or display name, a project or label name.
 - **Linear mutations need UUIDs**: flags on `create`/`update` verbs (`--assignee`,
   `--state`, `--project`, ...) require UUIDs. Look them up first with the
@@ -273,7 +273,7 @@ foac slack reaction add '#eng' 1724432400.123456 eyes
 
 `foac update` replaces the binary with the latest release; `foac version`
 prints the installed version. foac checks GitHub at most once a day and prints
-a two-line notice on stderr while a newer release exists — it never
+a two-line notice on stderr while a newer release exists. It never
 auto-installs, and the notice is not JSON. Set `FOAC_NO_UPDATE_CHECK` (or `CI`)
 to disable it.
 Reinstall the foac skills with `foac skill install` after updating.

@@ -4,7 +4,7 @@
 uses `SENTRY_AUTH_TOKEN` or a credential saved by `foac auth sentry login`.
 Pass `--org SLUG` or set `SENTRY_ORG`. At an interactive terminal,
 `foac auth sentry login` first asks for the Sentry hostname (default
-`sentry.io`, always https — enter your own for a self-hosted instance) and
+`sentry.io`, always https; enter your own for a self-hosted instance) and
 saves it alongside the token; piped logins read only the token, so pass
 `--host sentry.example.com` to save a self-hosted instance non-interactively.
 `SENTRY_URL` overrides the saved host. Issue commands accept numeric IDs

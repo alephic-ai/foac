@@ -5,17 +5,17 @@ foac, the Father Of All CLIs
 ## Why foac
 
 Every SaaS product ships its own CLI with its own grammar, auth story, and
-output quirks. foac wraps them all behind one consistent grammar —
-`foac <provider> <resource> <verb>` — built first for LLM agents working in a
+output quirks. foac wraps them all behind one consistent grammar,
+`foac <provider> <resource> <verb>`, built first for LLM agents working in a
 shell, with humans at a TTY served by the same commands.
 
-- **Discovery is offline and deterministic.** The command tree is compiled in,
+- Discovery is offline and deterministic. The command tree is compiled in,
   so an agent learns any provider's API through `--help` with no network
   round-trip. Providers that are disabled or unauthenticated are hidden.
-- **Log in once, reuse everywhere.** `foac auth <provider> login` stores a
-  validated token in an owner-only config file; every agent harness and script
+- Log in once, reuse everywhere. `foac auth <provider> login` stores a
+  validated token in an owner-only config file. Every agent harness and script
   on the machine reuses it.
-- **Responses are the provider's raw JSON.** foac never reshapes what the API
+- Responses are the provider's raw JSON. foac does not reshape what the API
   returned, so upstream API docs remain valid documentation for foac's output.
 
 ## Features
@@ -41,7 +41,7 @@ shell, with humans at a TTY served by the same commands.
 | Sentry | Organizations, projects, issues, error events, releases | [doc/sentry.md](doc/sentry.md) |
 | Slack | Conversations, messages, threads, users, message search, reactions | [doc/slack.md](doc/slack.md) |
 
-More providers are on the way; candidates are tracked in
+Candidates for more providers are tracked in
 [GitHub issues](https://github.com/lra/foac/issues).
 
 ## Install
