@@ -62,6 +62,12 @@ impl Settings {
         }
     }
 
+    /// The global toggle alone, ignoring any `.foac.toml` override; skills are
+    /// installed machine-wide, so per-folder toggles must not affect them.
+    pub fn enabled_globally(&self, name: &str) -> bool {
+        !self.disabled_providers.iter().any(|p| p == name)
+    }
+
     fn set_enabled(&mut self, name: &str, enabled: bool) {
         self.disabled_providers.retain(|p| p != name);
         if !enabled {
@@ -884,6 +890,12 @@ mod tests {
         assert!(!settings.enabled("linear")); // local disable beats global default
         assert!(settings.enabled("slack")); // listed in both locally: enabled wins
         assert!(!settings.enabled("sentry")); // untouched locally: global applies
+
+        // enabled_globally ignores the local overrides entirely.
+        assert!(!settings.enabled_globally("github"));
+        assert!(settings.enabled_globally("linear"));
+        assert!(settings.enabled_globally("slack"));
+        assert!(!settings.enabled_globally("sentry"));
     }
 
     #[test]
