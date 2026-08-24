@@ -4,6 +4,8 @@ use clap::{Args, Subcommand, ValueEnum};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
+use crate::rest::{self, insert_opt, parse_response};
+
 const API_URL: &str = "https://slack.com/api/";
 
 #[derive(Args)]
@@ -259,17 +261,7 @@ pub(crate) fn auth_identity(token: &str) -> Result<Value, crate::auth::Validatio
 }
 
 fn auth_identity_at(token: &str, url: reqwest::Url) -> Result<Value, crate::auth::ValidationError> {
-    let response = reqwest::blocking::Client::new()
-        .post(url)
-        .bearer_auth(token)
-        .header("User-Agent", "foac")
-        .send()
-        .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
-    let status = response.status();
-    let text = response
-        .text()
-        .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
-    let body = parse_response(status, text);
+    let (status, body) = rest::fetch_identity(Method::POST, url, token, &[])?;
     if !status.is_success() {
         return Err(crate::auth::ValidationError::Failed(body.to_string()));
     }
@@ -649,21 +641,6 @@ fn page_query(page: Page) -> Vec<(&'static str, String)> {
     query
 }
 
-fn parse_response(status: reqwest::StatusCode, text: String) -> Value {
-    if text.is_empty() {
-        json!({})
-    } else {
-        serde_json::from_str(&text)
-            .unwrap_or_else(|_| json!({ "status": status.as_u16(), "body": text }))
-    }
-}
-
-fn insert_opt<T: Into<Value>>(object: &mut Map<String, Value>, name: &str, value: Option<T>) {
-    if let Some(value) = value {
-        object.insert(name.to_owned(), value.into());
-    }
-}
-
 fn is_conversation_id(value: &str) -> bool {
     matches!(value.as_bytes().first(), Some(b'C' | b'G' | b'D'))
         && value.len() > 1
@@ -690,8 +667,6 @@ fn trim_colons(name: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
     use std::sync::mpsc;
 
     use super::*;
@@ -815,43 +790,10 @@ mod tests {
         status: &'static str,
         body: &'static str,
     ) -> (Api, mpsc::Receiver<String>, std::thread::JoinHandle<()>) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
-        let (request_tx, request_rx) = mpsc::channel();
-        let response = format!(
-            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-            body.len()
-        );
-        let server = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut request = Vec::new();
-            let mut buffer = [0; 1024];
-            loop {
-                let read = stream.read(&mut buffer).unwrap();
-                request.extend_from_slice(&buffer[..read]);
-                let complete = request
-                    .windows(4)
-                    .position(|window| window == b"\r\n\r\n")
-                    .is_some_and(|header_end| {
-                        let headers = String::from_utf8_lossy(&request[..header_end]);
-                        let content_length = headers.lines().find_map(|line| {
-                            let (name, value) = line.split_once(':')?;
-                            name.eq_ignore_ascii_case("content-length")
-                                .then(|| value.trim().parse::<usize>().ok())
-                                .flatten()
-                        });
-                        request.len() >= header_end + 4 + content_length.unwrap_or(0)
-                    });
-                if read == 0 || complete {
-                    break;
-                }
-            }
-            let _ = request_tx.send(String::from_utf8(request).unwrap());
-            stream.write_all(response.as_bytes()).unwrap();
-        });
+        let (url, request_rx, server) = rest::testing::test_server(status, body, "");
         let api = Api {
             client: reqwest::blocking::Client::new(),
-            base_url: reqwest::Url::parse(&format!("http://{address}/")).unwrap(),
+            base_url: url,
             token: "secret-token".into(),
             format: crate::output::Format::Json,
         };
