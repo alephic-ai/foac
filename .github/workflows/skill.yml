@@ -26,7 +26,7 @@ jobs:
       # each the way `foac skill install` would and validate those.
       - run: |
           cargo build --locked
-          for p in github jira linear sentry slack; do
+          for p in confluence github jira linear sentry slack; do
             mkdir -p "$RUNNER_TEMP/skills/foac-$p"
             ./target/debug/foac skill print "$p" > "$RUNNER_TEMP/skills/foac-$p/SKILL.md"
           done

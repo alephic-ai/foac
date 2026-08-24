@@ -21,7 +21,9 @@ enum AuthCmd {
     /// Configure GitHub authentication
     Github(ProviderCmd),
     /// Configure Jira (Atlassian) authentication
-    Jira(JiraCmd),
+    Jira(AtlassianCmd),
+    /// Configure Confluence (Atlassian) authentication
+    Confluence(AtlassianCmd),
     /// Configure Slack authentication
     Slack(SlackCmd),
     /// Configure Sentry authentication
@@ -67,21 +69,22 @@ enum SlackAction {
 
 #[derive(Args)]
 #[command(arg_required_else_help = true)]
-struct JiraCmd {
+struct AtlassianCmd {
     #[command(subcommand)]
-    command: JiraAction,
+    command: AtlassianAction,
 }
 
 #[derive(Subcommand)]
-enum JiraAction {
+enum AtlassianAction {
     /// Check authentication for this provider
     Status,
     /// Validate and save the Atlassian host, email, and API token
     ///
     /// Prompts for the host, email, then API token. Redirected input supplies
     /// one line per missing value in the same order; --host and --email skip
-    /// their prompt or line. The stored credential is shared with future
-    /// Atlassian providers.
+    /// their prompt or line. The stored credential is shared between Jira and
+    /// Confluence: logging in through either covers both, and logging out
+    /// removes it for both.
     Login {
         /// Atlassian site host like acme.atlassian.net, skipping the prompt
         #[arg(long)]
@@ -90,7 +93,8 @@ enum JiraAction {
         #[arg(long)]
         email: Option<String>,
     },
-    /// Remove foac's stored Atlassian host, email, and API token
+    /// Remove foac's stored Atlassian host, email, and API token,
+    /// de-authenticating both Jira and Confluence
     Logout,
 }
 
@@ -121,6 +125,7 @@ pub enum Provider {
     Linear,
     Github,
     Jira,
+    Confluence,
     Slack,
     Sentry,
 }
@@ -207,14 +212,10 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
         }
         AuthCmd::Linear(cmd) => run_provider(Provider::Linear, cmd.command, &store, format),
         AuthCmd::Github(cmd) => run_provider(Provider::Github, cmd.command, &store, format),
-        AuthCmd::Jira(cmd) => match cmd.command {
-            JiraAction::Status => {
-                print_status(Provider::Jira, &store, format);
-                Ok(())
-            }
-            JiraAction::Login { host, email } => jira_login(host, email, &store, format),
-            JiraAction::Logout => logout(Provider::Jira, &store, format),
-        },
+        AuthCmd::Jira(cmd) => run_atlassian(Provider::Jira, cmd.command, &store, format),
+        AuthCmd::Confluence(cmd) => {
+            run_atlassian(Provider::Confluence, cmd.command, &store, format)
+        }
         AuthCmd::Slack(cmd) => run_slack(cmd.command, &store, format),
         AuthCmd::Sentry(cmd) => match cmd.command {
             SentryAction::Status => {
@@ -276,10 +277,10 @@ pub(crate) fn github_token() -> Result<String, Box<dyn std::error::Error>> {
     .map_err(Into::into)
 }
 
-/// Vendor-level Atlassian credentials: every Jira request needs the tenant
-/// host, the account email, and the API token.
+/// Vendor-level Atlassian credentials: every Jira and Confluence request
+/// needs the tenant host, the account email, and the API token.
 #[derive(Debug)]
-pub(crate) struct JiraCredentials {
+pub(crate) struct AtlassianCredentials {
     pub(crate) host: String,
     pub(crate) email: String,
     pub(crate) token: String,
@@ -287,19 +288,21 @@ pub(crate) struct JiraCredentials {
 
 #[derive(Debug)]
 struct ResolvedJira {
-    credentials: JiraCredentials,
+    credentials: AtlassianCredentials,
     /// The token's source; the host and email may come from elsewhere.
     source: CredentialSource,
 }
 
-/// Resolve the credentials for a `foac jira` invocation. Each value falls
-/// back flag > environment > stored; a missing token is additionally read
-/// from redirected stdin so a one-off invocation never puts it in shell
-/// history.
-pub(crate) fn jira_credentials(
+/// Resolve the credentials for a `foac jira` or `foac confluence`
+/// invocation; `login` names the calling provider's login command for error
+/// messages. Each value falls back flag > environment > stored; a missing
+/// token is additionally read from redirected stdin so a one-off invocation
+/// never puts it in shell history.
+pub(crate) fn atlassian_credentials(
     host_flag: Option<String>,
     email_flag: Option<String>,
-) -> Result<JiraCredentials, Box<dyn std::error::Error>> {
+    login: &str,
+) -> Result<AtlassianCredentials, Box<dyn std::error::Error>> {
     let store = crate::provider::CredentialStore;
     let host = match host_flag {
         Some(host) => Some(host),
@@ -311,7 +314,11 @@ pub(crate) fn jira_credentials(
         )?
         .map(|(value, _)| value),
     }
-    .ok_or("--host or ATLASSIAN_HOST is not set and no Atlassian host is stored; run `foac auth jira login`")?;
+    .ok_or_else(|| {
+        format!(
+            "--host or ATLASSIAN_HOST is not set and no Atlassian host is stored; run `{login}`"
+        )
+    })?;
     let email = match email_flag {
         Some(email) => Some(email),
         None => jira_part(
@@ -322,7 +329,11 @@ pub(crate) fn jira_credentials(
         )?
         .map(|(value, _)| value),
     }
-    .ok_or("--email or ATLASSIAN_EMAIL is not set and no Atlassian email is stored; run `foac auth jira login`")?;
+    .ok_or_else(|| {
+        format!(
+            "--email or ATLASSIAN_EMAIL is not set and no Atlassian email is stored; run `{login}`"
+        )
+    })?;
     let token = match jira_part(
         environment("ATLASSIAN_API_TOKEN"),
         crate::provider::Credential::AtlassianToken,
@@ -338,20 +349,20 @@ pub(crate) fn jira_credentials(
             token
         }
         None => {
-            return Err(
-                "ATLASSIAN_API_TOKEN is not set and no Atlassian API token is stored; pipe the token to stdin or run `foac auth jira login`"
-                    .into(),
-            );
+            return Err(format!(
+                "ATLASSIAN_API_TOKEN is not set and no Atlassian API token is stored; pipe the token to stdin or run `{login}`"
+            )
+            .into());
         }
     };
-    Ok(JiraCredentials {
+    Ok(AtlassianCredentials {
         host: crate::jira::normalize_host(&host)?,
         email,
         token,
     })
 }
 
-pub(crate) fn jira_authenticated() -> bool {
+pub(crate) fn atlassian_authenticated() -> bool {
     resolve_jira(jira_environment(), &crate::provider::CredentialStore).is_ok()
 }
 
@@ -402,7 +413,7 @@ fn resolve_jira(
     let host = crate::jira::normalize_host(&host)
         .map_err(|error| ResolveError::Failed(error.to_string()))?;
     Ok(ResolvedJira {
-        credentials: JiraCredentials { host, email, token },
+        credentials: AtlassianCredentials { host, email, token },
         source,
     })
 }
@@ -451,6 +462,7 @@ impl Provider {
             Self::Linear => "linear",
             Self::Github => "github",
             Self::Jira => "jira",
+            Self::Confluence => "confluence",
             Self::Slack => "slack",
             Self::Sentry => "sentry",
         }
@@ -461,6 +473,7 @@ impl Provider {
             Self::Linear => "Linear",
             Self::Github => "GitHub",
             Self::Jira => "Jira",
+            Self::Confluence => "Confluence",
             Self::Slack => "Slack",
             Self::Sentry => "Sentry",
         }
@@ -470,7 +483,7 @@ impl Provider {
         match self {
             Self::Linear => "LINEAR_API_KEY",
             Self::Github => "GITHUB_TOKEN",
-            Self::Jira => "ATLASSIAN_API_TOKEN",
+            Self::Jira | Self::Confluence => "ATLASSIAN_API_TOKEN",
             Self::Slack => "SLACK_BOT_TOKEN",
             Self::Sentry => "SENTRY_AUTH_TOKEN",
         }
@@ -480,7 +493,7 @@ impl Provider {
         match self {
             Self::Linear => crate::provider::Credential::Linear,
             Self::Github => crate::provider::Credential::Github,
-            Self::Jira => crate::provider::Credential::AtlassianToken,
+            Self::Jira | Self::Confluence => crate::provider::Credential::AtlassianToken,
             Self::Slack => crate::provider::Credential::SlackBot,
             Self::Sentry => crate::provider::Credential::Sentry,
         }
@@ -534,6 +547,24 @@ fn run_provider(
     }
 }
 
+fn run_atlassian(
+    provider: Provider,
+    action: AtlassianAction,
+    store: &dyn SecretStore,
+    format: crate::output::Format,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match action {
+        AtlassianAction::Status => {
+            print_status(provider, store, format);
+            Ok(())
+        }
+        AtlassianAction::Login { host, email } => {
+            atlassian_login(provider, host, email, store, format)
+        }
+        AtlassianAction::Logout => logout(provider, store, format),
+    }
+}
+
 fn run_slack(
     action: SlackAction,
     store: &dyn SecretStore,
@@ -559,7 +590,9 @@ fn logout(
             crate::provider::Credential::SlackBot,
             crate::provider::Credential::SlackUser,
         ],
-        Provider::Jira => &[
+        // The credential is vendor-level, so either Atlassian provider's
+        // logout de-authenticates both, mirroring login.
+        Provider::Jira | Provider::Confluence => &[
             crate::provider::Credential::AtlassianHost,
             crate::provider::Credential::AtlassianEmail,
             crate::provider::Credential::AtlassianToken,
@@ -622,17 +655,17 @@ fn login(
     Ok(())
 }
 
-fn jira_login(
+fn atlassian_login(
+    provider: Provider,
     host: Option<String>,
     email: Option<String>,
     store: &dyn SecretStore,
     format: crate::output::Format,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    print_login_help(Provider::Jira, None)?;
+    print_login_help(provider, None)?;
     let (host, email, token) = read_jira_login(host, email)?;
     let host = crate::jira::normalize_host(&host)?;
-    let account = crate::jira::auth_identity(&host, &email, &token)
-        .map(|identity| jira_account(&host, &identity))?;
+    let account = atlassian_account(provider, &host, &email, &token)?;
     store
         .set_many(&[
             (crate::provider::Credential::AtlassianHost, host.as_str()),
@@ -647,13 +680,30 @@ fn jira_login(
             );
         }
     }
-    let report = login_report(Provider::Jira, account);
+    let report = login_report(provider, account);
     crate::output::print_text(
-        &status_summary(Provider::Jira, &report[Provider::Jira.as_str()]),
+        &status_summary(provider, &report[provider.as_str()]),
         &report,
         format,
     );
     Ok(())
+}
+
+/// Validate the shared Atlassian credential against the calling provider's
+/// API, so a Confluence login fails on a Jira-only tenant and vice versa.
+fn atlassian_account(
+    provider: Provider,
+    host: &str,
+    email: &str,
+    token: &str,
+) -> Result<Value, ValidationError> {
+    match provider {
+        Provider::Jira => crate::jira::auth_identity(host, email, token)
+            .map(|identity| jira_account(host, &identity)),
+        Provider::Confluence => crate::confluence::auth_identity(host, email, token)
+            .map(|identity| confluence_account(host, &identity)),
+        _ => unreachable!("not an Atlassian provider"),
+    }
 }
 
 fn read_jira_login(
@@ -905,6 +955,7 @@ fn flatten_accounts_for_table(statuses: &Value) -> Value {
         Provider::Linear,
         Provider::Github,
         Provider::Jira,
+        Provider::Confluence,
         Provider::Slack,
         Provider::Sentry,
     ] {
@@ -958,7 +1009,7 @@ fn account_identity(provider: Provider, account: &Value) -> String {
     match provider {
         Provider::Linear => linear_identity(account),
         Provider::Github => github_identity(account),
-        Provider::Jira => jira_identity(account),
+        Provider::Jira | Provider::Confluence => jira_identity(account),
         Provider::Slack => slack_identity(account),
         Provider::Sentry => sentry_identity(account),
     }
@@ -1045,8 +1096,8 @@ fn text_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
 }
 
 fn provider_status(provider: Provider, store: &dyn SecretStore) -> Value {
-    // Jira validates with three credentials, not one token.
-    if provider == Provider::Jira {
+    // Atlassian providers validate with three credentials, not one token.
+    if matches!(provider, Provider::Jira | Provider::Confluence) {
         return match resolve_jira(jira_environment(), store) {
             Ok(resolved) => credential_status(
                 Ok(ResolvedCredential {
@@ -1054,12 +1105,12 @@ fn provider_status(provider: Provider, store: &dyn SecretStore) -> Value {
                     source: resolved.source,
                 }),
                 |token| {
-                    crate::jira::auth_identity(
+                    atlassian_account(
+                        provider,
                         &resolved.credentials.host,
                         &resolved.credentials.email,
                         token,
                     )
-                    .map(|identity| jira_account(&resolved.credentials.host, &identity))
                 },
             ),
             Err(error) => credential_status(Err(error), |_| unreachable!()),
@@ -1075,7 +1126,7 @@ fn provider_status(provider: Provider, store: &dyn SecretStore) -> Value {
             environment_slack_user_token(),
             store,
         ),
-        Provider::Jira => unreachable!("handled above"),
+        Provider::Jira | Provider::Confluence => unreachable!("handled above"),
     };
     credential_status(resolved, |token| validate(provider, token, None))
 }
@@ -1085,6 +1136,7 @@ fn all_provider_statuses(store: &dyn SecretStore) -> Value {
         "linear": provider_status(Provider::Linear, store),
         "github": provider_status(Provider::Github, store),
         "jira": provider_status(Provider::Jira, store),
+        "confluence": provider_status(Provider::Confluence, store),
         "slack": provider_status(Provider::Slack, store),
         "sentry": provider_status(Provider::Sentry, store),
     })
@@ -1318,7 +1370,9 @@ fn validate(
     match provider {
         Provider::Linear => crate::linear::auth_identity(token).map(linear_account),
         Provider::Github => crate::github::auth_identity(token).map(github_account),
-        Provider::Jira => unreachable!("Jira validates with host and email, not one token"),
+        Provider::Jira | Provider::Confluence => {
+            unreachable!("Atlassian providers validate with host and email, not one token")
+        }
         Provider::Slack => crate::slack::auth_identity(token).map(slack_account),
         Provider::Sentry => crate::sentry::auth_identity(token, sentry_url).map(sentry_account),
     }
@@ -1329,6 +1383,17 @@ fn jira_account(host: &str, identity: &Value) -> Value {
         "accountId": identity["accountId"],
         "displayName": identity["displayName"],
         "emailAddress": identity["emailAddress"],
+        "host": host,
+    })
+}
+
+/// Confluence's user resource calls the email field `email` where Jira says
+/// `emailAddress`; map both to the same account shape.
+fn confluence_account(host: &str, identity: &Value) -> Value {
+    json!({
+        "accountId": identity["accountId"],
+        "displayName": identity["displayName"],
+        "emailAddress": identity["email"],
         "host": host,
     })
 }
@@ -1455,7 +1520,7 @@ fn print_login_help(
         Provider::Github => eprintln!(
             "Create a fine-grained personal access token at https://github.com/settings/personal-access-tokens/new and grant the repository permissions needed by your foac commands."
         ),
-        Provider::Jira => eprintln!(
+        Provider::Jira | Provider::Confluence => eprintln!(
             "Create an Atlassian API token at https://id.atlassian.com/manage-profile/security/api-tokens (the token covers Jira and Confluence), and have your site host (like acme.atlassian.net) and account email ready."
         ),
         Provider::Slack => eprintln!(

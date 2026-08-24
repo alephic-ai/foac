@@ -166,6 +166,20 @@ pub(crate) fn insert_opt<T: Into<Value>>(
     }
 }
 
+/// Whether user input is an all-digits ID rather than a key or name.
+pub(crate) fn is_numeric_id(value: &str) -> bool {
+    !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+/// An `id` field as a string, whether the API returned a string or a number.
+pub(crate) fn id_string(value: &Value) -> Option<String> {
+    match value {
+        Value::String(id) => Some(id.clone()),
+        Value::Number(id) => Some(id.to_string()),
+        _ => None,
+    }
+}
+
 /// One identity-validation request; providers keep their own status/body
 /// interpretation (Slack accepts HTTP 200 with `ok: false` as a rejection).
 pub(crate) fn fetch_identity(
