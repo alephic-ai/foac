@@ -196,10 +196,12 @@ foac <provider> <resource> <verb> [flags]
   create releases and upload sourcemaps.
 <!-- /foac-provider:sentry -->
 <!-- foac-provider:figma -->
-- **Figma identifiers**: file arguments accept a raw file key or a pasted
-  figma.com file URL. Team and project IDs are the numbers in figma.com URLs;
-  they are not discoverable through the API. Node IDs use colons like `1:2`;
-  a URL's `node-id=1-2` form is converted automatically.
+- **Figma identifiers**: file, team, and project arguments accept a raw
+  key/ID or a pasted figma.com URL. Team and project IDs are the numbers
+  after `/team/` and `/project/` in figma.com URLs; they are not
+  discoverable through the API, so ask the user for the URL when unknown.
+  Node IDs use colons like `1:2`; a URL's `node-id=1-2` form is converted
+  automatically.
 - **Figma file size**: `file get` returns the whole document tree, which can
   be very large. Scope it with `--depth N` or `--ids`, or use `file nodes`
   for specific nodes.

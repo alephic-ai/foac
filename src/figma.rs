@@ -32,14 +32,22 @@ enum Resource {
 
 #[derive(Subcommand)]
 enum ProjectCmd {
-    /// List a team's projects; the team ID is the number in the team page URL
-    List { team_id: String },
+    /// List a team's projects
+    List {
+        /// Team ID: the number after /team/ in the team page URL, or the
+        /// pasted URL itself
+        team_id: String,
+    },
 }
 
 #[derive(Subcommand)]
 enum FileCmd {
     /// List the files in a project
-    List { project_id: String },
+    List {
+        /// Project ID: the number after /project/ in the project page URL,
+        /// or the pasted URL itself
+        project_id: String,
+    },
     /// Get a file's document tree (can be huge; scope it with --depth or --ids)
     Get {
         /// File key, or a pasted figma.com file URL
@@ -189,7 +197,7 @@ fn run_project(api: &Api, cmd: ProjectCmd) -> Result<(), Box<dyn std::error::Err
     match cmd {
         ProjectCmd::List { team_id } => print_list(
             api,
-            path!["teams", team_id, "projects"],
+            path!["teams", url_id(&team_id, "team"), "projects"],
             Vec::new(),
             "projects",
         ),
@@ -200,7 +208,7 @@ fn run_file(api: &Api, cmd: FileCmd) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
         FileCmd::List { project_id } => print_list(
             api,
-            path!["projects", project_id, "files"],
+            path!["projects", url_id(&project_id, "project"), "files"],
             Vec::new(),
             "files",
         ),
@@ -360,6 +368,24 @@ fn file_key(input: &str) -> String {
     }
 }
 
+/// Team and project IDs are numbers from figma.com URLs (there is no API to
+/// discover them); accept the pasted URL and take the segment after `kind`,
+/// e.g. `figma.com/files/team/123/Name` with kind `team` gives `123`.
+fn url_id(input: &str, kind: &str) -> String {
+    let Some((_, path)) = input.split_once("figma.com/") else {
+        return input.to_owned();
+    };
+    let mut segments = path.split(['/', '?', '#']);
+    while let Some(segment) = segments.next() {
+        if segment == kind {
+            if let Some(id) = segments.next().filter(|id| !id.is_empty()) {
+                return id.to_owned();
+            }
+        }
+    }
+    input.to_owned()
+}
+
 /// The API wants node IDs like `1:2`; Figma URLs write them as `node-id=1-2`.
 /// Convert dashed IDs and leave canonical ones untouched.
 fn node_ids(ids: &str) -> String {
@@ -415,6 +441,29 @@ mod tests {
         assert_eq!(
             file_key("https://www.figma.com/files/recent"),
             "https://www.figma.com/files/recent"
+        );
+    }
+
+    #[test]
+    fn extracts_team_and_project_ids_from_pasted_urls() {
+        assert_eq!(url_id("1234567890", "team"), "1234567890");
+        assert_eq!(
+            url_id(
+                "https://www.figma.com/files/team/1234567890/My-Team",
+                "team"
+            ),
+            "1234567890"
+        );
+        assert_eq!(
+            url_id(
+                "https://www.figma.com/files/project/123456/My-Project",
+                "project"
+            ),
+            "123456"
+        );
+        assert_eq!(
+            url_id("https://www.figma.com/files/team/1234567890", "project"),
+            "https://www.figma.com/files/team/1234567890"
         );
     }
 

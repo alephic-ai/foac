@@ -12,9 +12,10 @@ commands you use:
 - `file_comments:read`: `comment list`
 - `file_comments:write`: `comment create`, `comment delete`
 
-File arguments accept a raw file key or a pasted
-figma.com file URL; team and project IDs are the numbers in figma.com URLs
-(they are not discoverable through the API). Node IDs use colons like `1:2`,
+File, team, and project arguments accept a raw key/ID or a pasted figma.com
+URL. Team and project IDs are the numbers after `/team/` and `/project/` in
+figma.com URLs (open the team or project in Figma and copy the address);
+they are not discoverable through the API. Node IDs use colons like `1:2`,
 and the `node-id=1-2` form from URLs is converted automatically.
 
 ```sh
