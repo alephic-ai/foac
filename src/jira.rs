@@ -57,9 +57,11 @@ struct Page {
 enum IssueCmd {
     /// List issues matching a JQL query
     List {
-        /// JQL query, e.g. "project = ENG AND statusCategory != Done"
-        #[arg(long)]
-        jql: Option<String>,
+        /// JQL query, e.g. "project = ENG AND statusCategory != Done";
+        /// Jira rejects unbounded queries, so the default restricts to
+        /// recently created issues
+        #[arg(long, default_value = "created >= -30d ORDER BY created DESC")]
+        jql: String,
         /// Comma-separated fields to return; defaults to *navigable
         #[arg(long)]
         fields: Option<String>,
@@ -305,8 +307,8 @@ fn run_issue(api: &Api, cmd: IssueCmd) -> Result<(), Box<dyn std::error::Error>>
                 ("maxResults", limit.to_string()),
                 // The search endpoint returns only IDs by default.
                 ("fields", fields.unwrap_or_else(|| "*navigable".to_owned())),
+                ("jql", jql),
             ];
-            push_query(&mut query, "jql", jql);
             push_query(&mut query, "nextPageToken", after);
             let response = api.send(Method::GET, &path!["search", "jql"], &query, None)?;
             let items = list_items(&response.body, Some("issues"))?;
@@ -726,7 +728,7 @@ mod tests {
         run_issue(
             &api,
             IssueCmd::List {
-                jql: Some("project = ENG".into()),
+                jql: "project = ENG".into(),
                 fields: None,
                 limit: 25,
                 after: None,
