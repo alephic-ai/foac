@@ -11,6 +11,51 @@ If your agents spend their context loading MCP tool catalogs and fetching API
 docs, foac replaces all of that with a single binary that already knows the
 APIs.
 
+## The picture
+
+Without foac, every harness wires up its own adapters — a mix of MCP servers
+and one-off CLIs, each with its own config and its own copy of your tokens:
+
+```mermaid
+graph LR
+    CC([Claude Code]) --> LMCP & GHCLI & SMCP & SLMCP
+    CU([Cursor]) --> LMCP & GHMCP & SCLI & SLMCP
+    CX([Codex]) --> LMCP & GHCLI & SMCP & SLMCP
+    GEM([Gemini CLI]) --> LMCP & GHMCP & SMCP & SLMCP
+    LMCP{{Linear MCP server}} --> Linear[(Linear)]
+    GHMCP{{GitHub MCP server}} --> GitHub[(GitHub)]
+    GHCLI[[gh CLI]] --> GitHub
+    SMCP{{Sentry MCP server}} --> Sentry[(Sentry)]
+    SCLI[[sentry-cli]] --> Sentry
+    SLMCP{{Slack MCP server}} --> Slack[(Slack)]
+    classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
+    classDef mcp fill:#ffe0b2,stroke:#e65100,color:#000
+    classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
+    classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
+    class CC,CU,CX,GEM harness
+    class LMCP,GHMCP,SMCP,SLMCP mcp
+    class GHCLI,SCLI cli
+    class Linear,GitHub,Sentry,Slack provider
+```
+
+With foac, install once and log in once; every harness talks to every
+provider through the same binary:
+
+```mermaid
+graph LR
+    CC([Claude Code]) --> F
+    CU([Cursor]) --> F
+    CX([Codex]) --> F
+    GEM([Gemini CLI]) --> F[[foac]]
+    F --> Linear[(Linear)] & GitHub[(GitHub)] & Sentry[(Sentry)] & Slack[(Slack)]
+    classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
+    classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
+    classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
+    class CC,CU,CX,GEM harness
+    class F cli
+    class Linear,GitHub,Sentry,Slack provider
+```
+
 ## Why harnesses like foac
 
 - **Install once, auth once, share everywhere.** `foac auth <provider> login`
@@ -65,39 +110,15 @@ Candidates for more providers are tracked in
 
 ## Install
 
-[ubi](https://github.com/houseabsolute/ubi) installs the `foac` binary for your platform from [GitHub Releases](https://github.com/lra/foac/releases).
-
-### 1. Install ubi
-
-On Linux, macOS, FreeBSD, and NetBSD:
+With [mise](https://mise.jdx.dev), on macOS, Linux, or Windows:
 
 ```sh
-curl --silent --location \
-    https://raw.githubusercontent.com/houseabsolute/ubi/master/bootstrap/bootstrap-ubi.sh |
-    sh
+mise use -g github:lra/foac
 ```
 
-This command installs `ubi` into `$HOME/bin` for a normal user, or into `/usr/local/bin` for root.
-
-On Windows, run this command in PowerShell. It installs `ubi.exe` into the current directory:
-
-```powershell
-powershell -exec bypass -c "Invoke-WebRequest -URI 'https://raw.githubusercontent.com/houseabsolute/ubi/master/bootstrap/bootstrap-ubi.ps1' -UseBasicParsing | Invoke-Expression"
-```
-
-### 2. Install foac
-
-```sh
-ubi --project lra/foac --in "$HOME/bin"
-```
-
-On Windows:
-
-```powershell
-.\ubi.exe --project lra/foac --in "$HOME\bin"
-```
-
-If `$HOME/bin` is not on your `PATH`, add it.
+This installs the `foac` binary from
+[GitHub Releases](https://github.com/lra/foac/releases) and puts it on your
+`PATH`; `foac update` keeps it current after that.
 
 ## Quick start
 
