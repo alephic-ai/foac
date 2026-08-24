@@ -435,7 +435,9 @@ fn run_sprint(api: &Api, cmd: SprintCmd) -> Result<(), Box<dyn std::error::Error
                 Some("values"),
             )
         }
-        SprintCmd::Get { id } => api.print(Method::GET, agile_path!["sprint", id], Vec::new(), None),
+        SprintCmd::Get { id } => {
+            api.print(Method::GET, agile_path!["sprint", id], Vec::new(), None)
+        }
     }
 }
 
@@ -625,7 +627,10 @@ fn resolve_board_id(api: &Api, board: &str) -> Result<String, Box<dyn std::error
         &[("name", board.to_owned())],
         None,
     )?;
-    let values = response.body["values"].as_array().cloned().unwrap_or_default();
+    let values = response.body["values"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     values
         .iter()
         .find(|candidate| candidate["name"].as_str() == Some(board))
@@ -650,7 +655,10 @@ mod tests {
 
     #[test]
     fn normalizes_hosts_and_rejects_empty_input() {
-        assert_eq!(normalize_host(" acme.atlassian.net \n").unwrap(), "acme.atlassian.net");
+        assert_eq!(
+            normalize_host(" acme.atlassian.net \n").unwrap(),
+            "acme.atlassian.net"
+        );
         assert_eq!(
             normalize_host("https://acme.atlassian.net/").unwrap(),
             "acme.atlassian.net"
@@ -689,7 +697,10 @@ mod tests {
 
         let is_last = offset_page_info(0, 2, 2, &json!({ "isLast": false }));
         assert_eq!(is_last["hasNextPage"], true);
-        assert_eq!(offset_page_info(0, 2, 2, &json!({ "isLast": true }))["hasNextPage"], false);
+        assert_eq!(
+            offset_page_info(0, 2, 2, &json!({ "isLast": true }))["hasNextPage"],
+            false
+        );
 
         let bare_full = offset_page_info(0, 2, 2, &json!({}));
         assert_eq!(bare_full["hasNextPage"], true);

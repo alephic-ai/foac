@@ -13,7 +13,10 @@ pub(crate) enum Auth {
 }
 
 impl Auth {
-    fn apply(&self, request: reqwest::blocking::RequestBuilder) -> reqwest::blocking::RequestBuilder {
+    fn apply(
+        &self,
+        request: reqwest::blocking::RequestBuilder,
+    ) -> reqwest::blocking::RequestBuilder {
         match self {
             Self::Bearer(token) => request.bearer_auth(token),
             Self::Basic { user, password } => request.basic_auth(user, Some(password)),
@@ -310,7 +313,8 @@ mod tests {
             },
             ..test_api(url, false)
         };
-        api.send(Method::GET, &["myself".into()], &[], None).unwrap();
+        api.send(Method::GET, &["myself".into()], &[], None)
+            .unwrap();
         server.join().unwrap();
 
         let request = request_rx.recv().unwrap().to_ascii_lowercase();

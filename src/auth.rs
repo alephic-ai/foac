@@ -371,9 +371,9 @@ fn resolve_jira(
 ) -> Result<ResolvedJira, ResolveError> {
     let [host_environment, email_environment, token_environment] = environment;
     let resolve = |environment,
-                       variable: &str,
-                       credential,
-                       display_name: &str|
+                   variable: &str,
+                   credential,
+                   display_name: &str|
      -> Result<(String, CredentialSource), ResolveError> {
         jira_part(environment, credential, display_name, store)?.ok_or_else(|| {
             ResolveError::Missing(format!(
@@ -642,7 +642,9 @@ fn jira_login(
         .map_err(|error| format!("could not store Atlassian credentials: {error}"))?;
     for variable in ["ATLASSIAN_HOST", "ATLASSIAN_EMAIL", "ATLASSIAN_API_TOKEN"] {
         if environment(variable).is_some() {
-            eprintln!("Warning: {variable} is set and takes precedence over the stored credential.");
+            eprintln!(
+                "Warning: {variable} is set and takes precedence over the stored credential."
+            );
         }
     }
     let report = login_report(Provider::Jira, account);
@@ -1602,7 +1604,11 @@ mod tests {
         // The environment beats the store part by part; the token decides the
         // reported source.
         let resolved = resolve_jira(
-            [Some("env.atlassian.net".into()), None, Some("env-token".into())],
+            [
+                Some("env.atlassian.net".into()),
+                None,
+                Some("env-token".into()),
+            ],
             &store,
         )
         .unwrap();
