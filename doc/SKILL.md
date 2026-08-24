@@ -3,6 +3,10 @@
 name: foac-github
 description: Use the foac CLI to interact with GitHub from the shell. Covers repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, and collaborators.
 <!-- /foac-provider:github -->
+<!-- foac-provider:jira -->
+name: foac-jira
+description: Use the foac CLI to interact with Jira from the shell. Covers issues, comments, projects, sprints, users, and workflow transitions.
+<!-- /foac-provider:jira -->
 <!-- foac-provider:linear -->
 name: foac-linear
 description: Use the foac CLI to interact with Linear from the shell. Covers issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, and attachments.
@@ -21,6 +25,9 @@ description: Use the foac CLI to interact with Slack from the shell. Covers conv
 <!-- foac-provider:github -->
 # foac-github
 <!-- /foac-provider:github -->
+<!-- foac-provider:jira -->
+# foac-jira
+<!-- /foac-provider:jira -->
 <!-- foac-provider:linear -->
 # foac-linear
 <!-- /foac-provider:linear -->
@@ -55,6 +62,10 @@ foac <provider> <resource> <verb> [flags]
 - `github`: repositories, issues, pull requests, reviews, Actions, branches,
   commits, checks, releases, labels, artifacts, and collaborators.
 <!-- /foac-provider:github -->
+<!-- foac-provider:jira -->
+- `jira`: issues, comments, projects, sprints, users, and workflow
+  transitions.
+<!-- /foac-provider:jira -->
 <!-- foac-provider:sentry -->
 - `sentry`: organizations, projects, issues, error events, and releases.
 <!-- /foac-provider:sentry -->
@@ -96,6 +107,16 @@ foac <provider> <resource> <verb> [flags]
 - **GitHub auth precedence**: `GITHUB_TOKEN`, then the credentials file, then
   `gh auth token`.
 <!-- /foac-provider:github -->
+<!-- foac-provider:jira -->
+- **Jira auth**: every command needs an Atlassian host, email, and API token.
+  Each resolves independently: `--host`/`--email` flags, then
+  `ATLASSIAN_HOST`/`ATLASSIAN_EMAIL`/`ATLASSIAN_API_TOKEN`, then the
+  `atlassian` credentials saved by `foac auth jira login` (which prompts for
+  all three, or reads one line per missing value from redirected stdin in
+  host, email, token order). A token that is neither in the environment nor
+  stored is read from redirected stdin, so it never has to appear in shell
+  history. The stored credential is shared at the Atlassian vendor level.
+<!-- /foac-provider:jira -->
 <!-- foac-provider:sentry -->
 - **Sentry auth precedence**: `SENTRY_AUTH_TOKEN`, then the credentials file.
 <!-- /foac-provider:sentry -->
@@ -165,6 +186,21 @@ foac <provider> <resource> <verb> [flags]
 - **Metadata only**: GitHub release assets, Actions artifacts, and run jobs are
   JSON metadata. Binary uploads/downloads and log streaming are not supported.
 <!-- /foac-provider:github -->
+<!-- foac-provider:jira -->
+- **Jira pagination**: `issue list` takes `--limit N` and `--after TOKEN`;
+  follow `pageInfo.nextPageToken` while `hasNextPage` is true. Other list
+  verbs take `--limit N` and `--start-at N`; follow `pageInfo.nextStartAt`.
+  Output is `{"items":[...],"pageInfo":{...}}`.
+- **Jira identifiers**: issues use keys like `ENG-123`. Projects accept a key
+  or numeric ID; issue types and priorities accept a name or numeric ID;
+  assignees are account IDs (find them with `user list --query`); `--board`
+  accepts a numeric ID or an exact board name. `issue list --jql` takes raw
+  JQL. To change status, list options with `transition list --issue ENG-123`,
+  then `issue transition ENG-123 --to <transition id, transition name, or
+  destination status name>`.
+- **Jira text**: issue descriptions and comments accept mutually exclusive
+  `--body` and `--body-file` (plain text or Jira wiki markup).
+<!-- /foac-provider:jira -->
 <!-- foac-provider:sentry -->
 - **Sentry organization**: pass `--org SLUG` anywhere after `sentry`, or set
   `SENTRY_ORG`; only `org list` works without it. On a TTY,
@@ -214,6 +250,20 @@ array through `--comments-json`; omit `--event` to create a pending review,
 then use `review submit`.
 <!-- /foac-provider:github -->
 
+<!-- foac-provider:jira -->
+## Jira resources
+
+- Issues: `issue list|get|create|update|transition` and
+  `comment list|create|update|delete`.
+- Structure: `project list|get` and `sprint list|get` (sprints need
+  `--board`).
+- Directory and workflow: `user list|get` and `transition list`.
+
+Use `foac jira <resource> --help` for flags and required arguments. Issue
+`update` changes only the supplied fields; `--label` replaces the full label
+list.
+<!-- /foac-provider:jira -->
+
 <!-- foac-provider:slack -->
 ## Slack resources
 
@@ -256,6 +306,17 @@ foac github run rerun --repo owner/repo 123456 --failed
 ```
 
 <!-- /foac-provider:github -->
+
+<!-- foac-provider:jira -->
+
+```sh
+foac jira issue list --jql 'project = ENG AND statusCategory != Done'
+foac jira issue create --project ENG --type Task --summary "Fix login" --body "Steps..."
+foac jira issue transition ENG-123 --to "In Progress"
+foac jira comment create --issue ENG-123 --body "Done, see PR #42"
+```
+
+<!-- /foac-provider:jira -->
 
 <!-- foac-provider:sentry -->
 

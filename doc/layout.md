@@ -21,8 +21,8 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   identity string. Version, update, and skill output bypass the printer.
 - For Linear, `list` filter flags accept a UUID or a human name (see
   `eq_filter`), while `create`/`update` flags require UUIDs.
-- REST providers build on `src/rest.rs`: the shared `Api`/`send` (bearer
-  auth, static provider headers, optional trailing slash), the
+- REST providers build on `src/rest.rs`: the shared `Api`/`send` (bearer or
+  Basic auth, static provider headers, optional trailing slash), the
   `{items, pageInfo}` wrapper, payload helpers, and the auth-identity HTTP.
   Each provider keeps its own pagination parsing and list shapes, and prints
   lists through a provider-local `print_list`.
@@ -31,6 +31,12 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   from its Link header; its base URL comes from `SENTRY_URL`, then the host
   saved by `foac auth sentry login` (its prompt or `--host`; default
   `https://sentry.io`), and every request path needs a trailing slash.
+- Jira uses REST API v2 (plain-text bodies; v3 requires Atlassian Document
+  Format) plus the Agile 1.0 API for sprints, authenticated with HTTP Basic
+  (email + API token) against the tenant host. Issue search paginates with
+  `nextPageToken`; other lists use `startAt`/`maxResults`. The three
+  Atlassian credentials are stored under vendor-level `atlassian_*` keys,
+  shared with future Atlassian providers.
 - Slack uses its Web API's HTTP-200 `ok` envelope and cursor pagination.
   Ordinary commands resolve conversation and user names by paging through the
   relevant list method. Message search prefers `SLACK_USER_TOKEN`, then the

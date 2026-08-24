@@ -15,6 +15,9 @@ foac auth linear logout
 foac auth github status
 foac auth github login
 foac auth github logout
+foac auth jira status
+foac auth jira login
+foac auth jira logout
 foac auth sentry status
 foac auth sentry login
 foac auth sentry logout
@@ -34,6 +37,14 @@ Slack login prompts for both bot and user tokens; for non-interactive use, pipe
 two lines in that order (either line may be blank). It also links to Slack's app
 management page and prints a ready-to-paste JSON app manifest with foac's
 recommended bot and user scopes. Tokens are never printed.
+
+Jira needs three values: the Atlassian site host (like `acme.atlassian.net`),
+the account email, and an API token. Login prompts for all three, validates
+them against the Jira API, and stores them as one vendor-level `atlassian`
+credential shared with future Atlassian providers. For non-interactive use,
+pipe one line per missing value in host, email, token order; `--host` and
+`--email` skip their line. `ATLASSIAN_HOST`, `ATLASSIAN_EMAIL`, and
+`ATLASSIAN_API_TOKEN` each override their stored counterpart independently.
 
 Environment variables take precedence over stored credentials. GitHub also
 falls back to `gh auth token` when neither `GITHUB_TOKEN` nor a stored foac

@@ -4,10 +4,27 @@
 
 use serde_json::{Map, Value, json};
 
+/// How a provider authenticates requests: a bearer token for most, HTTP
+/// Basic (email + API token) for Atlassian.
+#[derive(Clone)]
+pub(crate) enum Auth {
+    Bearer(String),
+    Basic { user: String, password: String },
+}
+
+impl Auth {
+    fn apply(&self, request: reqwest::blocking::RequestBuilder) -> reqwest::blocking::RequestBuilder {
+        match self {
+            Self::Bearer(token) => request.bearer_auth(token),
+            Self::Basic { user, password } => request.basic_auth(user, Some(password)),
+        }
+    }
+}
+
 pub(crate) struct Api {
     pub(crate) client: reqwest::blocking::Client,
     pub(crate) base_url: reqwest::Url,
-    pub(crate) token: String,
+    pub(crate) auth: Auth,
     pub(crate) format: crate::output::Format,
     /// Provider-specific static headers, e.g. GitHub's Accept and API version.
     pub(crate) headers: &'static [(&'static str, &'static str)],
@@ -43,9 +60,8 @@ impl Api {
         body: Option<Value>,
     ) -> Result<ApiResponse, Box<dyn std::error::Error>> {
         let mut request = self
-            .client
-            .request(method, self.url(segments)?)
-            .bearer_auth(&self.token)
+            .auth
+            .apply(self.client.request(method, self.url(segments)?))
             .header("User-Agent", "foac")
             .query(query);
         for (name, value) in self.headers {
@@ -109,6 +125,34 @@ pub(crate) fn push_query<T: ToString>(
     }
 }
 
+/// Mutually exclusive `--body` / `--body-file` flags for Markdown-ish text
+/// inputs, shared by the REST providers.
+#[derive(clap::Args, Default)]
+pub(crate) struct BodyInput {
+    /// Markdown body
+    #[arg(long, conflicts_with = "body_file")]
+    pub(crate) body: Option<String>,
+    /// Read the Markdown body from a UTF-8 file
+    #[arg(long, conflicts_with = "body")]
+    pub(crate) body_file: Option<std::path::PathBuf>,
+}
+
+impl BodyInput {
+    pub(crate) fn read(self) -> Result<Option<String>, Box<dyn std::error::Error>> {
+        match (self.body, self.body_file) {
+            (Some(body), None) => Ok(Some(body)),
+            (None, Some(path)) => Ok(Some(std::fs::read_to_string(path)?)),
+            (None, None) => Ok(None),
+            (Some(_), Some(_)) => unreachable!("clap enforces --body xor --body-file"),
+        }
+    }
+
+    pub(crate) fn required(self) -> Result<String, Box<dyn std::error::Error>> {
+        self.read()?
+            .ok_or_else(|| "one of --body or --body-file is required".into())
+    }
+}
+
 pub(crate) fn insert_opt<T: Into<Value>>(
     object: &mut Map<String, Value>,
     name: &str,
@@ -124,12 +168,11 @@ pub(crate) fn insert_opt<T: Into<Value>>(
 pub(crate) fn fetch_identity(
     method: reqwest::Method,
     url: reqwest::Url,
-    token: &str,
+    auth: &Auth,
     headers: &'static [(&'static str, &'static str)],
 ) -> Result<(reqwest::StatusCode, Value), crate::auth::ValidationError> {
-    let mut request = reqwest::blocking::Client::new()
-        .request(method, url)
-        .bearer_auth(token)
+    let mut request = auth
+        .apply(reqwest::blocking::Client::new().request(method, url))
         .header("User-Agent", "foac");
     for (name, value) in headers {
         request = request.header(*name, *value);
@@ -148,11 +191,11 @@ pub(crate) fn fetch_identity(
 /// other failure is an error.
 pub(crate) fn identity(
     url: reqwest::Url,
-    token: &str,
+    auth: &Auth,
     headers: &'static [(&'static str, &'static str)],
     rejected: &[reqwest::StatusCode],
 ) -> Result<Value, crate::auth::ValidationError> {
-    let (status, body) = fetch_identity(reqwest::Method::GET, url, token, headers)?;
+    let (status, body) = fetch_identity(reqwest::Method::GET, url, auth, headers)?;
     if rejected.contains(&status) {
         return Err(crate::auth::ValidationError::Rejected(body.to_string()));
     }
@@ -228,7 +271,7 @@ mod tests {
         Api {
             client: reqwest::blocking::Client::new(),
             base_url: url,
-            token: "secret-token".into(),
+            auth: Auth::Bearer("secret-token".into()),
             format: crate::output::Format::Json,
             headers: &[("X-Test-Header", "test-value")],
             trailing_slash,
@@ -255,6 +298,24 @@ mod tests {
         assert!(request.contains("x-test-header: test-value"));
         assert!(request.contains("user-agent: foac"));
         assert_eq!(response.body, json!({ "ok": true }));
+    }
+
+    #[test]
+    fn basic_auth_sends_a_basic_authorization_header() {
+        let (url, request_rx, server) = testing::test_server("200 OK", "{}", "");
+        let api = Api {
+            auth: Auth::Basic {
+                user: "user@example.com".into(),
+                password: "api-token".into(),
+            },
+            ..test_api(url, false)
+        };
+        api.send(Method::GET, &["myself".into()], &[], None).unwrap();
+        server.join().unwrap();
+
+        let request = request_rx.recv().unwrap().to_ascii_lowercase();
+        assert!(request.contains("authorization: basic "));
+        assert!(!request.contains("api-token"));
     }
 
     #[test]
@@ -299,7 +360,7 @@ mod tests {
             testing::test_server("401 Unauthorized", "{\"err\":\"bad token\"}", "");
         let error = identity(
             url.join("user").unwrap(),
-            "bad",
+            &Auth::Bearer("bad".into()),
             &[],
             &[reqwest::StatusCode::UNAUTHORIZED],
         )
@@ -310,7 +371,7 @@ mod tests {
         let (url, _, server) = testing::test_server("500 Internal Server Error", "{}", "");
         let error = identity(
             url.join("user").unwrap(),
-            "t",
+            &Auth::Bearer("t".into()),
             &[],
             &[reqwest::StatusCode::UNAUTHORIZED],
         )

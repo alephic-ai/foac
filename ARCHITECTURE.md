@@ -1,7 +1,7 @@
 # foac
 
-foac, the Father Of All CLIs, wraps external SaaS APIs (Linear, GitHub, Sentry,
-Slack, more to come) behind one command grammar:
+foac, the Father Of All CLIs, wraps external SaaS APIs (Linear, GitHub, Jira,
+Sentry, Slack, more to come) behind one command grammar:
 `foac <provider> <resource> <verb>`. The primary consumer is an LLM agent
 working in a shell. Humans at a TTY get a rendering layer on top of the same
 output. foac makes any provider's API discoverable, uniform, and already
@@ -29,13 +29,13 @@ and output (JSON for machines, tables for humans, decided per invocation).
 ```text
                  main.rs  (parse, dispatch, provider hiding, skill render)
                     │
-   ┌────────────┬────────────┬────────────┬────────────┬─────────────┐
-   │ linear.rs  │ github.rs  │ sentry.rs  │ slack.rs   │ auth.rs     │
-   │ (GraphQL,  │ (REST,     │ (REST,     │ (REST,     │ provider.rs │
-   │  codegen)  │  untyped)  │  untyped)  │  untyped)  │ update.rs   │
-   └─────┬──────┴─────┬──────┴─────┬──────┴─────┬──────┴─────────────┘
-         └────────────┴────────────┴──────┬──────┘
-                                         ▼
+   ┌────────────┬────────────┬────────────┬────────────┬────────────┬─────────────┐
+   │ linear.rs  │ github.rs  │ jira.rs    │ sentry.rs  │ slack.rs   │ auth.rs     │
+   │ (GraphQL,  │ (REST,     │ (REST,     │ (REST,     │ (REST,     │ provider.rs │
+   │  codegen)  │  untyped)  │  untyped)  │  untyped)  │  untyped)  │ update.rs   │
+   └─────┬──────┴─────┬──────┴─────┬──────┴─────┬──────┴─────┬──────┴─────────────┘
+         └────────────┴────────────┴────────────┴──────┬─────┘
+                                                       ▼
                         output.rs  (single shared printer: JSON | table)
 ```
 
@@ -52,6 +52,7 @@ src/
 ├── main.rs      # CLI root: dispatch, hiding inactive providers, skill render/install
 ├── linear.rs    # Linear provider: GraphQL via graphql_client codegen
 ├── github.rs    # GitHub provider: REST passthrough on rest.rs
+├── jira.rs      # Jira provider: REST passthrough on rest.rs, Basic auth
 ├── sentry.rs    # Sentry provider: REST passthrough on rest.rs
 ├── slack.rs     # Slack provider: REST with Slack's HTTP-200 ok/error envelope
 ├── rest.rs      # Shared REST core: Api/send, list wrapping, payload helpers, auth-identity HTTP
@@ -64,8 +65,8 @@ graphql/linear/  # Vendored schema (51k lines; grep it) + queries.graphql (compi
 doc/SKILL.md     # Agent skill, compiled into the binary; must track every CLI surface change
 ```
 
-`rest.rs` owns the REST boilerplate: the `Api` struct and `send` (bearer
-auth, static provider headers, optional trailing slash), the
+`rest.rs` owns the REST boilerplate: the `Api` struct and `send` (bearer or
+Basic auth, static provider headers, optional trailing slash), the
 `{items, pageInfo}` list wrapper, payload helpers, and the auth-identity
 HTTP. Providers keep only what is genuinely theirs (pagination parsing, list
 shapes, ID resolution). Slack's `send` stays provider-local on purpose: its
