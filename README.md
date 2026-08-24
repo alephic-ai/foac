@@ -1,7 +1,7 @@
 # foac
 
 foac, the Father Of All CLIs: one CLI for all your SaaS providers (Linear,
-GitHub, Sentry, Slack, and more on the way), built for the coding agents on
+GitHub, Sentry, Slack, Figma, and more on the way), built for the coding agents on
 your machine rather than for you. Install it once, log in once, and every
 harness (Claude Code, Cursor, Codex, Gemini CLI, ...) can use all your
 providers without any setup of its own. Humans at a TTY
@@ -58,6 +58,7 @@ APIs.
 | GitHub | Repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, collaborators | [doc/github.md](doc/github.md) |
 | Sentry | Organizations, projects, issues, error events, releases | [doc/sentry.md](doc/sentry.md) |
 | Slack | Conversations, messages, threads, users, message search, reactions | [doc/slack.md](doc/slack.md) |
+| Figma | Team projects, files, file nodes, version history, comments, image render URLs | [doc/figma.md](doc/figma.md) |
 
 Candidates for more providers are tracked in
 [GitHub issues](https://github.com/lra/foac/issues).

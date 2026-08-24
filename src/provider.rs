@@ -9,7 +9,7 @@ use toml_edit::{Array, DocumentMut, Item, Value, value};
 
 use crate::auth::Provider;
 
-pub const PROVIDERS: [&str; 4] = ["github", "linear", "sentry", "slack"];
+pub const PROVIDERS: [&str; 5] = ["figma", "github", "linear", "sentry", "slack"];
 
 /// Per-folder settings file, looked up from the working directory to `/`;
 /// the nearest file wins and overrides the global toggles.
@@ -87,6 +87,7 @@ pub(crate) enum Credential {
     Sentry,
     SlackBot,
     SlackUser,
+    Figma,
 }
 
 impl Credential {
@@ -97,6 +98,7 @@ impl Credential {
             Self::Sentry => "sentry",
             Self::SlackBot => "slack_bot",
             Self::SlackUser => "slack_user",
+            Self::Figma => "figma",
         }
     }
 }
@@ -1027,6 +1029,7 @@ mod tests {
         assert_eq!(
             statuses(&settings),
             json!({
+                "figma": {"enabled": true},
                 "github": {"enabled": true},
                 "linear": {"enabled": true},
                 "sentry": {"enabled": false},

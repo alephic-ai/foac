@@ -1,4 +1,8 @@
 ---
+<!-- foac-provider:figma -->
+name: foac-figma
+description: Use the foac CLI to interact with Figma from the shell. Covers team projects, files, file nodes, version history, comments, and image render URLs.
+<!-- /foac-provider:figma -->
 <!-- foac-provider:github -->
 name: foac-github
 description: Use the foac CLI to interact with GitHub from the shell. Covers repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, and collaborators.
@@ -18,6 +22,9 @@ description: Use the foac CLI to interact with Slack from the shell. Covers conv
 ---
 
 <!-- rumdl-disable MD022 MD025 -->
+<!-- foac-provider:figma -->
+# foac-figma
+<!-- /foac-provider:figma -->
 <!-- foac-provider:github -->
 # foac-github
 <!-- /foac-provider:github -->
@@ -58,6 +65,10 @@ foac <provider> <resource> <verb> [flags]
 <!-- foac-provider:sentry -->
 - `sentry`: organizations, projects, issues, error events, and releases.
 <!-- /foac-provider:sentry -->
+<!-- foac-provider:figma -->
+- `figma`: team projects, files, file nodes, version history, comments, and
+  image render URLs.
+<!-- /foac-provider:figma -->
 <!-- foac-provider:slack -->
 - `slack`: conversations, messages, threads, users, message search, and reactions.
 <!-- /foac-provider:slack -->
@@ -99,6 +110,9 @@ foac <provider> <resource> <verb> [flags]
 <!-- foac-provider:sentry -->
 - **Sentry auth precedence**: `SENTRY_AUTH_TOKEN`, then the credentials file.
 <!-- /foac-provider:sentry -->
+<!-- foac-provider:figma -->
+- **Figma auth precedence**: `FIGMA_ACCESS_TOKEN`, then the credentials file.
+<!-- /foac-provider:figma -->
 <!-- foac-provider:slack -->
 - **Slack auth capabilities**: ordinary commands prefer `SLACK_BOT_TOKEN`
   (`xoxb-`), then the bot credential in the credentials file, then
@@ -181,6 +195,22 @@ foac <provider> <resource> <verb> [flags]
   `is:unresolved release:1.2.0`. Releases are read-only; use `sentry-cli` to
   create releases and upload sourcemaps.
 <!-- /foac-provider:sentry -->
+<!-- foac-provider:figma -->
+- **Figma identifiers**: file arguments accept a raw file key or a pasted
+  figma.com file URL. Team and project IDs are the numbers in figma.com URLs;
+  they are not discoverable through the API. Node IDs use colons like `1:2`;
+  a URL's `node-id=1-2` form is converted automatically.
+- **Figma file size**: `file get` returns the whole document tree, which can
+  be very large. Scope it with `--depth N` or `--ids`, or use `file nodes`
+  for specific nodes.
+- **Figma pagination**: only `file versions` paginates; output is
+  `{"items":[...],"pageInfo":{...}}`. Pass `pageInfo.nextBefore` as
+  `--before` while `hasNextPage` is true. Other lists return everything.
+- **Figma comments**: `comment create` posts with `--body` or `--body-file`,
+  and `--reply-to COMMENT_ID` makes it a reply. Comments cannot be resolved
+  through the API. `image export` returns node-to-URL mappings, not image
+  data; the URLs expire after 30 days.
+<!-- /foac-provider:figma -->
 <!-- foac-provider:slack -->
 - **Slack pagination**: list and search commands take `--limit N` (default 100)
   and `--after CURSOR`; output is
@@ -266,6 +296,17 @@ foac sentry issue update PROJ-123 --org acme --status resolved
 ```
 
 <!-- /foac-provider:sentry -->
+
+<!-- foac-provider:figma -->
+
+```sh
+foac figma file get 'https://www.figma.com/design/AbC123/My-File' --depth 2
+foac figma file nodes AbC123 --ids 1:2,3:4
+foac figma comment create AbC123 --body "Implemented, see PR #42"
+foac figma image export AbC123 --ids 1:2 --image-format png --scale 2
+```
+
+<!-- /foac-provider:figma -->
 
 <!-- foac-provider:slack -->
 

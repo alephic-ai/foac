@@ -1,6 +1,6 @@
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
-use foac::{auth, github, linear, output, provider, sentry, slack, update};
+use foac::{auth, figma, github, linear, output, provider, sentry, slack, update};
 
 #[derive(Parser)]
 #[command(about, arg_required_else_help = true)]
@@ -33,6 +33,8 @@ impl Provider {
 enum Command {
     /// Check and configure provider authentication
     Auth(auth::Cmd),
+    /// Interact with Figma (figma.com)
+    Figma(figma::Cmd),
     /// Interact with GitHub
     Github(github::Cmd),
     /// Interact with Linear (linear.app)
@@ -85,6 +87,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let skip_check = matches!(command, Command::Update);
     let result = match command {
         Command::Auth(cmd) => auth::run(cmd, format),
+        Command::Figma(cmd) => {
+            provider::ensure_enabled(&provider::SettingsStore.load()?, "figma")?;
+            figma::run(cmd, format)
+        }
         Command::Github(cmd) => {
             provider::ensure_enabled(&provider::SettingsStore.load()?, "github")?;
             github::run(cmd, format)
@@ -135,14 +141,15 @@ enum SkillCmd {
     Install,
 }
 
-fn providers() -> Result<[Provider; 4], Box<dyn std::error::Error>> {
+fn providers() -> Result<[Provider; 5], Box<dyn std::error::Error>> {
     let settings = provider::SettingsStore.load()?;
     Ok(providers_where(|name| settings.enabled(name)))
 }
 
-fn providers_where(enabled: impl Fn(&str) -> bool) -> [Provider; 4] {
+fn providers_where(enabled: impl Fn(&str) -> bool) -> [Provider; 5] {
     // Settings first: short-circuit skips the keychain/`gh` probe when disabled.
     [
+        Provider::new("figma", enabled("figma") && figma::authenticated()),
         Provider::new("github", enabled("github") && github::authenticated()),
         Provider::new("linear", enabled("linear") && linear::authenticated()),
         Provider::new("sentry", enabled("sentry") && sentry::authenticated()),
@@ -333,24 +340,26 @@ mod tests {
 
     #[test]
     fn help_only_lists_authenticated_providers() {
-        for (linear, github, sentry, slack, expected) in [
-            (false, false, false, false, vec![]),
-            (true, false, false, false, vec!["linear"]),
-            (false, true, false, false, vec!["github"]),
-            (false, false, true, false, vec!["sentry"]),
-            (false, false, false, true, vec!["slack"]),
+        for (linear, github, sentry, slack, figma, expected) in [
+            (false, false, false, false, false, vec![]),
+            (true, false, false, false, false, vec!["linear"]),
+            (false, true, false, false, false, vec!["github"]),
+            (false, false, true, false, false, vec!["sentry"]),
+            (false, false, false, true, false, vec!["slack"]),
+            (false, false, false, false, true, vec!["figma"]),
             (
                 true,
                 true,
                 true,
                 true,
-                vec!["github", "linear", "sentry", "slack"],
+                true,
+                vec!["figma", "github", "linear", "sentry", "slack"],
             ),
         ] {
-            let providers = test_providers(linear, github, sentry, slack);
+            let providers = test_providers(linear, github, sentry, slack, figma);
             for args in [vec!["foac"], vec!["foac", "--help"]] {
                 let help = parse_error(&providers, args).to_string();
-                for name in ["github", "linear", "sentry", "slack"] {
+                for name in ["figma", "github", "linear", "sentry", "slack"] {
                     assert_eq!(help_lists(&help, name), expected.contains(&name));
                 }
                 for name in ["auth", "provider", "skill", "update", "version", "help"] {
@@ -362,8 +371,9 @@ mod tests {
 
     #[test]
     fn hidden_providers_still_parse() {
-        let providers = test_providers(false, false, false, false);
+        let providers = test_providers(false, false, false, false, false);
         for args in [
+            vec!["foac", "figma", "file", "get", "AbC123"],
             vec!["foac", "github", "issue", "list", "--repo", "owner/repo"],
             vec!["foac", "linear", "team", "list"],
             vec!["foac", "sentry", "issue", "list", "--org", "acme"],
@@ -375,8 +385,9 @@ mod tests {
 
     #[test]
     fn hidden_provider_help_remains_available() {
-        let providers = test_providers(false, false, false, false);
+        let providers = test_providers(false, false, false, false, false);
         for (args, usage) in [
+            (vec!["foac", "figma", "--help"], "Usage: foac figma"),
             (vec!["foac", "github", "--help"], "Usage: foac github"),
             (vec!["foac", "linear", "--help"], "Usage: foac linear"),
             (vec!["foac", "sentry", "--help"], "Usage: foac sentry"),
@@ -391,14 +402,14 @@ mod tests {
     #[test]
     fn hidden_providers_are_not_suggested() {
         let error = parse_error(
-            &test_providers(false, false, false, false),
+            &test_providers(false, false, false, false, false),
             ["foac", "githu"],
         )
         .to_string();
         assert!(!error.contains("github"));
 
         let error = parse_error(
-            &test_providers(false, true, false, false),
+            &test_providers(false, true, false, false, false),
             ["foac", "githu"],
         )
         .to_string();
@@ -408,6 +419,7 @@ mod tests {
     #[test]
     fn skill_documents_one_provider() {
         let examples = [
+            ("figma", "foac figma file nodes"),
             ("github", "foac github issue list"),
             ("linear", "foac linear issue list"),
             ("sentry", "foac sentry issue list"),
@@ -433,6 +445,7 @@ mod tests {
     fn bare_auth_commands_display_help() {
         for args in [
             vec!["foac", "auth"],
+            vec!["foac", "auth", "figma"],
             vec!["foac", "auth", "linear"],
             vec!["foac", "auth", "github"],
             vec!["foac", "auth", "sentry"],
@@ -453,6 +466,9 @@ mod tests {
     fn parses_auth_commands() {
         for args in [
             vec!["foac", "auth", "status"],
+            vec!["foac", "auth", "figma", "status"],
+            vec!["foac", "auth", "figma", "login"],
+            vec!["foac", "auth", "figma", "logout"],
             vec!["foac", "auth", "linear", "status"],
             vec!["foac", "auth", "linear", "login"],
             vec!["foac", "auth", "linear", "logout"],
@@ -477,7 +493,7 @@ mod tests {
             Cli::try_parse_from(args).unwrap();
         }
         // --host is a Sentry-only login flag; clap rejects it elsewhere.
-        for provider in ["linear", "github", "slack"] {
+        for provider in ["figma", "linear", "github", "slack"] {
             let parsed =
                 Cli::try_parse_from(["foac", "auth", provider, "login", "--host", "example.com"]);
             assert!(parsed.is_err());
@@ -508,6 +524,8 @@ mod tests {
             vec!["foac", "provider", "disable", "sentry"],
             vec!["foac", "provider", "enable", "slack"],
             vec!["foac", "provider", "disable", "slack"],
+            vec!["foac", "provider", "enable", "figma"],
+            vec!["foac", "provider", "disable", "figma"],
             vec!["foac", "provider", "enable", "github", "--local"],
             vec!["foac", "provider", "disable", "slack", "--local"],
         ] {
@@ -595,6 +613,60 @@ mod tests {
     }
 
     #[test]
+    fn parses_figma_commands() {
+        for args in [
+            vec!["foac", "figma", "project", "list", "12345"],
+            vec!["foac", "figma", "file", "list", "67890"],
+            vec![
+                "foac",
+                "figma",
+                "file",
+                "get",
+                "https://www.figma.com/design/AbC123/My-File",
+                "--depth",
+                "2",
+            ],
+            vec![
+                "foac", "figma", "file", "nodes", "AbC123", "--ids", "1:2,3:4",
+            ],
+            vec![
+                "foac", "figma", "file", "versions", "AbC123", "--before", "42",
+            ],
+            vec!["foac", "figma", "comment", "list", "AbC123", "--as-md"],
+            vec![
+                "foac", "figma", "comment", "create", "AbC123", "--body", "hello",
+            ],
+            vec![
+                "foac",
+                "figma",
+                "comment",
+                "create",
+                "AbC123",
+                "--body",
+                "hello",
+                "--reply-to",
+                "123",
+            ],
+            vec!["foac", "figma", "comment", "delete", "AbC123", "123"],
+            vec![
+                "foac",
+                "figma",
+                "image",
+                "export",
+                "AbC123",
+                "--ids",
+                "1:2",
+                "--image-format",
+                "png",
+                "--scale",
+                "2",
+            ],
+        ] {
+            Cli::try_parse_from(args).unwrap();
+        }
+    }
+
+    #[test]
     fn skill_requires_subcommand() {
         assert!(Cli::try_parse_from(["foac", "skill"]).is_err());
         let missing_provider = Cli::try_parse_from(["foac", "skill", "print"])
@@ -602,7 +674,7 @@ mod tests {
             .unwrap()
             .to_string();
         assert!(missing_provider.contains("<PROVIDER>"));
-        assert!(missing_provider.contains("possible values: github, linear, sentry, slack"));
+        assert!(missing_provider.contains("possible values: figma, github, linear, sentry, slack"));
         assert!(Cli::try_parse_from(["foac", "skill", "print", "nope"]).is_err());
         assert!(matches!(
             Cli::try_parse_from(["foac", "skill", "print", "linear"])
@@ -667,8 +739,15 @@ mod tests {
         std::fs::remove_dir_all(&home).unwrap();
     }
 
-    fn test_providers(linear: bool, github: bool, sentry: bool, slack: bool) -> [Provider; 4] {
+    fn test_providers(
+        linear: bool,
+        github: bool,
+        sentry: bool,
+        slack: bool,
+        figma: bool,
+    ) -> [Provider; 5] {
         [
+            Provider::new("figma", figma),
             Provider::new("github", github),
             Provider::new("linear", linear),
             Provider::new("sentry", sentry),
