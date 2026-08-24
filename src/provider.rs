@@ -11,25 +11,55 @@ use crate::auth::Provider;
 
 pub const PROVIDERS: [&str; 4] = ["github", "linear", "sentry", "slack"];
 
+/// Per-folder settings file, looked up from the working directory to `/`;
+/// the nearest file wins and overrides the global toggles.
+pub const LOCAL_SETTINGS_FILE: &str = ".foac.toml";
+
 #[derive(Subcommand)]
 pub enum Cmd {
     /// List providers and whether they are enabled
     List,
     /// Enable a provider
-    Enable { provider: Provider },
+    Enable {
+        provider: Provider,
+        /// Toggle in the nearest .foac.toml instead of the global config
+        /// (created in the working directory if none exists)
+        #[arg(long)]
+        local: bool,
+    },
     /// Disable a provider: hide it and refuse its commands
-    Disable { provider: Provider },
+    Disable {
+        provider: Provider,
+        /// Toggle in the nearest .foac.toml instead of the global config
+        /// (created in the working directory if none exists)
+        #[arg(long)]
+        local: bool,
+    },
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Settings {
     disabled_providers: Vec<String>,
     sentry_url: Option<String>,
+    local: Option<LocalSettings>,
+}
+
+/// Toggles from the nearest per-folder settings file; a provider listed in
+/// both arrays is enabled.
+#[derive(Debug, PartialEq, Eq)]
+struct LocalSettings {
+    path: PathBuf,
+    enabled_providers: Vec<String>,
+    disabled_providers: Vec<String>,
 }
 
 impl Settings {
     pub fn enabled(&self, name: &str) -> bool {
-        !self.disabled_providers.iter().any(|p| p == name)
+        match &self.local {
+            Some(local) if local.enabled_providers.iter().any(|p| p == name) => true,
+            Some(local) if local.disabled_providers.iter().any(|p| p == name) => false,
+            _ => !self.disabled_providers.iter().any(|p| p == name),
+        }
     }
 
     fn set_enabled(&mut self, name: &str, enabled: bool) {
@@ -89,7 +119,9 @@ pub struct SettingsStore;
 impl SettingsStore {
     pub fn load(&self) -> Result<Settings, Box<dyn std::error::Error>> {
         let path = settings_path().ok_or("could not determine the settings path")?;
-        load_settings_from(&path)
+        let mut settings = load_settings_from(&path)?;
+        settings.local = local_settings_for_cwd()?;
+        Ok(settings)
     }
 
     fn set_enabled(
@@ -98,7 +130,23 @@ impl SettingsStore {
         enabled: bool,
     ) -> Result<Settings, Box<dyn std::error::Error>> {
         let path = settings_path().ok_or("could not determine the settings path")?;
-        set_enabled_at(&path, name, enabled)
+        let mut settings = set_enabled_at(&path, name, enabled)?;
+        // The printed map shows the effective state, local overrides included.
+        settings.local = local_settings_for_cwd()?;
+        Ok(settings)
+    }
+
+    /// Toggle in the nearest `.foac.toml` (the file in effect), creating one
+    /// in the working directory if none exists up the tree.
+    fn set_enabled_local(
+        &self,
+        name: &str,
+        enabled: bool,
+    ) -> Result<Settings, Box<dyn std::error::Error>> {
+        let cwd = std::env::current_dir()
+            .map_err(|error| format!("could not determine the working directory: {error}"))?;
+        set_enabled_local_at(&nearest_local_settings_path(&cwd), name, enabled)?;
+        self.load()
     }
 
     pub(crate) fn set_sentry_url(
@@ -141,8 +189,8 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
             crate::output::print(&statuses(&SettingsStore.load()?), format);
             Ok(())
         }
-        Cmd::Enable { provider } => set_enabled(provider, true, format),
-        Cmd::Disable { provider } => set_enabled(provider, false, format),
+        Cmd::Enable { provider, local } => set_enabled(provider, true, local, format),
+        Cmd::Disable { provider, local } => set_enabled(provider, false, local, format),
     }
 }
 
@@ -158,18 +206,31 @@ fn statuses(settings: &Settings) -> serde_json::Value {
 fn set_enabled(
     provider: Provider,
     enabled: bool,
+    local: bool,
     format: crate::output::Format,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let settings = SettingsStore.set_enabled(provider.as_str(), enabled)?;
+    let settings = if local {
+        SettingsStore.set_enabled_local(provider.as_str(), enabled)?
+    } else {
+        SettingsStore.set_enabled(provider.as_str(), enabled)?
+    };
     crate::output::print_highlighting(&statuses(&settings), format, provider.as_str());
     Ok(())
 }
 
 pub fn ensure_enabled(settings: &Settings, name: &str) -> Result<(), Box<dyn std::error::Error>> {
     if settings.enabled(name) {
-        Ok(())
-    } else {
-        Err(format!("{name} is disabled; run `foac provider enable {name}` to enable it").into())
+        return Ok(());
+    }
+    match &settings.local {
+        Some(local) if local.disabled_providers.iter().any(|p| p == name) => Err(format!(
+            "{name} is disabled by {}; run `foac provider enable {name} --local` to enable it",
+            local.path.display()
+        )
+        .into()),
+        _ => Err(
+            format!("{name} is disabled; run `foac provider enable {name}` to enable it").into(),
+        ),
     }
 }
 
@@ -211,8 +272,37 @@ fn read_file(path: &Path, kind: &str) -> Result<Option<Vec<u8>>, Box<dyn std::er
 }
 
 fn load_settings_from(path: &Path) -> Result<Settings, Box<dyn std::error::Error>> {
-    let Some(bytes) = read_file(path, "settings")? else {
+    let Some(document) = read_settings_document(path)? else {
         return Ok(Settings::default());
+    };
+    settings_from_document(path, &document)
+}
+
+fn local_settings_for_cwd() -> Result<Option<LocalSettings>, Box<dyn std::error::Error>> {
+    match std::env::current_dir() {
+        Ok(dir) => load_local_settings(&dir),
+        Err(_) => Ok(None),
+    }
+}
+
+fn load_local_settings(start: &Path) -> Result<Option<LocalSettings>, Box<dyn std::error::Error>> {
+    for dir in start.ancestors() {
+        let path = dir.join(LOCAL_SETTINGS_FILE);
+        let Some(document) = read_settings_document(&path)? else {
+            continue;
+        };
+        return Ok(Some(LocalSettings {
+            enabled_providers: string_array(&path, &document, "enabled_providers")?,
+            disabled_providers: string_array(&path, &document, "disabled_providers")?,
+            path,
+        }));
+    }
+    Ok(None)
+}
+
+fn read_settings_document(path: &Path) -> Result<Option<DocumentMut>, Box<dyn std::error::Error>> {
+    let Some(bytes) = read_file(path, "settings")? else {
+        return Ok(None);
     };
     let text = String::from_utf8(bytes).map_err(|error| {
         format!(
@@ -224,7 +314,7 @@ fn load_settings_from(path: &Path) -> Result<Settings, Box<dyn std::error::Error
     let document = text
         .parse::<DocumentMut>()
         .map_err(|error| settings_parse_error(path, &text, &error))?;
-    settings_from_document(path, &document)
+    Ok(Some(document))
 }
 
 fn set_enabled_at(
@@ -236,9 +326,33 @@ fn set_enabled_at(
     let mut settings = settings_from_document(path, &document)?;
     settings.set_enabled(name, enabled);
     retain_recognized_settings(&mut document);
-    set_disabled_providers(&mut document, name, enabled);
+    set_provider_listed(&mut document, "disabled_providers", name, !enabled);
     write_settings(path, &document)?;
     Ok(settings)
+}
+
+fn nearest_local_settings_path(start: &Path) -> PathBuf {
+    start
+        .ancestors()
+        .map(|dir| dir.join(LOCAL_SETTINGS_FILE))
+        .find(|path| path.exists())
+        .unwrap_or_else(|| start.join(LOCAL_SETTINGS_FILE))
+}
+
+fn set_enabled_local_at(
+    path: &Path,
+    name: &str,
+    enabled: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut document = load_settings_document(path)?;
+    string_array(path, &document, "enabled_providers")?;
+    string_array(path, &document, "disabled_providers")?;
+    document
+        .as_table_mut()
+        .retain(|key, _| matches!(key, "enabled_providers" | "disabled_providers"));
+    set_provider_listed(&mut document, "enabled_providers", name, enabled);
+    set_provider_listed(&mut document, "disabled_providers", name, !enabled);
+    write_settings(path, &document)
 }
 
 fn set_sentry_url_at(path: &Path, url: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
@@ -302,18 +416,7 @@ fn delete_credentials_at(
 }
 
 fn load_settings_document(path: &Path) -> Result<DocumentMut, Box<dyn std::error::Error>> {
-    let Some(bytes) = read_file(path, "settings")? else {
-        return Ok(DocumentMut::new());
-    };
-    let text = String::from_utf8(bytes).map_err(|error| {
-        format!(
-            "could not parse settings file {}: invalid UTF-8 at byte {}",
-            path.display(),
-            error.utf8_error().valid_up_to()
-        )
-    })?;
-    text.parse::<DocumentMut>()
-        .map_err(|error| settings_parse_error(path, &text, &error))
+    Ok(read_settings_document(path)?.unwrap_or_default())
 }
 
 fn settings_parse_error(
@@ -351,19 +454,7 @@ fn settings_from_document(
     path: &Path,
     document: &DocumentMut,
 ) -> Result<Settings, Box<dyn std::error::Error>> {
-    let disabled_providers = match document.get("disabled_providers") {
-        None => Vec::new(),
-        Some(item) => item
-            .as_array()
-            .ok_or_else(|| invalid_setting(path, "disabled_providers", "an array of strings"))?
-            .iter()
-            .map(|value| {
-                value.as_str().map(str::to_owned).ok_or_else(|| {
-                    invalid_setting(path, "disabled_providers", "an array of strings")
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?,
-    };
+    let disabled_providers = string_array(path, document, "disabled_providers")?;
     let sentry_url = match document.get("sentry_url") {
         None => None,
         Some(item) => Some(
@@ -375,7 +466,29 @@ fn settings_from_document(
     Ok(Settings {
         disabled_providers,
         sentry_url,
+        local: None,
     })
+}
+
+fn string_array(
+    path: &Path,
+    document: &DocumentMut,
+    key: &str,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    match document.get(key) {
+        None => Ok(Vec::new()),
+        Some(item) => item
+            .as_array()
+            .ok_or_else(|| invalid_setting(path, key, "an array of strings"))?
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .map(str::to_owned)
+                    .ok_or_else(|| invalid_setting(path, key, "an array of strings"))
+            })
+            .collect(),
+    }
 }
 
 fn invalid_setting(path: &Path, key: &str, expected: &str) -> Box<dyn std::error::Error> {
@@ -392,25 +505,29 @@ fn retain_recognized_settings(document: &mut DocumentMut) {
         .retain(|key, _| matches!(key, "disabled_providers" | "sentry_url"));
 }
 
-fn set_disabled_providers(document: &mut DocumentMut, name: &str, enabled: bool) {
-    let array = match document.get_mut("disabled_providers") {
+fn set_provider_listed(document: &mut DocumentMut, key: &str, name: &str, listed: bool) {
+    let array = match document.get_mut(key) {
         Some(Item::Value(Value::Array(array))) => array,
         Some(_) => unreachable!("settings were validated before mutation"),
+        // Nothing to remove from, and no reason to create an empty array.
+        None if !listed => return,
         None => {
-            document["disabled_providers"] = value(Array::new());
-            document["disabled_providers"]
+            document[key] = value(Array::new());
+            document[key]
                 .as_array_mut()
                 .expect("new setting is an array")
         }
     };
-    if enabled {
+    if listed {
+        if !array.iter().any(|value| value.as_str() == Some(name)) {
+            array.push(name);
+        }
+    } else {
         loop {
             let index = array.iter().position(|value| value.as_str() == Some(name));
             let Some(index) = index else { break };
             remove_array_value_preserving_previous_decor(array, index);
         }
-    } else if !array.iter().any(|value| value.as_str() == Some(name)) {
-        array.push(name);
     }
 }
 
@@ -741,6 +858,142 @@ mod tests {
         std::fs::write(&credentials, malformed_credentials).unwrap();
         set_enabled_at(&settings, "github", false).unwrap();
         assert_eq!(std::fs::read(&credentials).unwrap(), malformed_credentials);
+    }
+
+    #[test]
+    fn local_settings_override_global_toggles() {
+        let dir = tempfile::tempdir().unwrap();
+        let global = dir.path().join("config.toml");
+        std::fs::write(&global, "disabled_providers = [\"github\", \"sentry\"]\n").unwrap();
+        let project = dir.path().join("project");
+        std::fs::create_dir(&project).unwrap();
+        std::fs::write(
+            project.join(LOCAL_SETTINGS_FILE),
+            concat!(
+                "# per-folder toggles\n",
+                "enabled_providers = [\"github\", \"slack\"]\n",
+                "disabled_providers = [\"linear\", \"slack\"]\n",
+            ),
+        )
+        .unwrap();
+
+        let mut settings = load_settings_from(&global).unwrap();
+        settings.local = load_local_settings(&project).unwrap();
+
+        assert!(settings.enabled("github")); // local enable beats global disable
+        assert!(!settings.enabled("linear")); // local disable beats global default
+        assert!(settings.enabled("slack")); // listed in both locally: enabled wins
+        assert!(!settings.enabled("sentry")); // untouched locally: global applies
+    }
+
+    #[test]
+    fn nearest_local_settings_file_wins() {
+        let dir = tempfile::tempdir().unwrap();
+        let child = dir.path().join("child");
+        let grandchild = child.join("grandchild");
+        std::fs::create_dir_all(&grandchild).unwrap();
+        std::fs::write(
+            dir.path().join(LOCAL_SETTINGS_FILE),
+            "disabled_providers = [\"github\"]\n",
+        )
+        .unwrap();
+        std::fs::write(
+            child.join(LOCAL_SETTINGS_FILE),
+            "disabled_providers = [\"linear\"]\n",
+        )
+        .unwrap();
+
+        let local = load_local_settings(&grandchild).unwrap().unwrap();
+        assert_eq!(local.path, child.join(LOCAL_SETTINGS_FILE));
+        assert_eq!(local.disabled_providers, vec!["linear"]);
+
+        let local = load_local_settings(dir.path()).unwrap().unwrap();
+        assert_eq!(local.path, dir.path().join(LOCAL_SETTINGS_FILE));
+        assert_eq!(local.disabled_providers, vec!["github"]);
+    }
+
+    #[test]
+    fn local_mutations_edit_the_nearest_file_and_preserve_comments() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("sub");
+        std::fs::create_dir(&sub).unwrap();
+        let path = dir.path().join(LOCAL_SETTINGS_FILE);
+        let input = concat!(
+            "# project toggles\n",
+            "enabled_providers = [\n",
+            "  \"linear\", # keep linear\n",
+            "  \"github\", # remove github\n",
+            "]\n",
+            "disabled_providers = [\"slack\"]\n",
+            "unknown = \"value\"\n",
+        );
+        std::fs::write(&path, input).unwrap();
+
+        let target = nearest_local_settings_path(&sub);
+        assert_eq!(target, path);
+        set_enabled_local_at(&target, "github", false).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            concat!(
+                "# project toggles\n",
+                "enabled_providers = [\n",
+                "  \"linear\", # keep linear\n",
+                // The removed entry's leading whitespace becomes the array's
+                // trailing decor, hence the indented bracket.
+                "  ]\n",
+                "disabled_providers = [\"slack\", \"github\"]\n",
+            )
+        );
+    }
+
+    #[test]
+    fn local_mutations_create_a_minimal_file_when_none_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = nearest_local_settings_path(dir.path());
+        assert_eq!(path, dir.path().join(LOCAL_SETTINGS_FILE));
+
+        set_enabled_local_at(&path, "github", false).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "disabled_providers = [\"github\"]\n"
+        );
+
+        set_enabled_local_at(&path, "github", true).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "disabled_providers = []\nenabled_providers = [\"github\"]\n"
+        );
+    }
+
+    #[test]
+    fn ensure_enabled_points_at_the_local_settings_file() {
+        let settings = Settings {
+            disabled_providers: Vec::new(),
+            sentry_url: None,
+            local: Some(LocalSettings {
+                path: PathBuf::from("/project/.foac.toml"),
+                enabled_providers: Vec::new(),
+                disabled_providers: vec!["github".into()],
+            }),
+        };
+        let error = ensure_enabled(&settings, "github").unwrap_err().to_string();
+        assert_eq!(
+            error,
+            "github is disabled by /project/.foac.toml; run `foac provider enable github --local` to enable it"
+        );
+        assert!(ensure_enabled(&settings, "linear").is_ok());
+    }
+
+    #[test]
+    fn malformed_local_settings_fail_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(LOCAL_SETTINGS_FILE);
+        std::fs::write(&path, "enabled_providers = \"sensitive-not-for-errors\"").unwrap();
+        let error = load_local_settings(dir.path()).unwrap_err().to_string();
+        assert!(error.contains(&path.display().to_string()));
+        assert!(error.contains("`enabled_providers` must be an array of strings"));
+        assert!(!error.contains("sensitive-not-for-errors"));
     }
 
     #[test]

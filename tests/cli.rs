@@ -13,8 +13,10 @@ fn foac(args: &[&str]) -> Command {
     cmd.args(args)
         .env("FOAC_NO_UPDATE_CHECK", "1")
         // Point config reads at an empty dir so the user's real config
-        // (disabled providers, credentials) can't affect the output.
-        .env("XDG_CONFIG_HOME", env!("CARGO_TARGET_TMPDIR"));
+        // (disabled providers, credentials) can't affect the output, and run
+        // outside the checkout so a developer's `.foac.toml` can't either.
+        .env("XDG_CONFIG_HOME", env!("CARGO_TARGET_TMPDIR"))
+        .current_dir(std::env::temp_dir());
     cmd
 }
 
@@ -51,6 +53,86 @@ fn provider_list_defaults_to_all_enabled_json() {
     for name in ["github", "linear", "sentry", "slack"] {
         assert_eq!(json[name]["enabled"], serde_json::Value::Bool(true));
     }
+}
+
+#[test]
+fn local_settings_toggle_providers_per_folder() {
+    let root = config_home("local-settings");
+    let sub = root.join("project/sub");
+    std::fs::create_dir_all(&sub).unwrap();
+    let local_path = root.join("project/.foac.toml");
+    std::fs::write(&local_path, "disabled_providers = [\"github\"]\n").unwrap();
+
+    // The file is found from a subfolder and overrides the (empty) global config.
+    let out = foac(&["provider", "list"])
+        .current_dir(&sub)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["github"]["enabled"], false);
+    assert_eq!(json["linear"]["enabled"], true);
+
+    // A locally disabled provider refuses to run and names the file.
+    let out = foac(&["github", "issue", "list", "--repo", "owner/repo"])
+        .current_dir(&sub)
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(stderr.contains(&local_path.display().to_string()));
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn provider_local_toggles_write_the_nearest_local_file() {
+    let root = config_home("local-toggle");
+    let xdg = root.join("xdg");
+    std::fs::create_dir_all(xdg.join("foac")).unwrap();
+    let global = xdg.join("foac/config.toml");
+    std::fs::write(&global, "disabled_providers = [\"github\"]\n").unwrap();
+    let work = root.join("project");
+    let sub = work.join("sub");
+    std::fs::create_dir_all(&sub).unwrap();
+
+    // No local file yet: --local creates one in the working directory and the
+    // local enable overrides the global disable.
+    let out = foac(&["provider", "enable", "github", "--local"])
+        .env("XDG_CONFIG_HOME", &xdg)
+        .current_dir(&work)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["github"]["enabled"], true);
+    assert_eq!(
+        std::fs::read_to_string(work.join(".foac.toml")).unwrap(),
+        "enabled_providers = [\"github\"]\n"
+    );
+
+    // From a subfolder, --local edits the nearest existing file, not cwd.
+    let out = foac(&["provider", "disable", "github", "--local"])
+        .env("XDG_CONFIG_HOME", &xdg)
+        .current_dir(&sub)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["github"]["enabled"], false);
+    assert!(!sub.join(".foac.toml").exists());
+    assert_eq!(
+        std::fs::read_to_string(work.join(".foac.toml")).unwrap(),
+        "enabled_providers = []\ndisabled_providers = [\"github\"]\n"
+    );
+
+    // The global config is never touched by --local.
+    assert_eq!(
+        std::fs::read_to_string(&global).unwrap(),
+        "disabled_providers = [\"github\"]\n"
+    );
+
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

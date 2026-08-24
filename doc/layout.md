@@ -33,6 +33,9 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   `search.messages`.
 - `provider.rs` keeps editable settings in comment-preserving `config.toml`
   and credentials in pretty-printed `credentials.json`, both under the XDG
-  foac directory. Reads and failures are isolated per store; writes use the
+  foac directory. It also reads the nearest `.foac.toml` from the working
+  directory up to `/` and layers its `enabled_providers`/`disabled_providers`
+  over the global toggles; `enable`/`disable` with `--local` edit that
+  nearest file, creating one in the working directory when none exists. Reads and failures are isolated per store; writes use the
   shared atomic replacement path, with credentials mode `0600` before secret
   bytes are written on Unix. Legacy `config.json` is ignored.
