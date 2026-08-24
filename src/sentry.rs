@@ -448,7 +448,10 @@ pub(crate) fn base_url() -> Result<String, Box<dyn std::error::Error>> {
     }
     Ok(resolve_base_url(
         environment,
-        crate::provider::load()?.sentry_url().map(str::to_owned),
+        crate::provider::SettingsStore
+            .load()?
+            .sentry_url()
+            .map(str::to_owned),
     ))
 }
 
