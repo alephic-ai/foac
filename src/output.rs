@@ -151,8 +151,7 @@ fn render_list(rows: &[Value], page: &Map<String, Value>, width: usize) -> Strin
     if rows.is_empty() {
         return format!("{footer}\n");
     }
-    // Scalar keys only, union across rows, in first-seen order: APIs lead
-    // with their identifying fields (id, name, title, ...).
+    // Scalar keys only, union across rows, in first-seen order.
     let mut columns: Vec<&str> = Vec::new();
     for row in rows.iter().filter_map(Value::as_object) {
         for (key, value) in row {
@@ -161,6 +160,9 @@ fn render_list(rows: &[Value], page: &Map<String, Value>, width: usize) -> Strin
             }
         }
     }
+    // Wide REST responses do not reliably put identifying fields first.
+    // Stable-partition them to the front so truncation keeps useful context.
+    columns.sort_by_key(|column| !is_identity_column(column));
     let cells: Vec<Vec<String>> = rows
         .iter()
         .map(|row| {
@@ -185,6 +187,22 @@ fn render_list(rows: &[Value], page: &Map<String, Value>, width: usize) -> Strin
         n => format!("\n{n} more columns; use --format json to see all"),
     };
     format!("{}{note}\n\n{footer}\n", table(builder, width, &[]))
+}
+
+fn is_identity_column(column: &str) -> bool {
+    matches!(
+        column,
+        "identifier"
+            | "number"
+            | "key"
+            | "name"
+            | "title"
+            | "slug"
+            | "login"
+            | "username"
+            | "id"
+            | "uid"
+    )
 }
 
 /// How many leading columns fit in `width`, each costing its widest cell
@@ -351,9 +369,9 @@ mod tests {
         });
         assert_eq!(
             render(&value, Format::Table, 60),
-            " body                     | closed\n\
-             --------------------------+--------\n\
-             \x20line one line two tabbed | null\n\
+            " title                           | body\n\
+             ---------------------------------+--------------------------\n\
+             \x20xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx… | line one line two tabbed\n\
              1 more column; use --format json to see all\n\
              \n\
              hasNextPage=false nextPage=null hasPreviousPage=false previousPage=null\n"
@@ -380,6 +398,26 @@ mod tests {
         assert!(rendered.starts_with(" id | name"));
         assert!(rendered.contains("more columns; use --format json to see all"));
         assert!(!rendered.contains("…"));
+    }
+
+    #[test]
+    fn list_prioritizes_identity_columns_before_truncating() {
+        let value = json!({
+            "items": [{
+                "accountId": "team_123",
+                "autoExposeSystemEnvs": true,
+                "createdAt": 1784307026449_u64,
+                "id": "prj_123",
+                "name": "customer-portal",
+                "framework": "nextjs",
+            }],
+            "pageInfo": {"hasNextPage": false},
+        });
+
+        let rendered = render(&value, Format::Table, 60);
+        assert!(rendered.starts_with(" id      | name"));
+        assert!(rendered.contains("| accountId"));
+        assert!(rendered.contains("3 more columns; use --format json to see all"));
     }
 
     #[test]
