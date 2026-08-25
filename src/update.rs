@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::provider;
 
 const CHECK_TTL_SECS: u64 = 24 * 60 * 60;
-const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/lra/foac/releases/latest";
+const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/alephic-ai/foac/releases/latest";
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let installed_skills = installed_skills(std::env::home_dir().as_deref());

@@ -5,7 +5,7 @@ edition = "2024"
 description = "foac, the Father Of All CLIs"
 license = "GPL-3.0-or-later"
 authors = ["Laurent Raufaste <analogue@glop.org>"]
-repository = "https://github.com/lra/foac"
+repository = "https://github.com/alephic-ai/foac"
 readme = "README.md"
 
 [dependencies]

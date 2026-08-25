@@ -2,12 +2,12 @@ name: Test
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
 
 concurrency:
   group: test-${{ github.ref }}
-  # Cancel superseded runs on PR branches only: every merge to master should
+  # Cancel superseded runs on PR branches only: every merge to main should
   # get a completed run, and rapid merges can race-cancel each other.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
