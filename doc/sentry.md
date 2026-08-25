@@ -20,3 +20,18 @@ foac sentry --help
 Sentry list commands print `{"items":[...],"pageInfo":{...}}` and paginate
 with `--cursor` using `pageInfo.nextCursor`. Releases are read-only; release
 creation and sourcemap upload stay with `sentry-cli`.
+
+## Entity relationships
+
+Entities exposed by the CLI and how they relate. An assignee is a user or a
+`#team-slug`; issues relate to releases only through search queries like
+`release:1.2.0`, not a direct edge.
+
+```mermaid
+erDiagram
+    ORG ||--o{ PROJECT : owns
+    PROJECT ||--o{ ISSUE : groups
+    ISSUE ||--o{ EVENT : aggregates
+    ORG ||--o{ RELEASE : tracks
+    ISSUE }o--o| ASSIGNEE : "assigned to"
+```

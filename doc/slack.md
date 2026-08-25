@@ -37,3 +37,18 @@ foac slack --help
 Slack list and search commands print `{"items":[...],"pageInfo":{...}}` and
 paginate with `--limit`/`--after` using `pageInfo.endCursor`. Long message text
 accepts either `--body` or `--body-file`.
+
+## Entity relationships
+
+Entities exposed by the CLI and how they relate. Messages are identified by
+the pair (conversation, `ts`); thread replies point at their parent message
+via `thread_ts`.
+
+```mermaid
+erDiagram
+    CONVERSATION ||--o{ MESSAGE : holds
+    MESSAGE |o--o{ MESSAGE : "thread parent of"
+    MESSAGE }o--|| USER : "written by"
+    MESSAGE ||--o{ REACTION : receives
+    REACTION }o--|| USER : "added by"
+```

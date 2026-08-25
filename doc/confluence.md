@@ -42,3 +42,15 @@ paginates with `--start-at` using `pageInfo.nextStartAt`.
 
 Out of scope: attachments as binary transfer, whiteboards and databases,
 page permissions, and Data Center-specific APIs.
+
+## Entity relationships
+
+Entities exposed by the CLI and how they relate; pages form a tree within
+their space via `--parent`.
+
+```mermaid
+erDiagram
+    SPACE ||--o{ PAGE : contains
+    PAGE |o--o{ PAGE : "parent of"
+    PAGE ||--o{ FOOTER_COMMENT : has
+```

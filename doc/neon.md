@@ -24,3 +24,20 @@ Neon list commands print `{"items":[...],"pageInfo":{...}}`; `project list`,
 `branch list`, and `operation list` paginate with `--limit` and `--after`
 using `pageInfo.endCursor`. Project, database, and role mutations are not
 covered.
+
+## Entity relationships
+
+Entities exposed by the CLI and how they relate. `connection-uri` is not an
+entity: it derives a URI from a project, database, and role, plus an
+optional branch or endpoint.
+
+```mermaid
+erDiagram
+    ORG ||--o{ PROJECT : owns
+    PROJECT ||--o{ BRANCH : has
+    BRANCH |o--o{ BRANCH : "parent of"
+    BRANCH ||--o{ DATABASE : holds
+    BRANCH ||--o{ ROLE : defines
+    BRANCH ||--o{ ENDPOINT : "served by"
+    PROJECT ||--o{ OPERATION : records
+```

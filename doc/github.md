@@ -23,3 +23,37 @@ GitHub list commands print `{"items":[...],"pageInfo":{...}}` and accept
 `--limit`/`--page`. Commands with long Markdown fields accept either `--body`
 or `--body-file`. Asset and artifact commands return metadata only; binary
 transfer and Actions log retrieval are unsupported.
+
+## Entity relationships
+
+Entities exposed by the CLI and how they relate. Everything except
+`repo list` is rooted at one repository. Issues and pull requests share a
+single comment store, so `issue comment` commands work on both.
+
+```mermaid
+erDiagram
+    REPO ||--o{ ISSUE : has
+    REPO ||--o{ PULL : has
+    REPO ||--o{ BRANCH : has
+    REPO ||--o{ REF : has
+    REPO ||--o{ COMMIT : has
+    REPO ||--o{ LABEL : defines
+    REPO ||--o{ RELEASE : publishes
+    REPO ||--o{ WORKFLOW : defines
+    REPO ||--o{ ARTIFACT : stores
+    REPO }o--o{ COLLABORATOR : "shared with"
+    ISSUE ||--o{ COMMENT : has
+    PULL ||--o{ COMMENT : has
+    ISSUE }o--o{ LABEL : "tagged with"
+    PULL }o--o{ LABEL : "tagged with"
+    PULL ||--o{ REVIEW : receives
+    BRANCH ||--o| BRANCH_PROTECTION : "guarded by"
+    COMMIT ||--o{ COMMIT_COMMENT : has
+    COMMIT ||--o{ STATUS : reports
+    COMMIT ||--o{ CHECK_SUITE : runs
+    CHECK_SUITE ||--o{ CHECK_RUN : contains
+    WORKFLOW ||--o{ RUN : triggers
+    RUN ||--o{ JOB : contains
+    RUN ||--o{ ARTIFACT : produces
+    RELEASE ||--o{ RELEASE_ASSET : ships
+```
