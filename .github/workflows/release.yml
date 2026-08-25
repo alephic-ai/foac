@@ -32,9 +32,19 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Push to main as alephic-bot: the org ruleset only lets that app push
+      # to the default branch directly, github.token gets rejected.
+      - name: Generate Alephic Bot token
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ vars.ALEPHIC_BOT_APP_ID }}
+          private-key: ${{ secrets.ALEPHIC_BOT_SECRET }}
+          permission-contents: write
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
       - id: plan
         env:
           GH_TOKEN: ${{ github.token }}
@@ -91,6 +101,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "Release ${new}"
+          # Unlike github.token, an app-token push re-triggers this workflow;
+          # the queued run no-ops above ("nothing new since" once published,
+          # or resumes the draft if this run died before publishing).
           git push origin main
           echo "Bumped ${version} -> ${new}"
           sha=$(git rev-parse HEAD)
