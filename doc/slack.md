@@ -51,4 +51,12 @@ erDiagram
     MESSAGE }o--|| USER : "written by"
     MESSAGE ||--o{ REACTION : receives
     REACTION }o--|| USER : "added by"
+    classDef scope fill:#bbdefb,stroke:#1565c0,color:#000
+    classDef work fill:#c8e6c9,stroke:#2e7d32,color:#000
+    classDef people fill:#ffe0b2,stroke:#e65100,color:#000
+    classDef annotation fill:#e1bee7,stroke:#6a1b9a,color:#000
+    class CONVERSATION scope
+    class MESSAGE work
+    class USER people
+    class REACTION annotation
 ```

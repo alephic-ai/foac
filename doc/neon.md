@@ -40,4 +40,10 @@ erDiagram
     BRANCH ||--o{ ROLE : defines
     BRANCH ||--o{ ENDPOINT : "served by"
     PROJECT ||--o{ OPERATION : records
+    classDef scope fill:#bbdefb,stroke:#1565c0,color:#000
+    classDef work fill:#c8e6c9,stroke:#2e7d32,color:#000
+    classDef compute fill:#b2dfdb,stroke:#00695c,color:#000
+    class ORG,PROJECT scope
+    class BRANCH,DATABASE,ROLE work
+    class ENDPOINT,OPERATION compute
 ```

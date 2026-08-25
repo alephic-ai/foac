@@ -53,4 +53,10 @@ erDiagram
     SPACE ||--o{ PAGE : contains
     PAGE |o--o{ PAGE : "parent of"
     PAGE ||--o{ FOOTER_COMMENT : has
+    classDef scope fill:#bbdefb,stroke:#1565c0,color:#000
+    classDef work fill:#c8e6c9,stroke:#2e7d32,color:#000
+    classDef annotation fill:#e1bee7,stroke:#6a1b9a,color:#000
+    class SPACE scope
+    class PAGE work
+    class FOOTER_COMMENT annotation
 ```

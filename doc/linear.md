@@ -47,4 +47,12 @@ erDiagram
     PROJECT ||--o{ DOCUMENT : holds
     INITIATIVE ||--o{ DOCUMENT : holds
     DOCUMENT }o--|| USER : "created by"
+    classDef scope fill:#bbdefb,stroke:#1565c0,color:#000
+    classDef work fill:#c8e6c9,stroke:#2e7d32,color:#000
+    classDef people fill:#ffe0b2,stroke:#e65100,color:#000
+    classDef annotation fill:#e1bee7,stroke:#6a1b9a,color:#000
+    class WORKSPACE,TEAM scope
+    class ISSUE,PROJECT,INITIATIVE,CYCLE,MILESTONE,DOCUMENT work
+    class USER people
+    class STATUS,LABEL,PROJECT_LABEL,COMMENT,ATTACHMENT,STATUS_UPDATE annotation
 ```

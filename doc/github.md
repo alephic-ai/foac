@@ -58,4 +58,16 @@ erDiagram
     RUN ||--o{ JOB : contains
     RUN ||--o{ ARTIFACT : produces
     RELEASE ||--o{ RELEASE_ASSET : ships
+    classDef scope fill:#bbdefb,stroke:#1565c0,color:#000
+    classDef work fill:#c8e6c9,stroke:#2e7d32,color:#000
+    classDef people fill:#ffe0b2,stroke:#e65100,color:#000
+    classDef annotation fill:#e1bee7,stroke:#6a1b9a,color:#000
+    classDef ci fill:#b2dfdb,stroke:#00695c,color:#000
+    classDef release fill:#fff9c4,stroke:#f57f17,color:#000
+    class REPO scope
+    class ISSUE,PULL,BRANCH,REF,COMMIT work
+    class COLLABORATOR people
+    class COMMENT,COMMIT_COMMENT,REVIEW,LABEL,BRANCH_PROTECTION annotation
+    class WORKFLOW,RUN,JOB,ARTIFACT,STATUS,CHECK_SUITE,CHECK_RUN ci
+    class RELEASE,RELEASE_ASSET release
 ```

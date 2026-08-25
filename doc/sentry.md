@@ -34,4 +34,12 @@ erDiagram
     ISSUE ||--o{ EVENT : aggregates
     ORG ||--o{ RELEASE : tracks
     ISSUE }o--o| ASSIGNEE : "assigned to"
+    classDef scope fill:#bbdefb,stroke:#1565c0,color:#000
+    classDef work fill:#c8e6c9,stroke:#2e7d32,color:#000
+    classDef people fill:#ffe0b2,stroke:#e65100,color:#000
+    classDef release fill:#fff9c4,stroke:#f57f17,color:#000
+    class ORG,PROJECT scope
+    class ISSUE,EVENT work
+    class ASSIGNEE people
+    class RELEASE release
 ```
