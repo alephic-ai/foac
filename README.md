@@ -18,16 +18,16 @@ and one-off CLIs, each with its own config and its own copy of your tokens:
 
 ```mermaid
 graph LR
-    CC([Claude Code]) --> LMCP & GHCLI & AMCP & NMCP & SMCP & SLMCP
-    CU([Cursor]) --> LMCP & GHMCP & AMCP & NMCP & SMCP & SLMCP
-    GRK([Grok Build]) --> LMCP & GHMCP & AMCP & NMCP & SMCP & SLMCP
-    CX([Codex]) --> LMCP & GHCLI & AMCP & NMCP & SMCP & SLMCP
-    GEM([Gemini CLI]) --> LMCP & GHMCP & AMCP & NMCP & SMCP & SLMCP
+    CC([Claude Code]) --> LMCP & GHCLI & AMCP & NCLI & SMCP & SLMCP
+    CU([Cursor]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCP
+    GRK([Grok Build]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCP
+    CX([Codex]) --> LMCP & GHCLI & AMCP & NCLI & SMCP & SLMCP
+    GEM([Gemini CLI]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCP
     LMCP{{Linear MCP server}} --> Linear[(Linear)]
     GHMCP{{GitHub MCP server}} --> GitHub[(GitHub)]
     GHCLI[[gh CLI]] --> GitHub
     AMCP{{Atlassian MCP server}} --> Jira[(Jira)] & Confluence[(Confluence)]
-    NMCP{{Neon MCP server}} --> Neon[(Neon)]
+    NCLI[[neonctl CLI]] --> Neon[(Neon)]
     SMCP{{Sentry MCP server}} --> Sentry[(Sentry)]
     SLMCP{{Slack MCP server}} --> Slack[(Slack)]
     classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
@@ -35,8 +35,8 @@ graph LR
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
     class CC,CU,GRK,CX,GEM harness
-    class LMCP,GHMCP,AMCP,NMCP,SMCP,SLMCP mcp
-    class GHCLI cli
+    class LMCP,GHMCP,AMCP,SMCP,SLMCP mcp
+    class GHCLI,NCLI cli
     class Linear,GitHub,Jira,Confluence,Neon,Sentry,Slack provider
 ```
 
@@ -53,7 +53,7 @@ graph LR
     CU([Cursor]) --> F
     GRK([Grok Build]) --> F
     CX([Codex]) --> F
-    GEM([Gemini CLI]) --> F[[foac]]
+    GEM([Gemini CLI]) --> F[[foac CLI]]
     F --> Linear[(Linear)] & GitHub[(GitHub)] & Jira[(Jira)] & Confluence[(Confluence)] & Neon[(Neon)] & Sentry[(Sentry)] & Slack[(Slack)]
     classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
