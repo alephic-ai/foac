@@ -17,5 +17,5 @@ cargo test --locked
   messages need conventional-commit prefixes because version bumps derive
   from them.
 
-Always: keep `doc/SKILL.md` in sync with any CLI surface change, and grep
-`graphql/linear/schema.graphql` (51k lines) rather than reading it whole.
+Always: keep `assets/SKILL.md` in sync with any CLI surface change, and grep
+`assets/graphql/linear/schema.graphql` (51k lines) rather than reading it whole.

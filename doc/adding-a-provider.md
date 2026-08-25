@@ -11,7 +11,7 @@ rules every step below follows.
 - **REST** (the common case): untyped passthrough on `src/rest.rs`. Copy
   `src/sentry.rs` or `src/neon.rs`. Don't hand-write types for responses.
 - **GraphQL with a published schema**: copy Linear's setup — vendor the
-  schema under `graphql/<provider>/schema.graphql`, write queries in
+  schema under `assets/graphql/<provider>/schema.graphql`, write queries in
   `queries.graphql`, and generate types at compile time with
   `graphql_client` (see the `linear_query!` macro in `src/linear.rs`).
 - **Neither fits** (e.g. Slack's HTTP-200 `ok`/error envelope): keep the
@@ -67,7 +67,7 @@ One flat file (don't split into a module directory preemptively) containing:
 
 ## 4. Document it in the same change
 
-- `doc/SKILL.md`: wrap each addition in
+- `assets/SKILL.md`: wrap each addition in
   `<!-- foac-provider:<name> -->` … `<!-- /foac-provider:<name> -->` marker
   blocks — a frontmatter `name: foac-<provider>` / `description:` pair, an
   H1, the provider bullet under the grammar, an auth-precedence bullet,

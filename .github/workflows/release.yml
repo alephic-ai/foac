@@ -7,8 +7,7 @@ on:
     # release; docs and workflow edits ride along with the next real one.
     paths:
       - "src/**"
-      - "graphql/**"
-      - "doc/SKILL.md"
+      - "assets/**"
       - Cargo.toml
       - Cargo.lock
   # Escape hatch: run by hand, e.g. to resume after a workflow fix.

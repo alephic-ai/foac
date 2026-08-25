@@ -63,8 +63,9 @@ src/
 ├── output.rs    # The one success printer: compact JSON, or shape-heuristic tables on a TTY
 ├── update.rs    # Self-update from GitHub Releases + once-a-day version check
 └── lib.rs       # Library target so tests/ and doc tests can link; main.rs is the only consumer
-graphql/linear/  # Vendored schema (51k lines; grep it) + queries.graphql (compile-time checked)
-doc/SKILL.md     # Agent skill, compiled into the binary; must track every CLI surface change
+assets/
+├── graphql/linear/ # Vendored schema (51k lines; grep it) + queries.graphql (compile-time checked)
+└── SKILL.md     # Agent skill, compiled into the binary; must track every CLI surface change
 ```
 
 `rest.rs` owns the REST boilerplate: the `Api` struct and `send` (bearer or
@@ -135,16 +136,16 @@ not duplication.
   omitted from GraphQL variables (`skip_serializing_none`), never sent as
   `null`, because null wipes the field server-side. There is a test asserting
   this. Keep it true for every new mutation.
-- `doc/SKILL.md` moves with the CLI surface. It is compiled into the
+- `assets/SKILL.md` moves with the CLI surface. It is compiled into the
   binary and rendered into one skill per provider (`foac-<provider>`): marker
   comments select each provider's frontmatter and sections around the shared
   content. `foac skill install` writes the active providers' skills into
   agents' skill folders and removes inactive ones. CI validates every rendered
   skill. Any change to commands, flags, or conventions updates the source file
   in the same commit.
-- Releases are automated. A push to main touching `src/`, `graphql/`,
-  `doc/SKILL.md`, or Cargo files bumps the version from conventional-commit
-  prefixes and publishes binaries. Commit prefixes are therefore load-bearing.
+- Releases are automated. A push to main touching `src/`, `assets/`, or
+  Cargo files bumps the version from conventional-commit prefixes and
+  publishes binaries. Commit prefixes are therefore load-bearing.
 
 ## Data flow
 

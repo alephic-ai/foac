@@ -12,7 +12,7 @@ struct Cli {
     command: Command,
 }
 
-const SKILL_MD: &str = include_str!("../doc/SKILL.md");
+const SKILL_MD: &str = include_str!("../assets/SKILL.md");
 
 #[derive(Clone, Copy)]
 struct Provider {
