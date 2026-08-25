@@ -33,3 +33,30 @@ use `--body`/`--body-file`.
 List commands print `{"items":[...],"pageInfo":{...}}`. `issue list`
 paginates with `--after` using `pageInfo.nextPageToken`; every other list
 paginates with `--start-at` using `pageInfo.nextStartAt`.
+
+## Entity relationships
+
+Entities exposed by the CLI and how they relate. `board list` is global and
+`sprint list` takes `--board`; the board→project edge exists in Jira but is
+not queried by the CLI.
+
+```mermaid
+erDiagram
+    %% LR stacks siblings vertically: tall and narrow instead of very wide
+    direction LR
+    PROJECT ||--o{ ISSUE : contains
+    ISSUE ||--o{ COMMENT : has
+    ISSUE }o--o| USER : "assigned to"
+    ISSUE |o--o{ ISSUE : "parent of"
+    ISSUE ||--o{ TRANSITION : offers
+    PROJECT ||--o{ BOARD : has
+    BOARD ||--o{ SPRINT : schedules
+    classDef scope fill:#bbdefb,stroke:#1565c0,color:#000
+    classDef work fill:#c8e6c9,stroke:#2e7d32,color:#000
+    classDef people fill:#ffe0b2,stroke:#e65100,color:#000
+    classDef annotation fill:#e1bee7,stroke:#6a1b9a,color:#000
+    class PROJECT,BOARD scope
+    class ISSUE,SPRINT work
+    class USER people
+    class COMMENT,TRANSITION annotation
+```
