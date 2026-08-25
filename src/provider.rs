@@ -9,7 +9,15 @@ use toml_edit::{Array, DocumentMut, Item, Value, value};
 
 use crate::auth::Provider;
 
-pub const PROVIDERS: [&str; 6] = ["confluence", "github", "jira", "linear", "sentry", "slack"];
+pub const PROVIDERS: [&str; 7] = [
+    "confluence",
+    "github",
+    "jira",
+    "linear",
+    "neon",
+    "sentry",
+    "slack",
+];
 
 /// Per-folder settings file, looked up from the working directory to `/`;
 /// the nearest file wins and overrides the global toggles.
@@ -84,6 +92,7 @@ impl Settings {
 pub(crate) enum Credential {
     Linear,
     Github,
+    Neon,
     Sentry,
     SlackBot,
     SlackUser,
@@ -99,6 +108,7 @@ impl Credential {
         match self {
             Self::Linear => "linear",
             Self::Github => "github",
+            Self::Neon => "neon",
             Self::Sentry => "sentry",
             Self::SlackBot => "slack_bot",
             Self::SlackUser => "slack_user",
@@ -245,6 +255,7 @@ fn authenticated(name: &str) -> bool {
         "github" => crate::github::authenticated(),
         "jira" => crate::jira::authenticated(),
         "linear" => crate::linear::authenticated(),
+        "neon" => crate::neon::authenticated(),
         "sentry" => crate::sentry::authenticated(),
         "slack" => crate::slack::authenticated(),
         _ => false,
@@ -1073,6 +1084,7 @@ mod tests {
                 "github": {"enabled": true, "authenticated": true, "skill_installed": false},
                 "jira": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "linear": {"enabled": true, "authenticated": false, "skill_installed": true},
+                "neon": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "sentry": {"enabled": false, "authenticated": false, "skill_installed": false},
                 "slack": {"enabled": true, "authenticated": false, "skill_installed": false},
             })

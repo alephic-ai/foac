@@ -1,7 +1,7 @@
 # foac
 
 foac, the Father Of All CLIs: one CLI for all your SaaS providers (Linear,
-GitHub, Jira, Confluence, Sentry, Slack, and more on the way), built for the coding agents on
+GitHub, Jira, Confluence, Neon, Sentry, Slack, and more on the way), built for the coding agents on
 your machine rather than for you. Install it once, log in once, and every
 harness (Claude Code, Cursor, Codex, Gemini CLI, Grok Build, ...) can use all your
 providers without any setup of its own. Humans at a TTY
@@ -18,15 +18,16 @@ and one-off CLIs, each with its own config and its own copy of your tokens:
 
 ```mermaid
 graph LR
-    CC([Claude Code]) --> LMCP & GHCLI & AMCP & SMCP & SLMCP
-    CU([Cursor]) --> LMCP & GHMCP & AMCP & SMCP & SLMCP
-    GRK([Grok Build]) --> LMCP & GHMCP & AMCP & SMCP & SLMCP
-    CX([Codex]) --> LMCP & GHCLI & AMCP & SMCP & SLMCP
-    GEM([Gemini CLI]) --> LMCP & GHMCP & AMCP & SMCP & SLMCP
+    CC([Claude Code]) --> LMCP & GHCLI & AMCP & NMCP & SMCP & SLMCP
+    CU([Cursor]) --> LMCP & GHMCP & AMCP & NMCP & SMCP & SLMCP
+    GRK([Grok Build]) --> LMCP & GHMCP & AMCP & NMCP & SMCP & SLMCP
+    CX([Codex]) --> LMCP & GHCLI & AMCP & NMCP & SMCP & SLMCP
+    GEM([Gemini CLI]) --> LMCP & GHMCP & AMCP & NMCP & SMCP & SLMCP
     LMCP{{Linear MCP server}} --> Linear[(Linear)]
     GHMCP{{GitHub MCP server}} --> GitHub[(GitHub)]
     GHCLI[[gh CLI]] --> GitHub
     AMCP{{Atlassian MCP server}} --> Jira[(Jira)] & Confluence[(Confluence)]
+    NMCP{{Neon MCP server}} --> Neon[(Neon)]
     SMCP{{Sentry MCP server}} --> Sentry[(Sentry)]
     SLMCP{{Slack MCP server}} --> Slack[(Slack)]
     classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
@@ -34,12 +35,12 @@ graph LR
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
     class CC,CU,GRK,CX,GEM harness
-    class LMCP,GHMCP,AMCP,SMCP,SLMCP mcp
+    class LMCP,GHMCP,AMCP,NMCP,SMCP,SLMCP mcp
     class GHCLI cli
-    class Linear,GitHub,Jira,Confluence,Sentry,Slack provider
+    class Linear,GitHub,Jira,Confluence,Neon,Sentry,Slack provider
 ```
 
-Five harnesses and five adapters is twenty-five integrations to configure
+Five harnesses and six adapters is thirty integrations to configure
 and keep authenticated. Every harness or adapter you add multiplies that
 number.
 
@@ -53,13 +54,13 @@ graph LR
     GRK([Grok Build]) --> F
     CX([Codex]) --> F
     GEM([Gemini CLI]) --> F[[foac]]
-    F --> Linear[(Linear)] & GitHub[(GitHub)] & Jira[(Jira)] & Confluence[(Confluence)] & Sentry[(Sentry)] & Slack[(Slack)]
+    F --> Linear[(Linear)] & GitHub[(GitHub)] & Jira[(Jira)] & Confluence[(Confluence)] & Neon[(Neon)] & Sentry[(Sentry)] & Slack[(Slack)]
     classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
     class CC,CU,GRK,CX,GEM harness
     class F cli
-    class Linear,GitHub,Jira,Confluence,Sentry,Slack provider
+    class Linear,GitHub,Jira,Confluence,Neon,Sentry,Slack provider
 ```
 
 ## Why harnesses like foac
@@ -109,6 +110,7 @@ graph LR
 | GitHub | Repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, collaborators | [doc/github.md](doc/github.md) |
 | Jira | Issues, comments, projects, sprints, users, workflow transitions | [doc/jira.md](doc/jira.md) |
 | Confluence | Spaces, pages, footer comments, CQL search | [doc/confluence.md](doc/confluence.md) |
+| Neon | Organizations, projects, branches, databases, roles, compute endpoints, operations, connection URIs | [doc/neon.md](doc/neon.md) |
 | Sentry | Organizations, projects, issues, error events, releases | [doc/sentry.md](doc/sentry.md) |
 | Slack | Conversations, messages, threads, users, message search, reactions | [doc/slack.md](doc/slack.md) |
 
