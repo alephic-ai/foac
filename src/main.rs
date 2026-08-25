@@ -39,7 +39,7 @@ enum Command {
     Github(github::Cmd),
     /// Interact with Jira
     Jira(jira::Cmd),
-    /// Interact with Linear (linear.app)
+    /// Interact with Linear
     #[command(subcommand)]
     Linear(linear::Cmd),
     /// Interact with Neon
@@ -175,11 +175,48 @@ fn providers_where(enabled: impl Fn(&str) -> bool) -> [Provider; 7] {
 }
 
 fn cli_command(providers: &[Provider]) -> clap::Command {
-    providers.iter().fold(Cli::command(), |command, provider| {
-        command.mut_subcommand(provider.name, |subcommand| {
-            subcommand.hide(!provider.active)
-        })
+    let command = Cli::command().help_template(format!(
+        // clap's default template with the providers section inserted; clap
+        // cannot split subcommands under two headings, so providers are hidden
+        // from {all-args} and rendered by hand.
+        "{{before-help}}{{about-with-newline}}\n{{usage-heading}} {{usage}}\n\n{}{{all-args}}{{after-help}}",
+        providers_help_section(providers)
+    ));
+    // Hide every provider from the Commands list: active ones are listed in
+    // the providers section instead, and hiding doesn't affect parsing or typo
+    // suggestions (remove_hidden_provider_suggestions keys off `active`).
+    providers.iter().fold(command, |command, provider| {
+        command.mut_subcommand(provider.name, |subcommand| subcommand.hide(true))
     })
+}
+
+fn providers_help_section(providers: &[Provider]) -> String {
+    let command = Cli::command();
+    let styles = command.get_styles();
+    let (header, literal) = (styles.get_header(), styles.get_literal());
+    let active: Vec<&Provider> = providers
+        .iter()
+        .filter(|provider| provider.active)
+        .collect();
+    let width = active.iter().map(|provider| provider.name.len()).max();
+    let Some(width) = width else {
+        return String::new();
+    };
+    let mut section = format!("{header}Providers:{header:#}\n");
+    for provider in active {
+        let about = command
+            .find_subcommand(provider.name)
+            .and_then(clap::Command::get_about)
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        // Pad the plain name so the ANSI codes don't skew the column.
+        section.push_str(&format!(
+            "  {literal}{name:width$}{literal:#}  {about}\n",
+            name = provider.name
+        ));
+    }
+    section.push('\n');
+    section
 }
 
 fn try_parse_from<I, T>(providers: &[Provider], args: I) -> Result<Cli, clap::Error>
@@ -455,6 +492,12 @@ mod tests {
                 }
                 for name in ["auth", "provider", "skill", "update", "version", "help"] {
                     assert!(help_lists(&help, name));
+                }
+                if expected.is_empty() {
+                    assert!(!help.contains("Providers:"));
+                } else {
+                    let providers_at = help.find("Providers:").unwrap();
+                    assert!(providers_at < help.find("Commands:").unwrap());
                 }
             }
         }
