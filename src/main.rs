@@ -39,7 +39,7 @@ enum Command {
     Github(github::Cmd),
     /// Interact with Jira
     Jira(jira::Cmd),
-    /// Interact with Linear (linear.app)
+    /// Interact with Linear
     #[command(subcommand)]
     Linear(linear::Cmd),
     /// Interact with Neon
