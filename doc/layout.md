@@ -37,6 +37,10 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   `operations`) read the next cursor from the response body's
   `pagination.cursor`; Neon returns that cursor even on the last page, so
   `hasNextPage` uses a full-page heuristic instead.
+- Vercel uses bearer-authenticated REST endpoints against
+  `https://api.vercel.com`; API versions vary by endpoint. Team-owned
+  resources add `teamId`, and list responses use `pagination.next` as the
+  `until` cursor (project lists call the same cursor `from`).
 - Jira uses REST API v2 (plain-text bodies; v3 requires Atlassian Document
   Format) plus the Agile 1.0 API for sprints, authenticated with HTTP Basic
   (email + API token) against the tenant host. Issue search paginates with

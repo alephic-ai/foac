@@ -30,6 +30,8 @@ enum AuthCmd {
     Slack(SlackCmd),
     /// Configure Sentry authentication
     Sentry(SentryCmd),
+    /// Configure Vercel authentication
+    Vercel(ProviderCmd),
 }
 
 #[derive(Args)]
@@ -131,6 +133,7 @@ pub enum Provider {
     Confluence,
     Slack,
     Sentry,
+    Vercel,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -229,6 +232,7 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
             SentryAction::Login { host } => login(Provider::Sentry, host, &store, format),
             SentryAction::Logout => logout(Provider::Sentry, &store, format),
         },
+        AuthCmd::Vercel(cmd) => run_provider(Provider::Vercel, cmd.command, &store, format),
     }
 }
 
@@ -256,6 +260,16 @@ pub(crate) fn sentry_token() -> Result<String, Box<dyn std::error::Error>> {
     resolve_stored(
         Provider::Sentry,
         environment_token(Provider::Sentry),
+        &crate::provider::CredentialStore,
+    )
+    .map(|credential| credential.token)
+    .map_err(Into::into)
+}
+
+pub(crate) fn vercel_token() -> Result<String, Box<dyn std::error::Error>> {
+    resolve_stored(
+        Provider::Vercel,
+        environment_token(Provider::Vercel),
         &crate::provider::CredentialStore,
     )
     .map(|credential| credential.token)
@@ -480,6 +494,7 @@ impl Provider {
             Self::Confluence => "confluence",
             Self::Slack => "slack",
             Self::Sentry => "sentry",
+            Self::Vercel => "vercel",
         }
     }
 
@@ -492,6 +507,7 @@ impl Provider {
             Self::Confluence => "Confluence",
             Self::Slack => "Slack",
             Self::Sentry => "Sentry",
+            Self::Vercel => "Vercel",
         }
     }
 
@@ -503,6 +519,7 @@ impl Provider {
             Self::Jira | Self::Confluence => "ATLASSIAN_API_TOKEN",
             Self::Slack => "SLACK_BOT_TOKEN",
             Self::Sentry => "SENTRY_AUTH_TOKEN",
+            Self::Vercel => "VERCEL_TOKEN",
         }
     }
 
@@ -514,6 +531,7 @@ impl Provider {
             Self::Jira | Self::Confluence => crate::provider::Credential::AtlassianToken,
             Self::Slack => crate::provider::Credential::SlackBot,
             Self::Sentry => crate::provider::Credential::Sentry,
+            Self::Vercel => crate::provider::Credential::Vercel,
         }
     }
 }
@@ -977,6 +995,7 @@ fn flatten_accounts_for_table(statuses: &Value) -> Value {
         Provider::Confluence,
         Provider::Slack,
         Provider::Sentry,
+        Provider::Vercel,
     ] {
         let Some(obj) = out
             .get_mut(provider.as_str())
@@ -1032,6 +1051,7 @@ fn account_identity(provider: Provider, account: &Value) -> String {
         Provider::Jira | Provider::Confluence => jira_identity(account),
         Provider::Slack => slack_identity(account),
         Provider::Sentry => sentry_identity(account),
+        Provider::Vercel => vercel_identity(account),
     }
 }
 
@@ -1095,6 +1115,17 @@ fn neon_identity(account: &Value) -> String {
     }
 }
 
+fn vercel_identity(account: &Value) -> String {
+    let name = text_field(account, "name").or_else(|| text_field(account, "username"));
+    let email = text_field(account, "email");
+    match (name, email) {
+        (Some(name), Some(email)) => format!("{name} <{email}>"),
+        (Some(name), None) => name.to_owned(),
+        (None, Some(email)) => email.to_owned(),
+        (None, None) => String::new(),
+    }
+}
+
 fn sentry_identity(account: &Value) -> String {
     let Some(organizations) = account.get("organizations").and_then(Value::as_array) else {
         return String::new();
@@ -1148,7 +1179,7 @@ fn provider_status(provider: Provider, store: &dyn SecretStore) -> Value {
         };
     }
     let resolved = match provider {
-        Provider::Linear | Provider::Neon | Provider::Sentry => {
+        Provider::Linear | Provider::Neon | Provider::Sentry | Provider::Vercel => {
             resolve_stored(provider, environment_token(provider), store)
         }
         Provider::Github => resolve_github(environment_token(provider), store, github_cli_token),
@@ -1171,6 +1202,7 @@ fn all_provider_statuses(store: &dyn SecretStore) -> Value {
         "confluence": provider_status(Provider::Confluence, store),
         "slack": provider_status(Provider::Slack, store),
         "sentry": provider_status(Provider::Sentry, store),
+        "vercel": provider_status(Provider::Vercel, store),
     })
 }
 
@@ -1408,6 +1440,7 @@ fn validate(
         }
         Provider::Slack => crate::slack::auth_identity(token).map(slack_account),
         Provider::Sentry => crate::sentry::auth_identity(token, sentry_url).map(sentry_account),
+        Provider::Vercel => crate::vercel::auth_identity(token).map(vercel_account),
     }
 }
 
@@ -1461,6 +1494,16 @@ fn neon_account(identity: Value) -> Value {
         "login": identity["login"],
         "name": identity["name"],
         "email": identity["email"],
+    })
+}
+
+fn vercel_account(identity: Value) -> Value {
+    json!({
+        "id": identity["id"],
+        "username": identity["username"],
+        "name": identity["name"],
+        "email": identity["email"],
+        "defaultTeamId": identity["defaultTeamId"],
     })
 }
 
@@ -1580,6 +1623,9 @@ fn print_login_help(
                 "Create a user auth token at {url}/settings/account/api/auth-tokens/ and grant the scopes needed by your foac commands."
             );
         }
+        Provider::Vercel => eprintln!(
+            "Create an access token at https://vercel.com/account/settings/tokens and grant the scope needed by your foac commands."
+        ),
     }
     Ok(())
 }
@@ -2089,6 +2135,25 @@ mod tests {
         }));
         assert_eq!(slack_user["token_type"], "user");
         assert!(slack_user["bot_id"].is_null());
+
+        let vercel = vercel_account(json!({
+            "id": "user_123",
+            "username": "lolo",
+            "name": "Lolo",
+            "email": "lolo@example.com",
+            "defaultTeamId": "team_123",
+            "token": "excluded",
+        }));
+        assert_eq!(
+            vercel,
+            json!({
+                "id": "user_123",
+                "username": "lolo",
+                "name": "Lolo",
+                "email": "lolo@example.com",
+                "defaultTeamId": "team_123",
+            })
+        );
     }
 
     #[test]
@@ -2166,6 +2231,18 @@ mod tests {
             "bot_id": "B1",
         }));
         assert_eq!(account_identity(Provider::Slack, &slack), "foac  Acme");
+
+        let vercel = vercel_account(json!({
+            "id": "user_123",
+            "username": "lolo",
+            "name": "Lolo",
+            "email": "lolo@example.com",
+            "defaultTeamId": "team_123",
+        }));
+        assert_eq!(
+            account_identity(Provider::Vercel, &vercel),
+            "Lolo <lolo@example.com>"
+        );
 
         let sentry = sentry_account(json!([
             { "id": "1", "slug": "acme", "name": "Acme" },

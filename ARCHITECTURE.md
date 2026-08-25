@@ -1,7 +1,7 @@
 # foac
 
 foac, the Father Of All CLIs, wraps external SaaS APIs (Linear, GitHub, Jira,
-Confluence, Neon, Sentry, Slack, more to come) behind one command grammar:
+Confluence, Neon, Sentry, Slack, Vercel, more to come) behind one command grammar:
 `foac <provider> <resource> <verb>`. The primary consumer is an LLM agent
 working in a shell. Humans at a TTY get a rendering layer on top of the same
 output. foac makes any provider's API discoverable, uniform, and already
@@ -29,13 +29,13 @@ and output (JSON for machines, tables for humans, decided per invocation).
 ```text
                  main.rs  (parse, dispatch, provider hiding, skill render)
                     │
-   ┌────────────┬────────────┬───────────────┬───────────────┬────────────┬─────────────┐
-   │ linear.rs  │ github.rs  │ jira.rs       │ neon.rs       │ slack.rs   │ auth.rs     │
-   │ (GraphQL,  │ (REST,     │ confluence.rs │ sentry.rs     │ (REST,     │ provider.rs │
-   │  codegen)  │  untyped)  │ (REST,untyped)│ (REST,untyped)│  untyped)  │ update.rs   │
-   └─────┬──────┴─────┬──────┴───────┬───────┴───────┬───────┴─────┬──────┴─────────────┘
-         └────────────┴──────────────┴───────────────┴──────┬──────┘
-                                                            ▼
+   ┌────────────┬────────────┬───────────────┬───────────────┬────────────┬────────────┬─────────────┐
+   │ linear.rs  │ github.rs  │ jira.rs       │ neon.rs       │ slack.rs   │ vercel.rs  │ auth.rs     │
+   │ (GraphQL,  │ (REST,     │ confluence.rs │ sentry.rs     │ (REST,     │ (REST,     │ provider.rs │
+   │  codegen)  │  untyped)  │ (REST,untyped)│ (REST,untyped)│  untyped)  │  untyped)  │ update.rs   │
+   └─────┬──────┴─────┬──────┴───────┬───────┴───────┬───────┴─────┬──────┴─────┬──────┴─────────────┘
+         └────────────┴──────────────┴───────────────┴────────────┴──────────┬───┘
+                                                                            ▼
                         output.rs  (single shared printer: JSON | table)
 ```
 
@@ -57,6 +57,7 @@ src/
 ├── neon.rs      # Neon provider: REST passthrough on rest.rs
 ├── sentry.rs    # Sentry provider: REST passthrough on rest.rs
 ├── slack.rs     # Slack provider: REST with Slack's HTTP-200 ok/error envelope
+├── vercel.rs    # Vercel provider: versioned REST passthrough on rest.rs
 ├── rest.rs      # Shared REST core: Api/send, list wrapping, payload helpers, auth-identity HTTP
 ├── auth.rs      # Credential resolution (env > credentials file > gh CLI), validation, auth commands
 ├── provider.rs  # Comment-preserving TOML settings + private JSON credentials

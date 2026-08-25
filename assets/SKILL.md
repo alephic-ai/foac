@@ -27,6 +27,10 @@ description: Use the foac CLI to interact with Sentry from the shell. Covers org
 name: foac-slack
 description: Use the foac CLI to interact with Slack from the shell. Covers conversations, messages, threads, users, message search, and reactions.
 <!-- /foac-provider:slack -->
+<!-- foac-provider:vercel -->
+name: foac-vercel
+description: Use the foac CLI to interact with Vercel from the shell. Covers teams, projects, deployments, account domains, and project domains.
+<!-- /foac-provider:vercel -->
 ---
 
 <!-- rumdl-disable MD022 MD025 -->
@@ -51,6 +55,9 @@ description: Use the foac CLI to interact with Slack from the shell. Covers conv
 <!-- foac-provider:slack -->
 # foac-slack
 <!-- /foac-provider:slack -->
+<!-- foac-provider:vercel -->
+# foac-vercel
+<!-- /foac-provider:vercel -->
 <!-- rumdl-enable MD022 MD025 -->
 
 foac wraps external provider APIs as CLI subcommands for LLM agents: every
@@ -94,6 +101,9 @@ foac <provider> <resource> <verb> [flags]
 <!-- foac-provider:slack -->
 - `slack`: conversations, messages, threads, users, message search, and reactions.
 <!-- /foac-provider:slack -->
+<!-- foac-provider:vercel -->
+- `vercel`: teams, projects, deployments, account domains, and project domains.
+<!-- /foac-provider:vercel -->
 - Resources are nouns (`issue`, `project`, `team`, `user`, ...), verbs are
   `list`, `get`, `create`, `update`, `delete`.
 - `--help` at any level lists what exists and which flags each verb takes.
@@ -172,6 +182,9 @@ foac <provider> <resource> <verb> [flags]
   app manifest with the recommended bot and user scopes. Redirected input is
   two lines in the same order. Slack logout removes both.
 <!-- /foac-provider:slack -->
+<!-- foac-provider:vercel -->
+- **Vercel auth precedence**: `VERCEL_TOKEN`, then the credentials file.
+<!-- /foac-provider:vercel -->
 - **Auth status**: Status commands perform live validation and print
   `authenticated`, `unauthenticated`, or `error`, including the
   credential source and safe account identity when available. `foac auth status`
@@ -303,6 +316,19 @@ foac <provider> <resource> <verb> [flags]
   the selected identity (the bot when available, otherwise the user). Pass
   reaction names with or without surrounding colons.
 <!-- /foac-provider:slack -->
+<!-- foac-provider:vercel -->
+- **Vercel scope**: omit `--team` for the token's personal account, or pass a
+  team ID like `team_...` anywhere after `vercel`. `VERCEL_TEAM_ID` is the
+  default. Find team IDs with `team list`.
+- **Vercel pagination**: list verbs take `--limit N` (default 20) and
+  `--after CURSOR`; output is `{"items":[...],"pageInfo":{...}}`. Follow
+  `pageInfo.endCursor` while `hasNextPage` is true. Vercel cursors are usually
+  millisecond timestamps, but pass them back unchanged.
+- **Vercel identifiers**: projects accept an ID or name; deployments accept an
+  ID (and `get` also accepts a URL); domains use their DNS name. Project
+  updates change only supplied fields. Deployment creation/uploads, logs, DNS
+  records, and environment variables are not covered.
+<!-- /foac-provider:vercel -->
 
 <!-- foac-provider:github -->
 ## GitHub resources
@@ -364,6 +390,20 @@ scopes are `channels:history`, `channels:read`, `chat:write`, `groups:history`,
 the commands the app needs. User-only operation needs equivalent user scopes;
 search uses the user credential (environment or config), never the bot token.
 <!-- /foac-provider:slack -->
+
+<!-- foac-provider:vercel -->
+## Vercel resources
+
+- Scope discovery: `team list|get`.
+- Projects: `project list|get|create|update|delete`.
+- Deployments: `deployment list|get|cancel|delete`.
+- Account domains: `domain list|get|config|create|delete`.
+- Project domains: `project-domain list|get|create|update|delete|verify`.
+
+Use `foac vercel <resource> --help` for flags and required arguments. Domain
+ownership and assignment are separate: `domain` manages the account-level
+domain, while `project-domain` assigns a domain to a project.
+<!-- /foac-provider:vercel -->
 
 ## Examples
 
@@ -447,6 +487,17 @@ foac slack reaction add '#eng' 1724432400.123456 eyes
 ```
 
 <!-- /foac-provider:slack -->
+
+<!-- foac-provider:vercel -->
+
+```sh
+foac vercel team list
+foac vercel project list --team team_123 --search web
+foac vercel deployment list --project web --state READY
+foac vercel project-domain create --project web preview.example.com --git-branch preview
+```
+
+<!-- /foac-provider:vercel -->
 
 ## Maintenance
 

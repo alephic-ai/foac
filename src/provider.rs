@@ -9,7 +9,7 @@ use toml_edit::{Array, DocumentMut, Item, Value, value};
 
 use crate::auth::Provider;
 
-pub const PROVIDERS: [&str; 7] = [
+pub const PROVIDERS: [&str; 8] = [
     "confluence",
     "github",
     "jira",
@@ -17,6 +17,7 @@ pub const PROVIDERS: [&str; 7] = [
     "neon",
     "sentry",
     "slack",
+    "vercel",
 ];
 
 /// Per-folder settings file, looked up from the working directory to `/`;
@@ -90,6 +91,7 @@ pub(crate) enum Credential {
     Sentry,
     SlackBot,
     SlackUser,
+    Vercel,
     // Atlassian credentials are vendor-level: Jira and Confluence share the
     // same host, email, and API token.
     AtlassianHost,
@@ -106,6 +108,7 @@ impl Credential {
             Self::Sentry => "sentry",
             Self::SlackBot => "slack_bot",
             Self::SlackUser => "slack_user",
+            Self::Vercel => "vercel",
             Self::AtlassianHost => "atlassian_host",
             Self::AtlassianEmail => "atlassian_email",
             Self::AtlassianToken => "atlassian_token",
@@ -260,6 +263,7 @@ fn authenticated(name: &str) -> bool {
         "neon" => crate::neon::authenticated(),
         "sentry" => crate::sentry::authenticated(),
         "slack" => crate::slack::authenticated(),
+        "vercel" => crate::vercel::authenticated(),
         _ => false,
     }
 }
@@ -761,6 +765,7 @@ mod tests {
                 (Credential::Sentry, "sentry-token"),
                 (Credential::SlackBot, "xoxb-bot"),
                 (Credential::SlackUser, "xoxp-user"),
+                (Credential::Vercel, "vercel-token"),
             ],
         )
         .unwrap();
@@ -776,7 +781,8 @@ mod tests {
                 "  \"github\": \"github-token\",\n",
                 "  \"linear\": \"linear-token\",\n",
                 "  \"sentry\": \"sentry-token\",\n",
-                "  \"slack_user\": \"xoxp-user\"\n",
+                "  \"slack_user\": \"xoxp-user\",\n",
+                "  \"vercel\": \"vercel-token\"\n",
                 "}"
             )
         );
@@ -1091,6 +1097,7 @@ mod tests {
                 "neon": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "sentry": {"enabled": false, "authenticated": false, "skill_installed": false},
                 "slack": {"enabled": true, "authenticated": false, "skill_installed": false},
+                "vercel": {"enabled": true, "authenticated": false, "skill_installed": false},
             })
         );
     }

@@ -30,6 +30,9 @@ foac auth sentry logout
 foac auth slack status
 foac auth slack login
 foac auth slack logout
+foac auth vercel status
+foac auth vercel login
+foac auth vercel logout
 ```
 
 `login` prints a link and permission guidance, securely prompts for a personal

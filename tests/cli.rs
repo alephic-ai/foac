@@ -58,6 +58,7 @@ fn provider_list_defaults_to_all_enabled_json() {
         "neon",
         "sentry",
         "slack",
+        "vercel",
     ] {
         assert_eq!(json[name]["enabled"], serde_json::Value::Bool(true));
     }
