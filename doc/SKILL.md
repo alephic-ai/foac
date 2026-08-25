@@ -15,6 +15,10 @@ description: Use the foac CLI to interact with Jira from the shell. Covers issue
 name: foac-linear
 description: Use the foac CLI to interact with Linear from the shell. Covers issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, and attachments.
 <!-- /foac-provider:linear -->
+<!-- foac-provider:neon -->
+name: foac-neon
+description: Use the foac CLI to interact with Neon from the shell. Covers organizations, projects, branches, databases, roles, compute endpoints, operations, and connection URIs.
+<!-- /foac-provider:neon -->
 <!-- foac-provider:sentry -->
 name: foac-sentry
 description: Use the foac CLI to interact with Sentry from the shell. Covers organizations, projects, issues, error events, and releases.
@@ -38,6 +42,9 @@ description: Use the foac CLI to interact with Slack from the shell. Covers conv
 <!-- foac-provider:linear -->
 # foac-linear
 <!-- /foac-provider:linear -->
+<!-- foac-provider:neon -->
+# foac-neon
+<!-- /foac-provider:neon -->
 <!-- foac-provider:sentry -->
 # foac-sentry
 <!-- /foac-provider:sentry -->
@@ -76,6 +83,10 @@ foac <provider> <resource> <verb> [flags]
 - `jira`: issues, comments, projects, sprints, users, and workflow
   transitions.
 <!-- /foac-provider:jira -->
+<!-- foac-provider:neon -->
+- `neon`: organizations, projects, branches, databases, roles, compute
+  endpoints, operations, and connection URIs.
+<!-- /foac-provider:neon -->
 <!-- foac-provider:sentry -->
 - `sentry`: organizations, projects, issues, error events, and releases.
 <!-- /foac-provider:sentry -->
@@ -141,6 +152,9 @@ foac <provider> <resource> <verb> [flags]
   history. The stored credential is shared at the Atlassian vendor level:
   logging in or out through Jira or Confluence covers both.
 <!-- /foac-provider:confluence -->
+<!-- foac-provider:neon -->
+- **Neon auth precedence**: `NEON_API_KEY`, then the credentials file.
+<!-- /foac-provider:neon -->
 <!-- foac-provider:sentry -->
 - **Sentry auth precedence**: `SENTRY_AUTH_TOKEN`, then the credentials file.
 <!-- /foac-provider:sentry -->
@@ -242,6 +256,21 @@ foac <provider> <resource> <verb> [flags]
   current version internally and re-send omitted fields unchanged, so there is
   no version flag to manage.
 <!-- /foac-provider:confluence -->
+<!-- foac-provider:neon -->
+- **Neon project**: pass `--project ID` anywhere after `neon`, or set
+  `NEON_PROJECT_ID`; only `org list` and `project list` work without it. Neon
+  requires an organization ID on `project list` when the account belongs to
+  an organization: pass `--org ID` or set `NEON_ORG_ID`, finding IDs with
+  `org list`.
+- **Neon pagination**: `project list`, `branch list`, and `operation list`
+  take `--limit N` (default 50) and an opaque `--after CURSOR`; output is
+  `{"items":[...],"pageInfo":{...}}`. Follow `pageInfo.endCursor` while
+  `hasNextPage` is true. Other lists are not paginated.
+- **Neon identifiers**: branches use IDs like `br-...` and compute endpoints
+  IDs like `ep-...`; find them with `branch list` and `endpoint list`.
+  `connection-uri` requires `--database` and `--role` and prints a URI
+  containing that role's password.
+<!-- /foac-provider:neon -->
 <!-- foac-provider:sentry -->
 - **Sentry organization**: pass `--org SLUG` anywhere after `sentry`, or set
   `SENTRY_ORG`; only `org list` works without it. On a TTY,
@@ -383,6 +412,17 @@ foac confluence search --cql 'type = page AND text ~ "login"'
 ```
 
 <!-- /foac-provider:confluence -->
+
+<!-- foac-provider:neon -->
+
+```sh
+foac neon branch list --project proj-1
+foac neon branch create --project proj-1 --name preview --parent br-main-123
+foac neon endpoint suspend ep-123 --project proj-1
+foac neon connection-uri --project proj-1 --database app --role app_owner
+```
+
+<!-- /foac-provider:neon -->
 
 <!-- foac-provider:sentry -->
 

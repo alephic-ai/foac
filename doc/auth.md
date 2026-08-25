@@ -15,6 +15,9 @@ foac auth linear logout
 foac auth github status
 foac auth github login
 foac auth github logout
+foac auth neon status
+foac auth neon login
+foac auth neon logout
 foac auth jira status
 foac auth jira login
 foac auth jira logout

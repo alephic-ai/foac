@@ -31,6 +31,11 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   from its Link header; its base URL comes from `SENTRY_URL`, then the host
   saved by `foac auth sentry login` (its prompt or `--host`; default
   `https://sentry.io`), and every request path needs a trailing slash.
+- Neon uses REST API v2 with a bearer API key against
+  `https://console.neon.tech`. Paginated lists (`projects`, `branches`,
+  `operations`) read the next cursor from the response body's
+  `pagination.cursor`; Neon returns that cursor even on the last page, so
+  `hasNextPage` uses a full-page heuristic instead.
 - Jira uses REST API v2 (plain-text bodies; v3 requires Atlassian Document
   Format) plus the Agile 1.0 API for sprints, authenticated with HTTP Basic
   (email + API token) against the tenant host. Issue search paginates with

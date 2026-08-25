@@ -20,6 +20,8 @@ enum AuthCmd {
     Linear(ProviderCmd),
     /// Configure GitHub authentication
     Github(ProviderCmd),
+    /// Configure Neon authentication
+    Neon(ProviderCmd),
     /// Configure Jira (Atlassian) authentication
     Jira(AtlassianCmd),
     /// Configure Confluence (Atlassian) authentication
@@ -124,6 +126,7 @@ enum SentryAction {
 pub enum Provider {
     Linear,
     Github,
+    Neon,
     Jira,
     Confluence,
     Slack,
@@ -212,6 +215,7 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
         }
         AuthCmd::Linear(cmd) => run_provider(Provider::Linear, cmd.command, &store, format),
         AuthCmd::Github(cmd) => run_provider(Provider::Github, cmd.command, &store, format),
+        AuthCmd::Neon(cmd) => run_provider(Provider::Neon, cmd.command, &store, format),
         AuthCmd::Jira(cmd) => run_atlassian(Provider::Jira, cmd.command, &store, format),
         AuthCmd::Confluence(cmd) => {
             run_atlassian(Provider::Confluence, cmd.command, &store, format)
@@ -232,6 +236,16 @@ pub(crate) fn linear_token() -> Result<String, Box<dyn std::error::Error>> {
     resolve_stored(
         Provider::Linear,
         environment_token(Provider::Linear),
+        &crate::provider::CredentialStore,
+    )
+    .map(|credential| credential.token)
+    .map_err(Into::into)
+}
+
+pub(crate) fn neon_token() -> Result<String, Box<dyn std::error::Error>> {
+    resolve_stored(
+        Provider::Neon,
+        environment_token(Provider::Neon),
         &crate::provider::CredentialStore,
     )
     .map(|credential| credential.token)
@@ -461,6 +475,7 @@ impl Provider {
         match self {
             Self::Linear => "linear",
             Self::Github => "github",
+            Self::Neon => "neon",
             Self::Jira => "jira",
             Self::Confluence => "confluence",
             Self::Slack => "slack",
@@ -472,6 +487,7 @@ impl Provider {
         match self {
             Self::Linear => "Linear",
             Self::Github => "GitHub",
+            Self::Neon => "Neon",
             Self::Jira => "Jira",
             Self::Confluence => "Confluence",
             Self::Slack => "Slack",
@@ -483,6 +499,7 @@ impl Provider {
         match self {
             Self::Linear => "LINEAR_API_KEY",
             Self::Github => "GITHUB_TOKEN",
+            Self::Neon => "NEON_API_KEY",
             Self::Jira | Self::Confluence => "ATLASSIAN_API_TOKEN",
             Self::Slack => "SLACK_BOT_TOKEN",
             Self::Sentry => "SENTRY_AUTH_TOKEN",
@@ -493,6 +510,7 @@ impl Provider {
         match self {
             Self::Linear => crate::provider::Credential::Linear,
             Self::Github => crate::provider::Credential::Github,
+            Self::Neon => crate::provider::Credential::Neon,
             Self::Jira | Self::Confluence => crate::provider::Credential::AtlassianToken,
             Self::Slack => crate::provider::Credential::SlackBot,
             Self::Sentry => crate::provider::Credential::Sentry,
@@ -954,6 +972,7 @@ fn flatten_accounts_for_table(statuses: &Value) -> Value {
     for provider in [
         Provider::Linear,
         Provider::Github,
+        Provider::Neon,
         Provider::Jira,
         Provider::Confluence,
         Provider::Slack,
@@ -1009,6 +1028,7 @@ fn account_identity(provider: Provider, account: &Value) -> String {
     match provider {
         Provider::Linear => linear_identity(account),
         Provider::Github => github_identity(account),
+        Provider::Neon => neon_identity(account),
         Provider::Jira | Provider::Confluence => jira_identity(account),
         Provider::Slack => slack_identity(account),
         Provider::Sentry => sentry_identity(account),
@@ -1060,6 +1080,17 @@ fn github_identity(account: &Value) -> String {
         (Some(login), Some(name)) if name != login => format!("{login} ({name})"),
         (Some(login), _) => login.to_owned(),
         (None, Some(name)) => name.to_owned(),
+        (None, None) => String::new(),
+    }
+}
+
+fn neon_identity(account: &Value) -> String {
+    let name = text_field(account, "name").or_else(|| text_field(account, "login"));
+    let email = text_field(account, "email");
+    match (name, email) {
+        (Some(name), Some(email)) => format!("{name} <{email}>"),
+        (Some(name), None) => name.to_owned(),
+        (None, Some(email)) => email.to_owned(),
         (None, None) => String::new(),
     }
 }
@@ -1117,7 +1148,7 @@ fn provider_status(provider: Provider, store: &dyn SecretStore) -> Value {
         };
     }
     let resolved = match provider {
-        Provider::Linear | Provider::Sentry => {
+        Provider::Linear | Provider::Neon | Provider::Sentry => {
             resolve_stored(provider, environment_token(provider), store)
         }
         Provider::Github => resolve_github(environment_token(provider), store, github_cli_token),
@@ -1135,6 +1166,7 @@ fn all_provider_statuses(store: &dyn SecretStore) -> Value {
     json!({
         "linear": provider_status(Provider::Linear, store),
         "github": provider_status(Provider::Github, store),
+        "neon": provider_status(Provider::Neon, store),
         "jira": provider_status(Provider::Jira, store),
         "confluence": provider_status(Provider::Confluence, store),
         "slack": provider_status(Provider::Slack, store),
@@ -1370,6 +1402,7 @@ fn validate(
     match provider {
         Provider::Linear => crate::linear::auth_identity(token).map(linear_account),
         Provider::Github => crate::github::auth_identity(token).map(github_account),
+        Provider::Neon => crate::neon::auth_identity(token).map(neon_account),
         Provider::Jira | Provider::Confluence => {
             unreachable!("Atlassian providers validate with host and email, not one token")
         }
@@ -1419,6 +1452,15 @@ fn github_account(identity: Value) -> Value {
         "id": identity["id"],
         "login": identity["login"],
         "name": identity["name"],
+    })
+}
+
+fn neon_account(identity: Value) -> Value {
+    json!({
+        "id": identity["id"],
+        "login": identity["login"],
+        "name": identity["name"],
+        "email": identity["email"],
     })
 }
 
@@ -1520,6 +1562,9 @@ fn print_login_help(
         Provider::Github => eprintln!(
             "Create a fine-grained personal access token at https://github.com/settings/personal-access-tokens/new and grant the repository permissions needed by your foac commands."
         ),
+        Provider::Neon => {
+            eprintln!("Create an API key at https://console.neon.tech/app/settings/api-keys.")
+        }
         Provider::Jira | Provider::Confluence => eprintln!(
             "Create an Atlassian API token at https://id.atlassian.com/manage-profile/security/api-tokens (the token covers Jira and Confluence), and have your site host (like acme.atlassian.net) and account email ready."
         ),

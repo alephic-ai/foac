@@ -7,6 +7,7 @@ pub mod confluence;
 pub mod github;
 pub mod jira;
 pub mod linear;
+pub mod neon;
 pub mod output;
 pub mod provider;
 pub mod rest;

@@ -1,6 +1,6 @@
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
-use foac::{auth, confluence, github, jira, linear, output, provider, sentry, slack, update};
+use foac::{auth, confluence, github, jira, linear, neon, output, provider, sentry, slack, update};
 
 #[derive(Parser)]
 #[command(about, arg_required_else_help = true)]
@@ -42,6 +42,8 @@ enum Command {
     /// Interact with Linear (linear.app)
     #[command(subcommand)]
     Linear(linear::Cmd),
+    /// Interact with Neon
+    Neon(neon::Cmd),
     /// Interact with Sentry
     Sentry(sentry::Cmd),
     /// Interact with Slack
@@ -105,6 +107,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             provider::ensure_enabled(&provider::SettingsStore.load()?, "linear")?;
             linear::run(cmd, format)
         }
+        Command::Neon(cmd) => {
+            provider::ensure_enabled(&provider::SettingsStore.load()?, "neon")?;
+            neon::run(cmd, format)
+        }
         Command::Sentry(cmd) => {
             provider::ensure_enabled(&provider::SettingsStore.load()?, "sentry")?;
             sentry::run(cmd, format)
@@ -147,12 +153,12 @@ enum SkillCmd {
     Install,
 }
 
-fn providers() -> Result<[Provider; 6], Box<dyn std::error::Error>> {
+fn providers() -> Result<[Provider; 7], Box<dyn std::error::Error>> {
     let settings = provider::SettingsStore.load()?;
     Ok(providers_where(|name| settings.enabled(name)))
 }
 
-fn providers_where(enabled: impl Fn(&str) -> bool) -> [Provider; 6] {
+fn providers_where(enabled: impl Fn(&str) -> bool) -> [Provider; 7] {
     // Settings first: short-circuit skips the keychain/`gh` probe when disabled.
     [
         Provider::new(
@@ -162,6 +168,7 @@ fn providers_where(enabled: impl Fn(&str) -> bool) -> [Provider; 6] {
         Provider::new("github", enabled("github") && github::authenticated()),
         Provider::new("jira", enabled("jira") && jira::authenticated()),
         Provider::new("linear", enabled("linear") && linear::authenticated()),
+        Provider::new("neon", enabled("neon") && neon::authenticated()),
         Provider::new("sentry", enabled("sentry") && sentry::authenticated()),
         Provider::new("slack", enabled("slack") && slack::authenticated()),
     ]
@@ -359,14 +366,60 @@ mod tests {
 
     #[test]
     fn help_only_lists_authenticated_providers() {
-        for (linear, github, sentry, slack, jira, confluence, expected) in [
-            (false, false, false, false, false, false, vec![]),
-            (true, false, false, false, false, false, vec!["linear"]),
-            (false, true, false, false, false, false, vec!["github"]),
-            (false, false, true, false, false, false, vec!["sentry"]),
-            (false, false, false, true, false, false, vec!["slack"]),
-            (false, false, false, false, true, false, vec!["jira"]),
-            (false, false, false, false, false, true, vec!["confluence"]),
+        for (linear, github, sentry, slack, jira, confluence, neon, expected) in [
+            (false, false, false, false, false, false, false, vec![]),
+            (
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                vec!["linear"],
+            ),
+            (
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                vec!["github"],
+            ),
+            (
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                vec!["sentry"],
+            ),
+            (
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                vec!["slack"],
+            ),
+            (false, false, false, false, true, false, false, vec!["jira"]),
+            (
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                vec!["confluence"],
+            ),
+            (false, false, false, false, false, false, true, vec!["neon"]),
             (
                 true,
                 true,
@@ -374,13 +427,30 @@ mod tests {
                 true,
                 true,
                 true,
-                vec!["confluence", "github", "jira", "linear", "sentry", "slack"],
+                true,
+                vec![
+                    "confluence",
+                    "github",
+                    "jira",
+                    "linear",
+                    "neon",
+                    "sentry",
+                    "slack",
+                ],
             ),
         ] {
-            let providers = test_providers(linear, github, sentry, slack, jira, confluence);
+            let providers = test_providers(linear, github, sentry, slack, jira, confluence, neon);
             for args in [vec!["foac"], vec!["foac", "--help"]] {
                 let help = parse_error(&providers, args).to_string();
-                for name in ["confluence", "github", "jira", "linear", "sentry", "slack"] {
+                for name in [
+                    "confluence",
+                    "github",
+                    "jira",
+                    "linear",
+                    "neon",
+                    "sentry",
+                    "slack",
+                ] {
                     assert_eq!(help_lists(&help, name), expected.contains(&name));
                 }
                 for name in ["auth", "provider", "skill", "update", "version", "help"] {
@@ -392,12 +462,13 @@ mod tests {
 
     #[test]
     fn hidden_providers_still_parse() {
-        let providers = test_providers(false, false, false, false, false, false);
+        let providers = test_providers(false, false, false, false, false, false, false);
         for args in [
             vec!["foac", "confluence", "page", "list"],
             vec!["foac", "github", "issue", "list", "--repo", "owner/repo"],
             vec!["foac", "jira", "issue", "list", "--jql", "project = ENG"],
             vec!["foac", "linear", "team", "list"],
+            vec!["foac", "neon", "project", "list"],
             vec!["foac", "sentry", "issue", "list", "--org", "acme"],
             vec!["foac", "slack", "conversation", "list"],
         ] {
@@ -407,7 +478,7 @@ mod tests {
 
     #[test]
     fn hidden_provider_help_remains_available() {
-        let providers = test_providers(false, false, false, false, false, false);
+        let providers = test_providers(false, false, false, false, false, false, false);
         for (args, usage) in [
             (
                 vec!["foac", "confluence", "--help"],
@@ -416,6 +487,7 @@ mod tests {
             (vec!["foac", "github", "--help"], "Usage: foac github"),
             (vec!["foac", "jira", "--help"], "Usage: foac jira"),
             (vec!["foac", "linear", "--help"], "Usage: foac linear"),
+            (vec!["foac", "neon", "--help"], "Usage: foac neon"),
             (vec!["foac", "sentry", "--help"], "Usage: foac sentry"),
             (vec!["foac", "slack", "--help"], "Usage: foac slack"),
         ] {
@@ -428,14 +500,14 @@ mod tests {
     #[test]
     fn hidden_providers_are_not_suggested() {
         let error = parse_error(
-            &test_providers(false, false, false, false, false, false),
+            &test_providers(false, false, false, false, false, false, false),
             ["foac", "githu"],
         )
         .to_string();
         assert!(!error.contains("github"));
 
         let error = parse_error(
-            &test_providers(false, true, false, false, false, false),
+            &test_providers(false, true, false, false, false, false, false),
             ["foac", "githu"],
         )
         .to_string();
@@ -449,6 +521,7 @@ mod tests {
             ("github", "foac github issue list"),
             ("jira", "foac jira issue list"),
             ("linear", "foac linear issue list"),
+            ("neon", "foac neon branch list"),
             ("sentry", "foac sentry issue list"),
             ("slack", "foac slack search"),
         ];
@@ -474,6 +547,7 @@ mod tests {
             vec!["foac", "auth"],
             vec!["foac", "auth", "linear"],
             vec!["foac", "auth", "github"],
+            vec!["foac", "auth", "neon"],
             vec!["foac", "auth", "jira"],
             vec!["foac", "auth", "confluence"],
             vec!["foac", "auth", "sentry"],
@@ -500,6 +574,9 @@ mod tests {
             vec!["foac", "auth", "github", "status"],
             vec!["foac", "auth", "github", "login"],
             vec!["foac", "auth", "github", "logout"],
+            vec!["foac", "auth", "neon", "status"],
+            vec!["foac", "auth", "neon", "login"],
+            vec!["foac", "auth", "neon", "logout"],
             vec!["foac", "auth", "jira", "status"],
             vec!["foac", "auth", "jira", "login"],
             vec![
@@ -544,7 +621,7 @@ mod tests {
             Cli::try_parse_from(args).unwrap();
         }
         // --host is a Sentry and Jira login flag; clap rejects it elsewhere.
-        for provider in ["linear", "github", "slack"] {
+        for provider in ["linear", "github", "neon", "slack"] {
             let parsed =
                 Cli::try_parse_from(["foac", "auth", provider, "login", "--host", "example.com"]);
             assert!(parsed.is_err());
@@ -575,6 +652,8 @@ mod tests {
             vec!["foac", "provider", "disable", "jira"],
             vec!["foac", "provider", "enable", "confluence"],
             vec!["foac", "provider", "disable", "confluence"],
+            vec!["foac", "provider", "enable", "neon"],
+            vec!["foac", "provider", "disable", "neon"],
             vec!["foac", "provider", "enable", "sentry"],
             vec!["foac", "provider", "disable", "sentry"],
             vec!["foac", "provider", "enable", "slack"],
@@ -675,7 +754,7 @@ mod tests {
         assert!(missing_provider.contains("<PROVIDER>"));
         assert!(
             missing_provider
-                .contains("possible values: confluence, github, jira, linear, sentry, slack")
+                .contains("possible values: confluence, github, jira, linear, neon, sentry, slack")
         );
         assert!(Cli::try_parse_from(["foac", "skill", "print", "nope"]).is_err());
         assert!(matches!(
@@ -765,12 +844,14 @@ mod tests {
         slack: bool,
         jira: bool,
         confluence: bool,
-    ) -> [Provider; 6] {
+        neon: bool,
+    ) -> [Provider; 7] {
         [
             Provider::new("confluence", confluence),
             Provider::new("github", github),
             Provider::new("jira", jira),
             Provider::new("linear", linear),
+            Provider::new("neon", neon),
             Provider::new("sentry", sentry),
             Provider::new("slack", slack),
         ]
