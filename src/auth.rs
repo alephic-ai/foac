@@ -2093,7 +2093,15 @@ mod tests {
 
     #[test]
     fn single_provider_status_nests_under_the_provider_key() {
-        let status = keyed_provider_status(Provider::Linear, &MemoryStore::default());
+        // ponytail: build the status from injected parts instead of
+        // keyed_provider_status, which reads real env vars (LINEAR_API_KEY)
+        // and validates live tokens over the network.
+        let status = nest(
+            Provider::Linear,
+            credential_status(Err(ResolveError::Missing("missing".into())), |_| {
+                unreachable!()
+            }),
+        );
         assert_eq!(status["linear"]["status"], "unauthenticated");
         assert!(status.get("status").is_none());
         assert!(status.get("github").is_none());
