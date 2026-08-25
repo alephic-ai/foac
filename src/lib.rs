@@ -14,3 +14,4 @@ pub mod rest;
 pub mod sentry;
 pub mod slack;
 pub mod update;
+pub mod vercel;
