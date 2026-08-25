@@ -70,12 +70,6 @@ impl Settings {
         }
     }
 
-    /// The global toggle alone, ignoring any `.foac.toml` override; skills are
-    /// installed machine-wide, so per-folder toggles must not affect them.
-    pub fn enabled_globally(&self, name: &str) -> bool {
-        !self.disabled_providers.iter().any(|p| p == name)
-    }
-
     fn set_enabled(&mut self, name: &str, enabled: bool) {
         self.disabled_providers.retain(|p| p != name);
         if !enabled {
@@ -142,10 +136,18 @@ pub struct SettingsStore;
 
 impl SettingsStore {
     pub fn load(&self) -> Result<Settings, Box<dyn std::error::Error>> {
-        let path = settings_path().ok_or("could not determine the settings path")?;
-        let mut settings = load_settings_from(&path)?;
+        let mut settings = self.load_global()?;
         settings.local = local_settings_for_cwd()?;
         Ok(settings)
+    }
+
+    /// The global settings alone, never reading a per-folder `.foac.toml`;
+    /// skills are installed machine-wide, so `skill install` must not depend
+    /// on the working directory (a local toggle or a malformed local file
+    /// must not affect it).
+    pub fn load_global(&self) -> Result<Settings, Box<dyn std::error::Error>> {
+        let path = settings_path().ok_or("could not determine the settings path")?;
+        load_settings_from(&path)
     }
 
     fn set_enabled(
@@ -944,11 +946,13 @@ mod tests {
         assert!(settings.enabled("slack")); // listed in both locally: enabled wins
         assert!(!settings.enabled("sentry")); // untouched locally: global applies
 
-        // enabled_globally ignores the local overrides entirely.
-        assert!(!settings.enabled_globally("github"));
-        assert!(settings.enabled_globally("linear"));
-        assert!(settings.enabled_globally("slack"));
-        assert!(!settings.enabled_globally("sentry"));
+        // Without the local overrides (the `load_global` view), only the
+        // global toggles apply.
+        settings.local = None;
+        assert!(!settings.enabled("github"));
+        assert!(settings.enabled("linear"));
+        assert!(settings.enabled("slack"));
+        assert!(!settings.enabled("sentry"));
     }
 
     #[test]

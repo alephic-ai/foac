@@ -306,10 +306,11 @@ fn render_provider_skill(name: &str) -> String {
 }
 
 fn skill_install_cmd() -> Result<(), Box<dyn std::error::Error>> {
-    // Skills are installed machine-wide, so use the global toggles only and
-    // ignore any per-folder .foac.toml override in effect here.
-    let settings = provider::SettingsStore.load()?;
-    let active: Vec<&str> = providers_where(|name| settings.enabled_globally(name))
+    // Skills are installed machine-wide, so load the global settings only:
+    // a per-folder .foac.toml override must neither toggle providers here
+    // nor, when malformed, block the install.
+    let settings = provider::SettingsStore.load_global()?;
+    let active: Vec<&str> = providers_where(|name| settings.enabled(name))
         .iter()
         .filter(|provider| provider.active)
         .map(|provider| provider.name)
