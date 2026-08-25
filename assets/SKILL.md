@@ -67,7 +67,8 @@ foac <provider> <resource> <verb> [flags]
 ```
 
 - A provider is the external product or API named by the first command segment.
-  The top-level `--help` lists only authenticated, enabled providers.
+  The top-level `--help` lists only authenticated, enabled providers, under a
+  separate `Providers:` heading.
 <!-- foac-provider:linear -->
 - `linear`: issues, projects, teams, users, cycles, labels, workflow states,
   documents, initiatives, milestones, status updates, and attachments.
