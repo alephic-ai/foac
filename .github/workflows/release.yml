@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [master]
+    branches: [main]
     # Only changes to the binary's code or compiled-in assets warrant a
     # release; docs and workflow edits ride along with the next real one.
     paths:
@@ -40,10 +40,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Work from the current tip of master, not the trigger commit, so a
+          # Work from the current tip of main, not the trigger commit, so a
           # run queued behind another one sees the bump the first run pushed.
-          git fetch origin master
-          git checkout -B master origin/master
+          git fetch origin main
+          git checkout -B main origin/main
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
           if [ -z "$version" ]; then
             echo "Could not read version from Cargo.toml" >&2
@@ -75,7 +75,7 @@ jobs:
           fi
           # New commits on a released version: bump from conventional-commit
           # prefixes (feat! -> major, feat -> minor, anything else -> patch),
-          # commit the bump to master, and release it in this same run.
+          # commit the bump to main, and release it in this same run.
           subjects=$(git log "${tag}..HEAD" --format=%s)
           IFS=. read -r major minor patch <<<"$version"
           if grep -qE '^[a-zA-Z]+(\([^)]*\))?!:' <<<"$subjects"; then
@@ -91,7 +91,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "Release ${new}"
-          git push origin master
+          git push origin main
           echo "Bumped ${version} -> ${new}"
           sha=$(git rev-parse HEAD)
           git tag "v${new}" "$sha"

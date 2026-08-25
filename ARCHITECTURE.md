@@ -142,7 +142,7 @@ not duplication.
   agents' skill folders and removes inactive ones. CI validates every rendered
   skill. Any change to commands, flags, or conventions updates the source file
   in the same commit.
-- Releases are automated. A push to master touching `src/`, `graphql/`,
+- Releases are automated. A push to main touching `src/`, `graphql/`,
   `doc/SKILL.md`, or Cargo files bumps the version from conventional-commit
   prefixes and publishes binaries. Commit prefixes are therefore load-bearing.
 
@@ -170,7 +170,7 @@ not duplication.
 ## Where this system is meant to grow
 
 - More providers. Candidates are tracked in
-  [GitHub issues](https://github.com/lra/foac/issues). A new REST provider
+  [GitHub issues](https://github.com/alephic-ai/foac/issues). A new REST provider
   follows `sentry.rs`'s shape on top of the shared core in `rest.rs`
   (recipe: `doc/adding-a-rest-command.md`). A new GraphQL provider copies
   Linear's setup: vendored schema, `queries.graphql`, codegen macro. Every

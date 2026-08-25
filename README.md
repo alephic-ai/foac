@@ -115,18 +115,18 @@ graph LR
 | Slack | Conversations, messages, threads, users, message search, reactions | [doc/slack.md](doc/slack.md) |
 
 Candidates for more providers are tracked in
-[GitHub issues](https://github.com/lra/foac/issues).
+[GitHub issues](https://github.com/alephic-ai/foac/issues).
 
 ## Install
 
 With [mise](https://mise.jdx.dev), on macOS, Linux, or Windows:
 
 ```sh
-mise use -g github:lra/foac
+mise use -g github:alephic-ai/foac
 ```
 
 This installs the `foac` binary from
-[GitHub Releases](https://github.com/lra/foac/releases) and puts it on your
+[GitHub Releases](https://github.com/alephic-ai/foac/releases) and puts it on your
 `PATH`; `foac update` keeps it current after that.
 
 ## Quick start
