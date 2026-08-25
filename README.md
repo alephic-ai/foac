@@ -18,11 +18,11 @@ and one-off CLIs, each with its own config and its own copy of your tokens:
 
 ```mermaid
 graph LR
-    CC([Claude Code]) --> LMCP & GHCLI & AMCP & NCLI & SMCP & SLMCP & VMCP
-    CU([Cursor]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCP & VMCP
-    GRK([Grok Build]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCP & VMCP
-    CX([Codex]) --> LMCP & GHCLI & AMCP & NCLI & SMCP & SLMCP & VMCP
-    GEM([Gemini CLI]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCP & VMCP
+    CC([Claude Code]) --> LMCP & GHCLI & AMCP & NCLI & SMCP & SLMCP & VCLI
+    CU([Cursor]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCP & VCLI
+    GRK([Grok Build]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCP & VCLI
+    CX([Codex]) --> LMCP & GHCLI & AMCP & NCLI & SMCP & SLMCP & VCLI
+    GEM([Gemini CLI]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCP & VCLI
     LMCP{{Linear MCP server}} --> Linear[(Linear)]
     GHMCP{{GitHub MCP server}} --> GitHub[(GitHub)]
     GHCLI[[gh CLI]] --> GitHub
@@ -30,14 +30,14 @@ graph LR
     NCLI[[neonctl CLI]] --> Neon[(Neon)]
     SMCP{{Sentry MCP server}} --> Sentry[(Sentry)]
     SLMCP{{Slack MCP server}} --> Slack[(Slack)]
-    VMCP{{Vercel MCP server}} --> Vercel[(Vercel)]
+    VCLI[[Vercel CLI]] --> Vercel[(Vercel)]
     classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
     classDef mcp fill:#ffe0b2,stroke:#e65100,color:#000
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
     class CC,CU,GRK,CX,GEM harness
-    class LMCP,GHMCP,AMCP,SMCP,SLMCP,VMCP mcp
-    class GHCLI,NCLI cli
+    class LMCP,GHMCP,AMCP,SMCP,SLMCP mcp
+    class GHCLI,NCLI,VCLI cli
     class Linear,GitHub,Jira,Confluence,Neon,Sentry,Slack,Vercel provider
 ```
 
