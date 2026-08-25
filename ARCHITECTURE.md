@@ -171,13 +171,11 @@ not duplication.
 
 - More providers. Candidates are tracked in
   [GitHub issues](https://github.com/alephic-ai/foac/issues). A new REST provider
-  follows `sentry.rs`'s shape on top of the shared core in `rest.rs`
-  (recipe: `doc/adding-a-rest-command.md`). A new GraphQL provider copies
-  Linear's setup: vendored schema, `queries.graphql`, codegen macro. Every
-  provider addition also touches: `auth.rs` (Provider enum, token resolution, identity),
-  `provider.rs`'s `PROVIDERS`, `main.rs`'s `providers()`, and `doc/SKILL.md`
-  (with marker blocks, including a frontmatter `name`/`description` pair and
-  an H1 for the new provider).
+  follows `sentry.rs`'s shape on top of the shared core in `rest.rs`; a new
+  GraphQL provider copies Linear's setup: vendored schema,
+  `queries.graphql`, codegen macro. The full recipe, including every
+  registration and documentation touch point, is
+  `doc/adding-a-provider.md`.
 - Structural change is provider-driven. When adding a provider raises a
   question the current structure can't answer, restructure then. Don't add
   speculative abstraction beforehand, and don't work around the gap. The
