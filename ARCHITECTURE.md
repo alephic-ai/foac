@@ -183,8 +183,7 @@ not duplication.
   no longer sustainable. Don't split a provider file into a module directory
   preemptively.
 - Deeper coverage of existing providers (new resources/verbs) follows
-  `doc/adding-a-command.md` for Linear and `doc/adding-a-rest-command.md`
-  for REST providers.
+  `doc/adding-a-command.md`.
 - Binary transfer and log streaming are on the backlog. Add them if they can
   be made explicit and discoverable in the command grammar (today's commands
   are JSON metadata only).
@@ -197,6 +196,6 @@ cargo test --locked     # test (unit tests inline, e2e in tests/cli.rs)
 ```
 
 Conventions: read `doc/layout.md` before touching `src/`;
-`doc/adding-a-command.md` for new Linear commands; `doc/releasing.md` for the
+`doc/adding-a-command.md` for new commands; `doc/releasing.md` for the
 release flow. Tests must not hit real auth: parse-clean commands only in
 `tests/cli.rs`, injected stores/local TCP servers elsewhere.

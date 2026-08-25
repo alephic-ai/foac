@@ -93,6 +93,5 @@ Commit with a `feat:` prefix — version bumps derive from
 conventional-commit prefixes, and a push to main publishes the release
 (`doc/releasing.md`).
 
-New resources or verbs on an existing provider are the smaller recipes:
-[adding-a-command.md](adding-a-command.md) for Linear,
-[adding-a-rest-command.md](adding-a-rest-command.md) for REST providers.
+New resources or verbs on an existing provider are the smaller recipe:
+[adding-a-command.md](adding-a-command.md).
