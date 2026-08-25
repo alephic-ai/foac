@@ -2098,9 +2098,10 @@ mod tests {
         // and validates live tokens over the network.
         let status = nest(
             Provider::Linear,
-            credential_status(Err(ResolveError::Missing("missing".into())), |_| {
-                unreachable!()
-            }),
+            credential_status(
+                Err(ResolveError::Missing("missing".into())),
+                |_| unreachable!(),
+            ),
         );
         assert_eq!(status["linear"]["status"], "unauthenticated");
         assert!(status.get("status").is_none());
