@@ -32,6 +32,8 @@ single comment store, so `issue comment` commands work on both.
 
 ```mermaid
 erDiagram
+    %% LR stacks siblings vertically: tall and narrow instead of very wide
+    direction LR
     REPO ||--o{ ISSUE : has
     REPO ||--o{ PULL : has
     REPO ||--o{ BRANCH : has

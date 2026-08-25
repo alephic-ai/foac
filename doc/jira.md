@@ -42,6 +42,8 @@ not queried by the CLI.
 
 ```mermaid
 erDiagram
+    %% LR stacks siblings vertically: tall and narrow instead of very wide
+    direction LR
     PROJECT ||--o{ ISSUE : contains
     ISSUE ||--o{ COMMENT : has
     ISSUE }o--o| USER : "assigned to"

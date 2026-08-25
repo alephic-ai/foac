@@ -17,6 +17,8 @@ enforces the exclusivity. The project↔initiative edge is not exposed.
 
 ```mermaid
 erDiagram
+    %% LR stacks siblings vertically: tall and narrow instead of very wide
+    direction LR
     WORKSPACE ||--o{ TEAM : contains
     TEAM }o--o{ USER : "has members"
     TEAM ||--o{ ISSUE : has
