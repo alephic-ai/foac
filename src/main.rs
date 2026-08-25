@@ -194,7 +194,10 @@ fn providers_help_section(providers: &[Provider]) -> String {
     let command = Cli::command();
     let styles = command.get_styles();
     let (header, literal) = (styles.get_header(), styles.get_literal());
-    let active: Vec<&Provider> = providers.iter().filter(|provider| provider.active).collect();
+    let active: Vec<&Provider> = providers
+        .iter()
+        .filter(|provider| provider.active)
+        .collect();
     let width = active.iter().map(|provider| provider.name.len()).max();
     let Some(width) = width else {
         return String::new();
