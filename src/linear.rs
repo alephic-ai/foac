@@ -17,8 +17,8 @@ macro_rules! linear_query {
     ($($name:ident),+ $(,)?) => {$(
         #[derive(GraphQLQuery)]
         #[graphql(
-            schema_path = "graphql/linear/schema.graphql",
-            query_path = "graphql/linear/queries.graphql",
+            schema_path = "assets/graphql/linear/schema.graphql",
+            query_path = "assets/graphql/linear/queries.graphql",
             variables_derives = "Clone, Default",
             skip_serializing_none
         )]
