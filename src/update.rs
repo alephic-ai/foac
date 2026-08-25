@@ -25,7 +25,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     let mut builder = self_update::backends::github::Update::configure();
     builder
-        .repo_owner("lra")
+        .repo_owner("alephic-ai")
         .repo_name("foac")
         .bin_name("foac")
         .show_download_progress(true)
