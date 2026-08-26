@@ -65,6 +65,48 @@ pub fn print_highlighting(value: &Value, format: Format, highlight_key: &str) {
     emit(value, format, Some(highlight_key));
 }
 
+/// One combined table for a pipe-mode `get` run: one row per response.
+/// Only table mode reaches here; JSON pipe output streams one document per
+/// get instead.
+pub fn print_get_rows(bodies: &[Value]) {
+    let rows: Vec<Value> = bodies.iter().map(get_row).collect();
+    print(
+        &serde_json::json!({ "items": rows, "pageInfo": { "count": rows.len() } }),
+        Format::Table,
+    );
+}
+
+/// A get response as a table row. A known envelope — a one-key wrapper
+/// (Linear's `{user}`), Slack's `ok` beside the resource, or Jira's
+/// `fields` — flattens into the wrapper's scalars plus the inner object's
+/// fields, so the row shows the resource, not the envelope. A flat resource
+/// whose one nested value is incidental (Jira user's `avatarUrls`) is left
+/// alone.
+fn get_row(body: &Value) -> Value {
+    let Some(wrapper) = body.as_object() else {
+        return body.clone();
+    };
+    let mut nested = wrapper
+        .iter()
+        .filter(|(_, value)| value.is_object() || value.is_array());
+    match (nested.next(), nested.next()) {
+        (Some((key, Value::Object(inner))), None)
+            if wrapper.len() == 1 || wrapper.contains_key("ok") || key == "fields" =>
+        {
+            let mut row: Map<String, Value> = wrapper
+                .iter()
+                .filter(|(_, value)| !value.is_object())
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect();
+            for (key, value) in inner {
+                row.entry(key.clone()).or_insert_with(|| value.clone());
+            }
+            Value::Object(row)
+        }
+        _ => body.clone(),
+    }
+}
+
 /// JSON uses [`print`]; table mode writes `text` as-is (auth summaries).
 pub fn print_text(text: &str, value: &Value, format: Format) {
     match format {
@@ -449,6 +491,66 @@ mod tests {
         assert_eq!(
             render(&value, Format::Table, 80),
             "hasNextPage=false nextPage=null hasPreviousPage=false previousPage=null\n"
+        );
+    }
+
+    #[test]
+    fn get_rows_flatten_single_object_envelopes() {
+        // Slack: scalar envelope beside one object.
+        assert_eq!(
+            get_row(&json!({ "ok": true, "user": { "id": "U1", "name": "tom" } })),
+            json!({ "ok": true, "id": "U1", "name": "tom" })
+        );
+        // Linear: one-key wrapper.
+        assert_eq!(
+            get_row(&json!({ "user": { "id": "u-1", "email": "a@b.c" } })),
+            json!({ "id": "u-1", "email": "a@b.c" })
+        );
+        // Jira: wrapper scalars win over inner fields on collision.
+        assert_eq!(
+            get_row(
+                &json!({ "id": "10", "key": "ENG-1", "fields": { "id": "x", "summary": "Fix" } })
+            ),
+            json!({ "id": "10", "key": "ENG-1", "summary": "Fix" })
+        );
+        // Flat resources and multi-object bodies pass through unchanged.
+        let flat = json!({ "id": 1, "name": "web" });
+        assert_eq!(get_row(&flat), flat);
+        let multi = json!({ "id": 1, "user": {}, "assignee": {} });
+        assert_eq!(get_row(&multi), multi);
+        let array = json!({ "id": 1, "labels": [] });
+        assert_eq!(get_row(&array), array);
+        // A flat resource whose only nested value is incidental is not an
+        // envelope: Jira users must not grow avatar-size columns.
+        let jira_user = json!({
+            "accountId": "a1",
+            "displayName": "Ada",
+            "avatarUrls": { "16x16": "https://x/16.png", "48x48": "https://x/48.png" },
+        });
+        assert_eq!(get_row(&jira_user), jira_user);
+    }
+
+    #[test]
+    fn get_rows_render_as_one_list_table() {
+        let rows: Vec<Value> = [
+            json!({ "ok": true, "user": { "id": "U1", "name": "tom" } }),
+            json!({ "ok": true, "user": { "id": "U2", "name": "mike" } }),
+        ]
+        .iter()
+        .map(get_row)
+        .collect();
+        assert_eq!(
+            render(
+                &json!({ "items": rows, "pageInfo": { "count": rows.len() } }),
+                Format::Table,
+                80
+            ),
+            " id | name | ok\n\
+             ----+------+------\n\
+             \x20U1 | tom  | true\n\
+             \x20U2 | mike | true\n\
+             \n\
+             count=2\n"
         );
     }
 

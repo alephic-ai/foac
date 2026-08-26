@@ -2,6 +2,7 @@ use clap::{Args, Subcommand};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
+use crate::pipe::{self, FromFlag};
 use crate::rest::{self, Api, Auth, insert_opt, push_query};
 
 pub(crate) const DEFAULT_HOST: &str = "sentry.io";
@@ -61,7 +62,11 @@ enum ProjectCmd {
         page: Page,
     },
     /// Get a project by slug
-    Get { slug: String },
+    Get {
+        slug: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
 }
 
 #[derive(Subcommand)]
@@ -81,7 +86,11 @@ enum IssueCmd {
         page: Page,
     },
     /// Get an issue by numeric ID or short ID like PROJ-123
-    Get { id: String },
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Update an issue; only supplied fields are changed
     Update {
         id: String,
@@ -121,10 +130,12 @@ enum EventCmd {
     },
     /// Get an event by ID
     Get {
-        id: String,
+        id: Option<String>,
         /// Project slug
         #[arg(long)]
         project: String,
+        #[command(flatten)]
+        from: FromFlag,
     },
 }
 
@@ -139,7 +150,11 @@ enum ReleaseCmd {
         page: Page,
     },
     /// Get a release by version
-    Get { version: String },
+    Get {
+        version: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
 }
 
 macro_rules! path {
@@ -216,9 +231,9 @@ fn run_project(api: &Api, org: String, cmd: ProjectCmd) -> Result<(), Box<dyn st
             path!["organizations", org, "projects"],
             page_query(page),
         ),
-        ProjectCmd::Get { slug } => {
-            api.print(Method::GET, path!["projects", org, slug], Vec::new(), None)
-        }
+        ProjectCmd::Get { slug, from } => pipe::run_get(slug, from, api.format, |slug| {
+            api.get_body(path!["projects", org, slug], Vec::new())
+        }),
     }
 }
 
@@ -240,15 +255,10 @@ fn run_issue(api: &Api, org: String, cmd: IssueCmd) -> Result<(), Box<dyn std::e
             push_query(&mut parameters, "statsPeriod", stats_period);
             print_list(api, Method::GET, segments, parameters)
         }
-        IssueCmd::Get { id } => {
+        IssueCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
             let id = resolve_issue_id(api, &org, &id)?;
-            api.print(
-                Method::GET,
-                path!["organizations", org, "issues", id],
-                Vec::new(),
-                None,
-            )
-        }
+            api.get_body(path!["organizations", org, "issues", id], Vec::new())
+        }),
         IssueCmd::Update {
             id,
             status,
@@ -292,12 +302,9 @@ fn run_event(api: &Api, org: String, cmd: EventCmd) -> Result<(), Box<dyn std::e
             };
             print_list(api, Method::GET, segments, page_query(page))
         }
-        EventCmd::Get { id, project } => api.print(
-            Method::GET,
-            path!["projects", org, project, "events", id],
-            Vec::new(),
-            None,
-        ),
+        EventCmd::Get { id, project, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!["projects", org, project, "events", id], Vec::new())
+        }),
     }
 }
 
@@ -313,12 +320,9 @@ fn run_release(api: &Api, org: String, cmd: ReleaseCmd) -> Result<(), Box<dyn st
                 parameters,
             )
         }
-        ReleaseCmd::Get { version } => api.print(
-            Method::GET,
-            path!["organizations", org, "releases", version],
-            Vec::new(),
-            None,
-        ),
+        ReleaseCmd::Get { version, from } => pipe::run_get(version, from, api.format, |version| {
+            api.get_body(path!["organizations", org, "releases", version], Vec::new())
+        }),
     }
 }
 

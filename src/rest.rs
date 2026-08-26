@@ -55,6 +55,17 @@ impl Api {
         Ok(())
     }
 
+    /// Fetch one resource's body: the GET arm every piped `get` closure uses.
+    pub(crate) fn get_body(
+        &self,
+        segments: Vec<String>,
+        query: Vec<(&'static str, String)>,
+    ) -> Result<Value, Box<dyn std::error::Error>> {
+        Ok(self
+            .send(reqwest::Method::GET, &segments, &query, None)?
+            .body)
+    }
+
     pub(crate) fn send(
         &self,
         method: reqwest::Method,
@@ -81,6 +92,9 @@ impl Api {
             .and_then(|value| value.to_str().ok())
             .map(str::to_owned);
         let body = parse_response(status, response.text()?);
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Err(crate::pipe::NotFound(body.to_string()).into());
+        }
         if !status.is_success() {
             return Err(body.to_string().into());
         }

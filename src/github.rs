@@ -4,6 +4,7 @@ use clap::{Args, Subcommand, ValueEnum};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
+use crate::pipe::{self, FromFlag};
 use crate::rest::{self, Api, Auth, BodyInput, insert_opt, push_query};
 
 const API_URL: &str = "https://api.github.com/";
@@ -142,7 +143,11 @@ enum IssueCmd {
         page: Page,
     },
     /// Get an issue by number
-    Get { number: u64 },
+    Get {
+        number: Option<u64>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Create an issue
     Create {
         #[arg(long)]
@@ -229,7 +234,11 @@ enum PullCmd {
         page: Page,
     },
     /// Get a pull request
-    Get { number: u64 },
+    Get {
+        number: Option<u64>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Create a pull request
     Create {
         #[arg(long)]
@@ -346,7 +355,11 @@ enum WorkflowCmd {
         page: Page,
     },
     /// Get a workflow by numeric ID or file name
-    Get { id: String },
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Dispatch a workflow
     Dispatch {
         id: String,
@@ -381,7 +394,11 @@ enum RunCmd {
         page: Page,
     },
     /// Get a workflow run
-    Get { id: u64 },
+    Get {
+        id: Option<u64>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// List jobs in a workflow run
     Jobs {
         id: u64,
@@ -419,7 +436,11 @@ enum BranchCmd {
         page: Page,
     },
     /// Get a branch
-    Get { name: String },
+    Get {
+        name: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
 }
 
 #[derive(Subcommand)]
@@ -438,7 +459,11 @@ enum RefCmd {
 #[derive(Subcommand)]
 enum BranchProtectionCmd {
     /// Get branch protection
-    Get { branch: String },
+    Get {
+        branch: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Replace branch protection using a native GitHub JSON object
     Update {
         branch: String,
@@ -467,7 +492,11 @@ enum CommitCmd {
         page: Page,
     },
     /// Get a commit by ref or SHA
-    Get { r#ref: String },
+    Get {
+        r#ref: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
 }
 
 #[derive(Subcommand)]
@@ -480,7 +509,11 @@ enum CommitCommentCmd {
         page: Page,
     },
     /// Get a commit comment
-    Get { id: u64 },
+    Get {
+        id: Option<u64>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Create a commit comment
     Create {
         #[arg(long)]
@@ -541,7 +574,11 @@ enum CheckRunCmd {
         page: Page,
     },
     /// Get a check run
-    Get { id: u64 },
+    Get {
+        id: Option<u64>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Request that a check run execute again
     Rerequest { id: u64 },
 }
@@ -555,7 +592,11 @@ enum CheckSuiteCmd {
         page: Page,
     },
     /// Get a check suite
-    Get { id: u64 },
+    Get {
+        id: Option<u64>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Request that a check suite execute again
     Rerequest { id: u64 },
 }
@@ -628,7 +669,11 @@ enum ReleaseAssetCmd {
         page: Page,
     },
     /// Get release asset metadata
-    Get { id: u64 },
+    Get {
+        id: Option<u64>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Delete a release asset
     Delete { id: u64 },
 }
@@ -643,7 +688,11 @@ enum ArtifactCmd {
         page: Page,
     },
     /// Get artifact metadata
-    Get { id: u64 },
+    Get {
+        id: Option<u64>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Delete an artifact
     Delete { id: u64 },
 }
@@ -656,7 +705,11 @@ enum LabelCmd {
         page: Page,
     },
     /// Get a label
-    Get { name: String },
+    Get {
+        name: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Create a label
     Create {
         #[arg(long)]
@@ -693,7 +746,11 @@ enum CollaboratorCmd {
         page: Page,
     },
     /// Get a collaborator's repository permissions
-    Get { username: String },
+    Get {
+        username: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Add a collaborator or change their permission
     Add {
         username: String,
@@ -849,12 +906,9 @@ fn run_issue(api: &Api, repo: Repo, cmd: IssueCmd) -> Result<(), Box<dyn std::er
                 ListShape::Issues,
             )
         }
-        IssueCmd::Get { number } => api.print(
-            Method::GET,
-            path!(&repo, "issues", number),
-            Vec::new(),
-            None,
-        ),
+        IssueCmd::Get { number, from } => pipe::run_get(number, from, api.format, |number| {
+            api.get_body(path!(&repo, "issues", number), Vec::new())
+        }),
         IssueCmd::Create {
             title,
             body,
@@ -964,9 +1018,9 @@ fn run_pull(api: &Api, repo: Repo, cmd: PullCmd) -> Result<(), Box<dyn std::erro
                 ListShape::Array,
             )
         }
-        PullCmd::Get { number } => {
-            api.print(Method::GET, path!(&repo, "pulls", number), Vec::new(), None)
-        }
+        PullCmd::Get { number, from } => pipe::run_get(number, from, api.format, |number| {
+            api.get_body(path!(&repo, "pulls", number), Vec::new())
+        }),
         PullCmd::Create {
             title,
             head,
@@ -1114,12 +1168,9 @@ fn run_workflow(api: &Api, repo: Repo, cmd: WorkflowCmd) -> Result<(), Box<dyn s
             page_query(page),
             ListShape::Key("workflows"),
         ),
-        WorkflowCmd::Get { id } => api.print(
-            Method::GET,
-            path!(&repo, "actions", "workflows", id),
-            Vec::new(),
-            None,
-        ),
+        WorkflowCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!(&repo, "actions", "workflows", id), Vec::new())
+        }),
         WorkflowCmd::Dispatch {
             id,
             r#ref,
@@ -1183,12 +1234,9 @@ fn run_actions_run(api: &Api, repo: Repo, cmd: RunCmd) -> Result<(), Box<dyn std
                 ListShape::Key("workflow_runs"),
             )
         }
-        RunCmd::Get { id } => api.print(
-            Method::GET,
-            path!(&repo, "actions", "runs", id),
-            Vec::new(),
-            None,
-        ),
+        RunCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!(&repo, "actions", "runs", id), Vec::new())
+        }),
         RunCmd::Jobs { id, filter, page } => {
             let mut query = page_query(page);
             push_query(&mut query, "filter", filter);
@@ -1236,12 +1284,9 @@ fn run_branch(api: &Api, repo: Repo, cmd: BranchCmd) -> Result<(), Box<dyn std::
                 ListShape::Array,
             )
         }
-        BranchCmd::Get { name } => api.print(
-            Method::GET,
-            path!(&repo, "branches", name),
-            Vec::new(),
-            None,
-        ),
+        BranchCmd::Get { name, from } => pipe::run_get(name, from, api.format, |name| {
+            api.get_body(path!(&repo, "branches", name), Vec::new())
+        }),
     }
 }
 
@@ -1268,12 +1313,11 @@ fn run_branch_protection(
     cmd: BranchProtectionCmd,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
-        BranchProtectionCmd::Get { branch } => api.print(
-            Method::GET,
-            path!(&repo, "branches", branch, "protection"),
-            Vec::new(),
-            None,
-        ),
+        BranchProtectionCmd::Get { branch, from } => {
+            pipe::run_get(branch, from, api.format, |branch| {
+                api.get_body(path!(&repo, "branches", branch, "protection"), Vec::new())
+            })
+        }
         BranchProtectionCmd::Update { branch, rules_json } => api.print(
             Method::PUT,
             path!(&repo, "branches", branch, "protection"),
@@ -1313,12 +1357,9 @@ fn run_commit(api: &Api, repo: Repo, cmd: CommitCmd) -> Result<(), Box<dyn std::
                 ListShape::Array,
             )
         }
-        CommitCmd::Get { r#ref } => api.print(
-            Method::GET,
-            path!(&repo, "commits", r#ref),
-            Vec::new(),
-            None,
-        ),
+        CommitCmd::Get { r#ref, from } => pipe::run_get(r#ref, from, api.format, |r#ref| {
+            api.get_body(path!(&repo, "commits", r#ref), Vec::new())
+        }),
     }
 }
 
@@ -1339,9 +1380,9 @@ fn run_commit_comment(
             page_query(page),
             ListShape::Array,
         ),
-        CommitCommentCmd::Get { id } => {
-            api.print(Method::GET, path!(&repo, "comments", id), Vec::new(), None)
-        }
+        CommitCommentCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!(&repo, "comments", id), Vec::new())
+        }),
         CommitCommentCmd::Create {
             commit,
             body,
@@ -1432,12 +1473,9 @@ fn run_check_run(
                 ListShape::Key("check_runs"),
             )
         }
-        CheckRunCmd::Get { id } => api.print(
-            Method::GET,
-            path!(&repo, "check-runs", id),
-            Vec::new(),
-            None,
-        ),
+        CheckRunCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!(&repo, "check-runs", id), Vec::new())
+        }),
         CheckRunCmd::Rerequest { id } => api.print(
             Method::POST,
             path!(&repo, "check-runs", id, "rerequest"),
@@ -1460,12 +1498,9 @@ fn run_check_suite(
             page_query(page),
             ListShape::Key("check_suites"),
         ),
-        CheckSuiteCmd::Get { id } => api.print(
-            Method::GET,
-            path!(&repo, "check-suites", id),
-            Vec::new(),
-            None,
-        ),
+        CheckSuiteCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!(&repo, "check-suites", id), Vec::new())
+        }),
         CheckSuiteCmd::Rerequest { id } => api.print(
             Method::POST,
             path!(&repo, "check-suites", id, "rerequest"),
@@ -1573,12 +1608,9 @@ fn run_release_asset(
             page_query(page),
             ListShape::Array,
         ),
-        ReleaseAssetCmd::Get { id } => api.print(
-            Method::GET,
-            path!(&repo, "releases", "assets", id),
-            Vec::new(),
-            None,
-        ),
+        ReleaseAssetCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!(&repo, "releases", "assets", id), Vec::new())
+        }),
         ReleaseAssetCmd::Delete { id } => api.print(
             Method::DELETE,
             path!(&repo, "releases", "assets", id),
@@ -1601,12 +1633,9 @@ fn run_artifact(api: &Api, repo: Repo, cmd: ArtifactCmd) -> Result<(), Box<dyn s
                 ListShape::Key("artifacts"),
             )
         }
-        ArtifactCmd::Get { id } => api.print(
-            Method::GET,
-            path!(&repo, "actions", "artifacts", id),
-            Vec::new(),
-            None,
-        ),
+        ArtifactCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!(&repo, "actions", "artifacts", id), Vec::new())
+        }),
         ArtifactCmd::Delete { id } => api.print(
             Method::DELETE,
             path!(&repo, "actions", "artifacts", id),
@@ -1625,9 +1654,9 @@ fn run_label(api: &Api, repo: Repo, cmd: LabelCmd) -> Result<(), Box<dyn std::er
             page_query(page),
             ListShape::Array,
         ),
-        LabelCmd::Get { name } => {
-            api.print(Method::GET, path!(&repo, "labels", name), Vec::new(), None)
-        }
+        LabelCmd::Get { name, from } => pipe::run_get(name, from, api.format, |name| {
+            api.get_body(path!(&repo, "labels", name), Vec::new())
+        }),
         LabelCmd::Create {
             name,
             color,
@@ -1692,12 +1721,14 @@ fn run_collaborator(
                 ListShape::Array,
             )
         }
-        CollaboratorCmd::Get { username } => api.print(
-            Method::GET,
-            path!(&repo, "collaborators", username, "permission"),
-            Vec::new(),
-            None,
-        ),
+        CollaboratorCmd::Get { username, from } => {
+            pipe::run_get(username, from, api.format, |username| {
+                api.get_body(
+                    path!(&repo, "collaborators", username, "permission"),
+                    Vec::new(),
+                )
+            })
+        }
         CollaboratorCmd::Add {
             username,
             permission,

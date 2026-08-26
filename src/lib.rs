@@ -9,6 +9,7 @@ pub mod jira;
 pub mod linear;
 pub mod neon;
 pub mod output;
+pub mod pipe;
 pub mod provider;
 pub mod rest;
 pub mod sentry;
