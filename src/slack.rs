@@ -613,7 +613,9 @@ fn resolve_user(
             .then(|| item["id"].as_str().map(str::to_owned))
             .flatten()
         })?
-        .ok_or_else(|| crate::pipe::NotFound(format!("could not resolve Slack user {value}")).into())
+        .ok_or_else(|| {
+            crate::pipe::NotFound(format!("could not resolve Slack user {value}")).into()
+        })
 }
 
 /// Listing pages fetched so far for one name-resolution source. A piped join

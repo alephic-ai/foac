@@ -309,14 +309,7 @@ fn run_branch(
             )
         }
         BranchCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
-            Ok(api
-                .send(
-                    Method::GET,
-                    &path!["projects", project, "branches", id],
-                    &[],
-                    None,
-                )?
-                .body)
+            api.get_body(path!["projects", project, "branches", id], Vec::new())
         }),
         BranchCmd::Create { name, parent } => {
             let mut branch = Map::new();
@@ -370,14 +363,7 @@ fn run_endpoint(
     match cmd {
         EndpointCmd::List => print_list(api, path!["projects", project, "endpoints"], "endpoints"),
         EndpointCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
-            Ok(api
-                .send(
-                    Method::GET,
-                    &path!["projects", project, "endpoints", id],
-                    &[],
-                    None,
-                )?
-                .body)
+            api.get_body(path!["projects", project, "endpoints", id], Vec::new())
         }),
         EndpointCmd::Start { id } => endpoint_action(api, &project, &id, "start"),
         EndpointCmd::Suspend { id } => endpoint_action(api, &project, &id, "suspend"),
@@ -413,14 +399,7 @@ fn run_operation(
             cursor,
         ),
         OperationCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
-            Ok(api
-                .send(
-                    Method::GET,
-                    &path!["projects", project, "operations", id],
-                    &[],
-                    None,
-                )?
-                .body)
+            api.get_body(path!["projects", project, "operations", id], Vec::new())
         }),
     }
 }

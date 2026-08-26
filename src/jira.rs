@@ -343,7 +343,7 @@ fn run_issue(api: &Api, cmd: IssueCmd) -> Result<(), Box<dyn std::error::Error>>
             Ok(())
         }
         IssueCmd::Get { key, from } => pipe::run_get(key, from, api.format, |key| {
-            Ok(api.send(Method::GET, &path!["issue", key], &[], None)?.body)
+            api.get_body(path!["issue", key], Vec::new())
         }),
         IssueCmd::Create {
             project,
@@ -446,9 +446,7 @@ fn run_project(api: &Api, cmd: ProjectCmd) -> Result<(), Box<dyn std::error::Err
             )
         }
         ProjectCmd::Get { key, from } => pipe::run_get(key, from, api.format, |key| {
-            Ok(api
-                .send(Method::GET, &path!["project", key], &[], None)?
-                .body)
+            api.get_body(path!["project", key], Vec::new())
         }),
     }
 }
@@ -467,13 +465,9 @@ fn run_sprint(api: &Api, cmd: SprintCmd) -> Result<(), Box<dyn std::error::Error
                 Some("values"),
             )
         }
-        SprintCmd::Get { id, from } => {
-            pipe::run_get(id, from, api.format, |id| {
-                Ok(api
-                    .send(Method::GET, &agile_path!["sprint", id], &[], None)?
-                    .body)
-            })
-        }
+        SprintCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(agile_path!["sprint", id], Vec::new())
+        }),
     }
 }
 
@@ -491,14 +485,7 @@ fn run_user(api: &Api, cmd: UserCmd) -> Result<(), Box<dyn std::error::Error>> {
         },
         UserCmd::Get { account_id, from } => {
             pipe::run_get(account_id, from, api.format, |account_id| {
-                Ok(api
-                    .send(
-                        Method::GET,
-                        &path!["user"],
-                        &[("accountId", account_id)],
-                        None,
-                    )?
-                    .body)
+                api.get_body(path!["user"], vec![("accountId", account_id)])
             })
         }
     }

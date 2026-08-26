@@ -231,9 +231,7 @@ fn run_space(api: &Api, cmd: SpaceCmd) -> Result<(), Box<dyn std::error::Error>>
         }
         SpaceCmd::Get { space, from } => pipe::run_get(space, from, api.format, |space| {
             let id = resolve_space_id(api, &space)?;
-            Ok(api
-                .send(Method::GET, &v2_path!["spaces", id], &[], None)?
-                .body)
+            api.get_body(v2_path!["spaces", id], Vec::new())
         }),
     }
 }
@@ -253,14 +251,10 @@ fn run_page(api: &Api, cmd: PageCmd) -> Result<(), Box<dyn std::error::Error>> {
             print_cursor_list(api, v2_path!["pages"], query, cursor)
         }
         PageCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
-            Ok(api
-                .send(
-                    Method::GET,
-                    &v2_path!["pages", id],
-                    &[("body-format", "storage".to_owned())],
-                    None,
-                )?
-                .body)
+            api.get_body(
+                v2_path!["pages", id],
+                vec![("body-format", "storage".to_owned())],
+            )
         }),
         PageCmd::Create {
             space,

@@ -906,16 +906,9 @@ fn run_issue(api: &Api, repo: Repo, cmd: IssueCmd) -> Result<(), Box<dyn std::er
                 ListShape::Issues,
             )
         }
-        IssueCmd::Get { number, from } => pipe::run_get(
-            number,
-            from,
-            api.format,
-            |number| {
-                Ok(api
-                    .send(Method::GET, &path!(&repo, "issues", number), &[], None)?
-                    .body)
-            },
-        ),
+        IssueCmd::Get { number, from } => pipe::run_get(number, from, api.format, |number| {
+            api.get_body(path!(&repo, "issues", number), Vec::new())
+        }),
         IssueCmd::Create {
             title,
             body,
@@ -1025,16 +1018,9 @@ fn run_pull(api: &Api, repo: Repo, cmd: PullCmd) -> Result<(), Box<dyn std::erro
                 ListShape::Array,
             )
         }
-        PullCmd::Get { number, from } => pipe::run_get(
-            number,
-            from,
-            api.format,
-            |number| {
-                Ok(api
-                    .send(Method::GET, &path!(&repo, "pulls", number), &[], None)?
-                    .body)
-            },
-        ),
+        PullCmd::Get { number, from } => pipe::run_get(number, from, api.format, |number| {
+            api.get_body(path!(&repo, "pulls", number), Vec::new())
+        }),
         PullCmd::Create {
             title,
             head,
@@ -1183,14 +1169,7 @@ fn run_workflow(api: &Api, repo: Repo, cmd: WorkflowCmd) -> Result<(), Box<dyn s
             ListShape::Key("workflows"),
         ),
         WorkflowCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
-            Ok(api
-                .send(
-                    Method::GET,
-                    &path!(&repo, "actions", "workflows", id),
-                    &[],
-                    None,
-                )?
-                .body)
+            api.get_body(path!(&repo, "actions", "workflows", id), Vec::new())
         }),
         WorkflowCmd::Dispatch {
             id,
@@ -1255,13 +1234,9 @@ fn run_actions_run(api: &Api, repo: Repo, cmd: RunCmd) -> Result<(), Box<dyn std
                 ListShape::Key("workflow_runs"),
             )
         }
-        RunCmd::Get { id, from } => {
-            pipe::run_get(id, from, api.format, |id| {
-                Ok(api
-                    .send(Method::GET, &path!(&repo, "actions", "runs", id), &[], None)?
-                    .body)
-            })
-        }
+        RunCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!(&repo, "actions", "runs", id), Vec::new())
+        }),
         RunCmd::Jobs { id, filter, page } => {
             let mut query = page_query(page);
             push_query(&mut query, "filter", filter);
@@ -1310,9 +1285,7 @@ fn run_branch(api: &Api, repo: Repo, cmd: BranchCmd) -> Result<(), Box<dyn std::
             )
         }
         BranchCmd::Get { name, from } => pipe::run_get(name, from, api.format, |name| {
-            Ok(api
-                .send(Method::GET, &path!(&repo, "branches", name), &[], None)?
-                .body)
+            api.get_body(path!(&repo, "branches", name), Vec::new())
         }),
     }
 }
@@ -1342,14 +1315,7 @@ fn run_branch_protection(
     match cmd {
         BranchProtectionCmd::Get { branch, from } => {
             pipe::run_get(branch, from, api.format, |branch| {
-                Ok(api
-                    .send(
-                        Method::GET,
-                        &path!(&repo, "branches", branch, "protection"),
-                        &[],
-                        None,
-                    )?
-                    .body)
+                api.get_body(path!(&repo, "branches", branch, "protection"), Vec::new())
             })
         }
         BranchProtectionCmd::Update { branch, rules_json } => api.print(
@@ -1392,9 +1358,7 @@ fn run_commit(api: &Api, repo: Repo, cmd: CommitCmd) -> Result<(), Box<dyn std::
             )
         }
         CommitCmd::Get { r#ref, from } => pipe::run_get(r#ref, from, api.format, |r#ref| {
-            Ok(api
-                .send(Method::GET, &path!(&repo, "commits", r#ref), &[], None)?
-                .body)
+            api.get_body(path!(&repo, "commits", r#ref), Vec::new())
         }),
     }
 }
@@ -1416,13 +1380,9 @@ fn run_commit_comment(
             page_query(page),
             ListShape::Array,
         ),
-        CommitCommentCmd::Get { id, from } => {
-            pipe::run_get(id, from, api.format, |id| {
-                Ok(api
-                    .send(Method::GET, &path!(&repo, "comments", id), &[], None)?
-                    .body)
-            })
-        }
+        CommitCommentCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!(&repo, "comments", id), Vec::new())
+        }),
         CommitCommentCmd::Create {
             commit,
             body,
@@ -1513,13 +1473,9 @@ fn run_check_run(
                 ListShape::Key("check_runs"),
             )
         }
-        CheckRunCmd::Get { id, from } => {
-            pipe::run_get(id, from, api.format, |id| {
-                Ok(api
-                    .send(Method::GET, &path!(&repo, "check-runs", id), &[], None)?
-                    .body)
-            })
-        }
+        CheckRunCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!(&repo, "check-runs", id), Vec::new())
+        }),
         CheckRunCmd::Rerequest { id } => api.print(
             Method::POST,
             path!(&repo, "check-runs", id, "rerequest"),
@@ -1542,13 +1498,9 @@ fn run_check_suite(
             page_query(page),
             ListShape::Key("check_suites"),
         ),
-        CheckSuiteCmd::Get { id, from } => {
-            pipe::run_get(id, from, api.format, |id| {
-                Ok(api
-                    .send(Method::GET, &path!(&repo, "check-suites", id), &[], None)?
-                    .body)
-            })
-        }
+        CheckSuiteCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!(&repo, "check-suites", id), Vec::new())
+        }),
         CheckSuiteCmd::Rerequest { id } => api.print(
             Method::POST,
             path!(&repo, "check-suites", id, "rerequest"),
@@ -1656,18 +1608,9 @@ fn run_release_asset(
             page_query(page),
             ListShape::Array,
         ),
-        ReleaseAssetCmd::Get { id, from } => {
-            pipe::run_get(id, from, api.format, |id| {
-                Ok(api
-                    .send(
-                        Method::GET,
-                        &path!(&repo, "releases", "assets", id),
-                        &[],
-                        None,
-                    )?
-                    .body)
-            })
-        }
+        ReleaseAssetCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!(&repo, "releases", "assets", id), Vec::new())
+        }),
         ReleaseAssetCmd::Delete { id } => api.print(
             Method::DELETE,
             path!(&repo, "releases", "assets", id),
@@ -1690,18 +1633,9 @@ fn run_artifact(api: &Api, repo: Repo, cmd: ArtifactCmd) -> Result<(), Box<dyn s
                 ListShape::Key("artifacts"),
             )
         }
-        ArtifactCmd::Get { id, from } => {
-            pipe::run_get(id, from, api.format, |id| {
-                Ok(api
-                    .send(
-                        Method::GET,
-                        &path!(&repo, "actions", "artifacts", id),
-                        &[],
-                        None,
-                    )?
-                    .body)
-            })
-        }
+        ArtifactCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!(&repo, "actions", "artifacts", id), Vec::new())
+        }),
         ArtifactCmd::Delete { id } => api.print(
             Method::DELETE,
             path!(&repo, "actions", "artifacts", id),
@@ -1721,9 +1655,7 @@ fn run_label(api: &Api, repo: Repo, cmd: LabelCmd) -> Result<(), Box<dyn std::er
             ListShape::Array,
         ),
         LabelCmd::Get { name, from } => pipe::run_get(name, from, api.format, |name| {
-            Ok(api
-                .send(Method::GET, &path!(&repo, "labels", name), &[], None)?
-                .body)
+            api.get_body(path!(&repo, "labels", name), Vec::new())
         }),
         LabelCmd::Create {
             name,
@@ -1791,14 +1723,10 @@ fn run_collaborator(
         }
         CollaboratorCmd::Get { username, from } => {
             pipe::run_get(username, from, api.format, |username| {
-                Ok(api
-                    .send(
-                        Method::GET,
-                        &path!(&repo, "collaborators", username, "permission"),
-                        &[],
-                        None,
-                    )?
-                    .body)
+                api.get_body(
+                    path!(&repo, "collaborators", username, "permission"),
+                    Vec::new(),
+                )
             })
         }
         CollaboratorCmd::Add {

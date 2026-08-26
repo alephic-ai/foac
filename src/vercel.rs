@@ -324,9 +324,7 @@ fn run_team(api: &Api, cmd: TeamCmd) -> Result<(), Box<dyn std::error::Error>> {
             "teams",
         ),
         TeamCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
-            Ok(api
-                .send(Method::GET, &path!["v2", "teams", id], &[], None)?
-                .body)
+            api.get_body(path!["v2", "teams", id], Vec::new())
         }),
     }
 }
@@ -348,14 +346,7 @@ fn run_project(
             print_list(api, path!["v10", "projects"], query, "projects")
         }
         ProjectCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
-            Ok(api
-                .send(
-                    Method::GET,
-                    &path!["v9", "projects", id],
-                    &team_query(team),
-                    None,
-                )?
-                .body)
+            api.get_body(path!["v9", "projects", id], team_query(team))
         }),
         ProjectCmd::Create { name, opts } => {
             let mut payload = project_payload(opts);
@@ -415,14 +406,7 @@ fn run_deployment(
             print_list(api, path!["v7", "deployments"], query, "deployments")
         }
         DeploymentCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
-            Ok(api
-                .send(
-                    Method::GET,
-                    &path!["v13", "deployments", id],
-                    &team_query(team),
-                    None,
-                )?
-                .body)
+            api.get_body(path!["v13", "deployments", id], team_query(team))
         }),
         DeploymentCmd::Cancel { id } => api.print(
             Method::PATCH,
@@ -452,14 +436,7 @@ fn run_domain(
             "domains",
         ),
         DomainCmd::Get { name, from } => pipe::run_get(name, from, api.format, |name| {
-            Ok(api
-                .send(
-                    Method::GET,
-                    &path!["v5", "domains", name],
-                    &team_query(team),
-                    None,
-                )?
-                .body)
+            api.get_body(path!["v5", "domains", name], team_query(team))
         }),
         DomainCmd::Config {
             name,
@@ -521,14 +498,10 @@ fn run_project_domain(
             name,
             from,
         } => pipe::run_get(name, from, api.format, |name| {
-            Ok(api
-                .send(
-                    Method::GET,
-                    &path!["v9", "projects", project, "domains", name],
-                    &team_query(team),
-                    None,
-                )?
-                .body)
+            api.get_body(
+                path!["v9", "projects", project, "domains", name],
+                team_query(team),
+            )
         }),
         ProjectDomainCmd::Create {
             project,

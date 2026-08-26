@@ -232,9 +232,7 @@ fn run_project(api: &Api, org: String, cmd: ProjectCmd) -> Result<(), Box<dyn st
             page_query(page),
         ),
         ProjectCmd::Get { slug, from } => pipe::run_get(slug, from, api.format, |slug| {
-            Ok(api
-                .send(Method::GET, &path!["projects", org, slug], &[], None)?
-                .body)
+            api.get_body(path!["projects", org, slug], Vec::new())
         }),
     }
 }
@@ -259,14 +257,7 @@ fn run_issue(api: &Api, org: String, cmd: IssueCmd) -> Result<(), Box<dyn std::e
         }
         IssueCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
             let id = resolve_issue_id(api, &org, &id)?;
-            Ok(api
-                .send(
-                    Method::GET,
-                    &path!["organizations", org, "issues", id],
-                    &[],
-                    None,
-                )?
-                .body)
+            api.get_body(path!["organizations", org, "issues", id], Vec::new())
         }),
         IssueCmd::Update {
             id,
@@ -312,14 +303,7 @@ fn run_event(api: &Api, org: String, cmd: EventCmd) -> Result<(), Box<dyn std::e
             print_list(api, Method::GET, segments, page_query(page))
         }
         EventCmd::Get { id, project, from } => pipe::run_get(id, from, api.format, |id| {
-            Ok(api
-                .send(
-                    Method::GET,
-                    &path!["projects", org, project, "events", id],
-                    &[],
-                    None,
-                )?
-                .body)
+            api.get_body(path!["projects", org, project, "events", id], Vec::new())
         }),
     }
 }
@@ -337,14 +321,7 @@ fn run_release(api: &Api, org: String, cmd: ReleaseCmd) -> Result<(), Box<dyn st
             )
         }
         ReleaseCmd::Get { version, from } => pipe::run_get(version, from, api.format, |version| {
-            Ok(api
-                .send(
-                    Method::GET,
-                    &path!["organizations", org, "releases", version],
-                    &[],
-                    None,
-                )?
-                .body)
+            api.get_body(path!["organizations", org, "releases", version], Vec::new())
         }),
     }
 }

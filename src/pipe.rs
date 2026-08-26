@@ -254,7 +254,9 @@ mod tests {
         // must not win the join, whatever the field order.
         let relation_first = r#"{"issue":{"labels":{"nodes":[{"name":"bug"}]},"children":{"nodes":[{"identifier":"ENG-2"}],"pageInfo":{}}}}"#;
         assert_eq!(
-            extract_values(relation_first, Some("identifier")).unwrap().0,
+            extract_values(relation_first, Some("identifier"))
+                .unwrap()
+                .0,
             vec!["ENG-2"]
         );
         // Only bare relation nodes: not a list shape at all.
@@ -303,7 +305,11 @@ mod tests {
                 Err("429 rate limited".into())
             }
         };
-        let values = |list: &[&str]| list.iter().map(|v| (*v).to_owned()).collect::<Vec<String>>();
+        let values = |list: &[&str]| {
+            list.iter()
+                .map(|v| (*v).to_owned())
+                .collect::<Vec<String>>()
+        };
         // Misses alongside a success are a summarized, successful run.
         assert!(run_values(values(&["ok-1", "ok-2"]), format, get).is_ok());
         assert!(run_values(values(&["ok-1", "miss"]), format, get).is_ok());
