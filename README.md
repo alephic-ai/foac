@@ -18,50 +18,47 @@ and one-off CLIs, each with its own config and its own copy of your tokens:
 
 ```mermaid
 graph LR
-    CC([Claude Code]) --> LMCP & GHCLI & AMCP & NCLI & SMCP & SLMCP & VCLI
-    CU([Cursor]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCP & VCLI
-    GRK([Grok Build]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCP & VCLI
-    CX([Codex]) --> LMCP & GHCLI & AMCP & NCLI & SMCP & SLMCP & VCLI
-    GEM([Gemini CLI]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCP & VCLI
+    CC([Claude Code]) --> LMCP & GHCLI & AMCP & SLMCPA & SLMCPB & VCLI
+    GRK([Grok Build]) --> LMCP & GHCLI & AMCP & SLMCPA & SLMCPB & VCLI
+    CX([Codex]) --> LMCP & GHCLI & AMCP & SLMCPA & SLMCPB & VCLI
     LMCP{{Linear MCP server}} --> Linear[(Linear)]
-    GHMCP{{GitHub MCP server}} --> GitHub[(GitHub)]
-    GHCLI[[gh CLI]] --> GitHub
+    GHCLI[[gh CLI]] --> GitHub[(GitHub)]
     AMCP{{Atlassian MCP server}} --> Jira[(Jira)] & Confluence[(Confluence)]
-    NCLI[[neonctl CLI]] --> Neon[(Neon)]
-    SMCP{{Sentry MCP server}} --> Sentry[(Sentry)]
-    SLMCP{{Slack MCP server}} --> Slack[(Slack)]
+    SLMCPA{{Slack MCP server A}} --> SlackA[(Slack workspace A)]
+    SLMCPB{{Slack MCP server B}} --> SlackB[(Slack workspace B)]
     VCLI[[Vercel CLI]] --> Vercel[(Vercel)]
     classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
     classDef mcp fill:#ffe0b2,stroke:#e65100,color:#000
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
-    class CC,CU,GRK,CX,GEM harness
-    class LMCP,GHMCP,AMCP,SMCP,SLMCP mcp
-    class GHCLI,NCLI,VCLI cli
-    class Linear,GitHub,Jira,Confluence,Neon,Sentry,Slack,Vercel provider
+    class CC,GRK,CX harness
+    class LMCP,AMCP,SLMCPA,SLMCPB mcp
+    class GHCLI,VCLI cli
+    class Linear,GitHub,Jira,Confluence,SlackA,SlackB,Vercel provider
 ```
 
-Five harnesses and seven adapters is thirty-five integrations to configure
-and keep authenticated. Every harness or adapter you add multiplies that
-number.
+Three harnesses and six adapters is already eighteen integrations to
+configure and keep authenticated — a second Slack workspace alone means its
+own MCP server configured in every harness — and that's before counting the
+rest of your harnesses and providers. Every harness or adapter you add
+multiplies that number.
 
 With foac, install once and log in once; every harness talks to every
-provider through the same binary:
+provider through the same binary — even to several instances of the same
+provider, like two Slack workspaces:
 
 ```mermaid
 graph LR
     CC([Claude Code]) --> F
-    CU([Cursor]) --> F
     GRK([Grok Build]) --> F
-    CX([Codex]) --> F
-    GEM([Gemini CLI]) --> F[[foac CLI]]
-    F --> Linear[(Linear)] & GitHub[(GitHub)] & Jira[(Jira)] & Confluence[(Confluence)] & Neon[(Neon)] & Sentry[(Sentry)] & Slack[(Slack)] & Vercel[(Vercel)]
+    CX([Codex]) --> F[[foac CLI]]
+    F --> Linear[(Linear)] & GitHub[(GitHub)] & Jira[(Jira)] & Confluence[(Confluence)] & SlackA[(Slack workspace A)] & SlackB[(Slack workspace B)] & Vercel[(Vercel)]
     classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
-    class CC,CU,GRK,CX,GEM harness
+    class CC,GRK,CX harness
     class F cli
-    class Linear,GitHub,Jira,Confluence,Neon,Sentry,Slack,Vercel provider
+    class Linear,GitHub,Jira,Confluence,SlackA,SlackB,Vercel provider
 ```
 
 ## Why harnesses like foac
@@ -80,6 +77,9 @@ graph LR
   agent discovers commands progressively and only reads what the task needs.
   Knowing `foac linear user list` exists is knowing `foac slack user list`
   exists.
+- **Several tenants of one provider, side by side.** Log in to two Slack
+  workspaces or Atlassian sites as named instances and address either one
+  from any folder; see [doc/auth.md](doc/auth.md).
 - **The CLI shrinks and grows with what you enable.** Disabled or
   unauthenticated providers disappear from `--help` and from the installed
   agent skills, so they never take up context. Toggle providers globally or
@@ -148,20 +148,28 @@ foac stores editable provider settings in
 `~/.config/foac/config.toml` and machine-managed credentials in
 `~/.config/foac/credentials.json` (or the equivalent paths under
 `XDG_CONFIG_HOME`). The credentials file is atomically replaced and kept mode
-`0600` on Unix. Legacy `config.json` files are intentionally ignored and are
-not migrated or deleted.
+`0600` on Unix.
 
 To toggle providers per project, drop a `.foac.toml` in the project folder:
 
 ```toml
-enabled_providers = ["linear"]   # on here even if disabled globally
-disabled_providers = ["slack"]   # off here even if enabled globally
+enabled_providers = ["linear"]        # on here even if disabled globally
+disabled_providers = ["slack@workb"]  # off here; bare "slack" would disable all instances
+
+[defaults]
+slack = "workb"                       # unqualified slack commands here use workb
 ```
 
 foac uses the nearest `.foac.toml` found from the working directory up to `/`;
 its toggles override the global ones, and auth is never affected.
-`foac provider <enable|disable> <name> --local` edits that nearest file for
-you, creating `./.foac.toml` when none exists.
+`foac provider <enable|disable> <name> [--instance <name>] --local` edits that
+nearest file for you, creating `./.foac.toml` when none exists.
+
+Each provider can hold several named instances — independent logins to
+different tenants, like two Slack workspaces (`foac auth slack login
+--instance workb`, then `foac slack conversation list -i workb`). The
+unnamed login is the `default` instance, used when no instance is selected;
+see [doc/auth.md](doc/auth.md).
 
 Other commands check GitHub for a newer release at most once a day, and print a notice on stderr while one exists. They never auto-install. Set `FOAC_NO_UPDATE_CHECK` (or `CI`) to skip the check.
 

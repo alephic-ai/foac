@@ -29,8 +29,9 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   lists through a provider-local `print_list`.
 - GitHub uses its versioned REST API; list responses derive `pageInfo` from
   the Link header. Sentry follows the same REST pattern with cursor pagination
-  from its Link header; its base URL comes from `SENTRY_URL`, then the host
-  saved by `foac auth sentry login` (its prompt or `--host`; default
+  from its Link header; its base URL comes from `SENTRY_URL` (default
+  instance only), then the host saved with the instance's credentials by
+  `foac auth sentry login` (its prompt or `--host`; default
   `https://sentry.io`), and every request path needs a trailing slash.
 - Neon uses REST API v2 with a bearer API key against
   `https://console.neon.tech`. Paginated lists (`projects`, `branches`,
@@ -61,10 +62,16 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   stored user credential, because Slack does not permit bot tokens for
   `search.messages`.
 - `provider.rs` keeps editable settings in comment-preserving `config.toml`
-  and credentials in pretty-printed `credentials.json`, both under the XDG
-  foac directory. It also reads the nearest `.foac.toml` from the working
-  directory up to `/` and layers its `enabled_providers`/`disabled_providers`
-  over the global toggles; `enable`/`disable` with `--local` edit that
-  nearest file, creating one in the working directory when none exists. Reads and failures are isolated per store; writes use the
-  shared atomic replacement path, with credentials mode `0600` before secret
-  bytes are written on Unix. Legacy `config.json` is ignored.
+  and credentials in pretty-printed `credentials.json` (nested provider →
+  instance → fields; the unnamed login is the `default` instance), both under
+  the XDG foac directory. It also reads the nearest `.foac.toml` from the
+  working directory up to `/` and layers its
+  `enabled_providers`/`disabled_providers` arrays (bare provider names or
+  qualified `provider@instance` names) and `[defaults]` instance table over
+  the global settings; `enable`/`disable` with `--local` edit that nearest
+  file, creating one in the working directory when none exists. Instance
+  resolution (`resolve_instance`: flag > `[defaults]` > `default`) and name
+  validation live here too. Reads and
+  failures are isolated per store; writes use the shared atomic replacement
+  path, with credentials mode `0600` before secret bytes are written on
+  Unix.

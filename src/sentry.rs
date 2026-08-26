@@ -150,9 +150,13 @@ macro_rules! path {
     }};
 }
 
-pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(
+    cmd: Cmd,
+    format: crate::output::Format,
+    instance: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let Cmd { org, command } = cmd;
-    let api = api(crate::auth::sentry_token()?, format)?;
+    let api = api(crate::auth::sentry_token(instance)?, format, instance)?;
     match command {
         Resource::Org(cmd) => run_org(&api, org, cmd),
         Resource::Project(cmd) => run_project(&api, selected_org(org)?, cmd),
@@ -163,18 +167,18 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
 }
 
 pub fn authenticated() -> bool {
-    crate::auth::sentry_token().is_ok()
+    crate::auth::sentry_token(crate::provider::DEFAULT_INSTANCE).is_ok()
+        || crate::auth::vendor_has_stored_instances("sentry")
 }
 
 pub(crate) fn auth_identity(
     token: &str,
     url_override: Option<&str>,
+    instance: &str,
 ) -> Result<Value, crate::auth::ValidationError> {
     let base = match url_override {
         Some(url) => url.trim_end_matches('/').to_owned(),
-        None => {
-            base_url().map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?
-        }
+        None => base_url(instance),
     };
     let url = reqwest::Url::parse(&format!("{base}/api/0/organizations/"))
         .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
@@ -318,10 +322,14 @@ fn run_release(api: &Api, org: String, cmd: ReleaseCmd) -> Result<(), Box<dyn st
     }
 }
 
-fn api(token: String, format: crate::output::Format) -> Result<Api, Box<dyn std::error::Error>> {
+fn api(
+    token: String,
+    format: crate::output::Format,
+    instance: &str,
+) -> Result<Api, Box<dyn std::error::Error>> {
     Ok(Api {
         client: reqwest::blocking::Client::new(),
-        base_url: reqwest::Url::parse(&base_url()?)?,
+        base_url: reqwest::Url::parse(&base_url(instance))?,
         auth: Auth::Bearer(token),
         format,
         headers: &[],
@@ -350,18 +358,15 @@ fn print_list(
     Ok(())
 }
 
-pub(crate) fn base_url() -> Result<String, Box<dyn std::error::Error>> {
-    let environment = std::env::var("SENTRY_URL").ok();
-    if environment.as_ref().is_some_and(|url| !url.is_empty()) {
-        return Ok(resolve_base_url(environment, None));
-    }
-    Ok(resolve_base_url(
-        environment,
-        crate::provider::SettingsStore
-            .load()?
-            .sentry_url()
-            .map(str::to_owned),
-    ))
+/// The instance's base URL: `SENTRY_URL` (default instance only), then the
+/// URL stored with the instance's credentials, then sentry.io.
+pub(crate) fn base_url(instance: &str) -> String {
+    let environment = if instance == crate::provider::DEFAULT_INSTANCE {
+        std::env::var("SENTRY_URL").ok()
+    } else {
+        None
+    };
+    resolve_base_url(environment, crate::auth::sentry_stored_url(instance))
 }
 
 /// Turn the hostname the user gave at login into a base URL: empty means the

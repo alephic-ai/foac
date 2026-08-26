@@ -52,15 +52,17 @@ One flat file (don't split into a module directory preemptively) containing:
   lengths), and the `help_only_lists_authenticated_providers` test.
 - `src/auth.rs`: an `AuthCmd` variant and dispatch arm; a `Provider` enum
   variant with its `name`, `display_name`, `env_var`, and `credential`
-  arms; a `<provider>_token()` resolver (env var, then credentials file); a
+  arms; a `<provider>_token(instance)` resolver (env var for the default
+  instance, then the credentials file); a
   `validate` arm mapping `auth_identity` to an account object (safe fields
   only — never token material); an identity formatter for the auth table;
-  entries in `all_provider_statuses`, `provider_status`,
-  `flatten_accounts_for_table`; and a `print_login_help` arm telling the
-  user where to create a token.
-- `src/provider.rs`: the `PROVIDERS` array, a `Credential` variant and its
-  key, the `authenticated` match, and the provider-list test fixture.
-  Providers sharing vendor-level credentials reuse one variant, like the
+  entries in `provider_status`, the provider array in
+  `all_provider_statuses`, `provider_from_status_key`; and a
+  `print_login_help` arm telling the user where to create a token.
+- `src/provider.rs`: the `PROVIDERS` array, a `Credential` variant with its
+  `vendor`/`field` keys, the `provider_vendor` and `authenticated` matches,
+  and the provider-list test fixture.
+  Providers sharing vendor-level credentials reuse one vendor, like the
   Atlassian pair.
 - `tests/cli.rs`: the provider names in the `provider list` test.
   End-to-end tests stay parse-clean: no real auth, no network.

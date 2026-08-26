@@ -175,9 +175,13 @@ macro_rules! path {
     }};
 }
 
-pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(
+    cmd: Cmd,
+    format: crate::output::Format,
+    instance: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let Cmd { project, command } = cmd;
-    let api = api(crate::auth::neon_token()?, format)?;
+    let api = api(crate::auth::neon_token(instance)?, format)?;
     match command {
         Resource::Org(cmd) => run_org(&api, cmd),
         Resource::Project(cmd) => run_project(&api, project, cmd),
@@ -228,7 +232,8 @@ fn run_connection_uri(
 }
 
 pub fn authenticated() -> bool {
-    crate::auth::neon_token().is_ok()
+    crate::auth::neon_token(crate::provider::DEFAULT_INSTANCE).is_ok()
+        || crate::auth::vendor_has_stored_instances("neon")
 }
 
 pub(crate) fn auth_identity(token: &str) -> Result<Value, crate::auth::ValidationError> {

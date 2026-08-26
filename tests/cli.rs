@@ -163,17 +163,16 @@ fn provider_list_reports_a_malformed_config() {
 }
 
 #[test]
-fn sentry_auth_status_represents_a_malformed_config_as_an_error() {
-    let (config_home, config_path, _) = malformed_settings("sentry-status");
+fn sentry_auth_status_represents_malformed_credentials_as_an_error() {
+    let config_home = config_home("sentry-status");
+    let credentials_path = config_home.join("foac/credentials.json");
+    std::fs::create_dir_all(credentials_path.parent().unwrap()).unwrap();
+    std::fs::write(&credentials_path, br#"{"sentry":42}"#).unwrap();
 
     let out = foac(&["auth", "sentry", "status"])
         .env("XDG_CONFIG_HOME", &config_home)
-        .env_remove("LINEAR_API_KEY")
-        .env_remove("GITHUB_TOKEN")
-        .env("SENTRY_AUTH_TOKEN", "environment-token")
+        .env_remove("SENTRY_AUTH_TOKEN")
         .env_remove("SENTRY_URL")
-        .env_remove("SLACK_BOT_TOKEN")
-        .env_remove("SLACK_USER_TOKEN")
         .output()
         .unwrap();
 
@@ -181,10 +180,157 @@ fn sentry_auth_status_represents_a_malformed_config_as_an_error() {
     assert!(out.stderr.is_empty());
     let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(report["sentry"]["status"], "error");
-    assert_eq!(report["sentry"]["source"], "environment");
     let error = report["sentry"]["error"].as_str().unwrap();
-    assert!(error.contains(&config_path.display().to_string()));
-    assert!(error.contains("could not parse settings file"));
+    assert!(error.contains(&credentials_path.display().to_string()));
+    assert!(error.contains("could not parse credentials file"));
+
+    std::fs::remove_dir_all(config_home).unwrap();
+}
+
+/// A slack command with no stored credentials fails at credential
+/// resolution, and the error names the resolved instance, exposing the
+/// flag > [defaults] precedence without any network I/O.
+fn slack_instance_error(dir: &std::path::Path, args: &[&str]) -> String {
+    let mut cmd = foac(args);
+    cmd.env("XDG_CONFIG_HOME", config_home("slack-instance-empty"))
+        .env_remove("SLACK_BOT_TOKEN")
+        .env_remove("SLACK_USER_TOKEN")
+        .current_dir(dir);
+    let out = cmd.output().unwrap();
+    assert!(!out.status.success());
+    String::from_utf8(out.stderr).unwrap()
+}
+
+#[test]
+fn instance_resolution_prefers_the_flag_over_folder_defaults() {
+    let root = config_home("instance-resolution");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join(".foac.toml"), "[defaults]\nslack = \"workd\"\n").unwrap();
+
+    let base = &["slack", "conversation", "list"][..];
+    let flagged = &["slack", "conversation", "list", "--instance", "workb"][..];
+
+    // Folder default, then the flag over it.
+    assert!(slack_instance_error(&root, base).contains("instance \"workd\""));
+    assert!(slack_instance_error(&root, flagged).contains("instance \"workb\""));
+    // The error names the login command for the instance.
+    assert!(
+        slack_instance_error(&root, flagged).contains("foac auth slack login --instance workb")
+    );
+    // The default instance keeps the environment-variable wording.
+    let sub = root.join("no-defaults");
+    std::fs::create_dir_all(&sub).unwrap();
+    std::fs::write(sub.join(".foac.toml"), "").unwrap();
+    assert!(slack_instance_error(&sub, base).contains("SLACK_BOT_TOKEN"));
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn disabled_instances_fail_closed_naming_the_local_file() {
+    let root = config_home("instance-disable");
+    std::fs::create_dir_all(&root).unwrap();
+    let local_path = root.join(".foac.toml");
+    std::fs::write(&local_path, "disabled_providers = [\"slack@workb\"]\n").unwrap();
+
+    let stderr = slack_instance_error(
+        &root,
+        &["slack", "conversation", "list", "--instance", "workb"],
+    );
+    assert!(stderr.contains("slack@workb is disabled by"));
+    assert!(stderr.contains(&local_path.display().to_string()));
+    assert!(stderr.contains("foac provider enable slack --instance workb --local"));
+
+    // The default instance is untouched by the instance toggle.
+    let stderr = slack_instance_error(&root, &["slack", "conversation", "list"]);
+    assert!(stderr.contains("SLACK_BOT_TOKEN"));
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn provider_toggles_write_qualified_instance_names() {
+    let root = config_home("instance-toggle");
+    let xdg = root.join("xdg");
+    std::fs::create_dir_all(xdg.join("foac")).unwrap();
+    let work = root.join("project");
+    std::fs::create_dir_all(&work).unwrap();
+
+    let out = foac(&[
+        "provider",
+        "disable",
+        "slack",
+        "--instance",
+        "workb",
+        "--local",
+    ])
+    .env("XDG_CONFIG_HOME", &xdg)
+    .current_dir(&work)
+    .output()
+    .unwrap();
+    assert!(out.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    // The whole provider stays enabled; only the instance is toggled.
+    assert_eq!(json["slack"]["enabled"], true);
+    assert_eq!(
+        std::fs::read_to_string(work.join(".foac.toml")).unwrap(),
+        "disabled_providers = [\"slack@workb\"]\n"
+    );
+
+    let out = foac(&["provider", "disable", "slack", "--instance", "workb"])
+        .env("XDG_CONFIG_HOME", &xdg)
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert_eq!(
+        std::fs::read_to_string(xdg.join("foac/config.toml")).unwrap(),
+        "disabled_providers = [\"slack@workb\"]\n"
+    );
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn auth_logout_removes_only_the_named_instance() {
+    let config_home = config_home("instance-logout");
+    let credentials_path = config_home.join("foac/credentials.json");
+    std::fs::create_dir_all(credentials_path.parent().unwrap()).unwrap();
+    std::fs::write(
+        &credentials_path,
+        br#"{"slack":{"default":{"bot_token":"xoxb-a"},"workb":{"bot_token":"xoxb-b"}}}"#,
+    )
+    .unwrap();
+
+    // A stored named instance appears in the provider list.
+    let out = foac(&["provider", "list"])
+        .env("XDG_CONFIG_HOME", &config_home)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["slack@workb"]["enabled"], true);
+    assert_eq!(json["slack@workb"]["authenticated"], true);
+
+    let out = foac(&["auth", "slack", "logout", "--instance", "workb"])
+        .env("XDG_CONFIG_HOME", &config_home)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["slack@workb"]["removed"], true);
+    assert_eq!(
+        std::fs::read_to_string(&credentials_path).unwrap(),
+        concat!(
+            "{\n",
+            "  \"slack\": {\n",
+            "    \"default\": {\n",
+            "      \"bot_token\": \"xoxb-a\"\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        )
+    );
 
     std::fs::remove_dir_all(config_home).unwrap();
 }
@@ -226,10 +372,11 @@ fn malformed_credentials_do_not_block_settings_mutations() {
 }
 
 #[test]
-fn sentry_login_preflights_both_stores_before_mutating() {
-    let (config_home, settings_path, settings_original) = malformed_settings("sentry-login");
+fn sentry_login_preflights_the_credential_store_before_mutating() {
+    let config_home = config_home("sentry-login");
     let credentials_path = config_home.join("foac/credentials.json");
-    let credentials_original = br#"{"sentry":"old-token"}"#;
+    let credentials_original = br#"{"sentry":42}"#;
+    std::fs::create_dir_all(credentials_path.parent().unwrap()).unwrap();
     std::fs::write(&credentials_path, credentials_original).unwrap();
 
     let out = foac(&["auth", "sentry", "login", "--host", "sentry.example.com"])
@@ -246,7 +393,8 @@ fn sentry_login_preflights_both_stores_before_mutating() {
         .unwrap();
 
     assert!(!out.status.success());
-    assert_eq!(std::fs::read(&settings_path).unwrap(), settings_original);
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(stderr.contains("could not read Sentry credential"));
     assert_eq!(
         std::fs::read(&credentials_path).unwrap(),
         credentials_original
@@ -256,12 +404,12 @@ fn sentry_login_preflights_both_stores_before_mutating() {
 }
 
 #[test]
-fn lone_legacy_config_is_ignored_and_unchanged() {
-    let config_home = config_home("legacy-config");
-    let legacy_path = config_home.join("foac/config.json");
-    let original = br#"{"disabled_providers":["github"],"credentials":{"linear":"legacy-token"}}"#;
-    std::fs::create_dir_all(legacy_path.parent().unwrap()).unwrap();
-    std::fs::write(&legacy_path, original).unwrap();
+fn stray_config_json_is_ignored_and_unchanged() {
+    let config_home = config_home("stray-config");
+    let stray_path = config_home.join("foac/config.json");
+    let original = br#"{"disabled_providers":["github"],"credentials":{"linear":"stray-token"}}"#;
+    std::fs::create_dir_all(stray_path.parent().unwrap()).unwrap();
+    std::fs::write(&stray_path, original).unwrap();
 
     let providers = foac(&["provider", "list"])
         .env("XDG_CONFIG_HOME", &config_home)
@@ -280,7 +428,7 @@ fn lone_legacy_config_is_ignored_and_unchanged() {
     assert!(auth.stderr.is_empty());
     let auth: serde_json::Value = serde_json::from_slice(&auth.stdout).unwrap();
     assert_eq!(auth["linear"]["status"], "unauthenticated");
-    assert_eq!(std::fs::read(&legacy_path).unwrap(), original);
+    assert_eq!(std::fs::read(&stray_path).unwrap(), original);
 
     std::fs::remove_dir_all(config_home).unwrap();
 }

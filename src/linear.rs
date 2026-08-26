@@ -674,7 +674,11 @@ fn issue_filter(
     }
 }
 
-pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(
+    cmd: Cmd,
+    format: crate::output::Format,
+    instance: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let data = match cmd {
         Cmd::Issue(cmd) => match cmd {
             IssueCmd::List {
@@ -685,85 +689,105 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                 label,
                 query,
                 page,
-            } => exec::<IssueList>(issue_list::Variables {
-                first: Some(page.limit),
-                after: page.after,
-                filter: Some(issue_filter(team, assignee, state, project, label, query)),
-            }),
-            IssueCmd::Get { id } => exec::<IssueGet>(issue_get::Variables { id }),
+            } => exec::<IssueList>(
+                instance,
+                issue_list::Variables {
+                    first: Some(page.limit),
+                    after: page.after,
+                    filter: Some(issue_filter(team, assignee, state, project, label, query)),
+                },
+            ),
+            IssueCmd::Get { id } => exec::<IssueGet>(instance, issue_get::Variables { id }),
             IssueCmd::Create { team, title, opts } => {
                 use issue_create::*;
-                exec::<IssueCreate>(Variables {
-                    input: IssueCreateInput {
-                        team_id: team,
-                        title: Some(title),
-                        description: opts.description,
-                        assignee_id: opts.assignee,
-                        state_id: opts.state,
-                        priority: opts.priority,
-                        parent_id: opts.parent,
-                        project_id: opts.project,
-                        label_ids: opts.labels,
-                        due_date: opts.due_date,
-                        estimate: opts.estimate,
-                        cycle_id: opts.cycle,
-                        ..Default::default()
+                exec::<IssueCreate>(
+                    instance,
+                    Variables {
+                        input: IssueCreateInput {
+                            team_id: team,
+                            title: Some(title),
+                            description: opts.description,
+                            assignee_id: opts.assignee,
+                            state_id: opts.state,
+                            priority: opts.priority,
+                            parent_id: opts.parent,
+                            project_id: opts.project,
+                            label_ids: opts.labels,
+                            due_date: opts.due_date,
+                            estimate: opts.estimate,
+                            cycle_id: opts.cycle,
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
             IssueCmd::Update { id, title, opts } => {
                 use issue_update::*;
-                exec::<IssueUpdate>(Variables {
-                    id,
-                    input: IssueUpdateInput {
-                        title,
-                        description: opts.description,
-                        assignee_id: opts.assignee,
-                        state_id: opts.state,
-                        priority: opts.priority,
-                        parent_id: opts.parent,
-                        project_id: opts.project,
-                        label_ids: opts.labels,
-                        due_date: opts.due_date,
-                        estimate: opts.estimate,
-                        cycle_id: opts.cycle,
-                        ..Default::default()
+                exec::<IssueUpdate>(
+                    instance,
+                    Variables {
+                        id,
+                        input: IssueUpdateInput {
+                            title,
+                            description: opts.description,
+                            assignee_id: opts.assignee,
+                            state_id: opts.state,
+                            priority: opts.priority,
+                            parent_id: opts.parent,
+                            project_id: opts.project,
+                            label_ids: opts.labels,
+                            due_date: opts.due_date,
+                            estimate: opts.estimate,
+                            cycle_id: opts.cycle,
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
         },
         Cmd::Comment(cmd) => match cmd {
-            CommentCmd::List { issue, page } => exec::<CommentList>(comment_list::Variables {
-                issue_id: issue,
-                first: Some(page.limit),
-                after: page.after,
-            }),
+            CommentCmd::List { issue, page } => exec::<CommentList>(
+                instance,
+                comment_list::Variables {
+                    issue_id: issue,
+                    first: Some(page.limit),
+                    after: page.after,
+                },
+            ),
             CommentCmd::Create {
                 issue,
                 body,
                 parent,
             } => {
                 use comment_create::*;
-                exec::<CommentCreate>(Variables {
-                    input: CommentCreateInput {
-                        issue_id: Some(issue),
-                        body: Some(body),
-                        parent_id: parent,
-                        ..Default::default()
+                exec::<CommentCreate>(
+                    instance,
+                    Variables {
+                        input: CommentCreateInput {
+                            issue_id: Some(issue),
+                            body: Some(body),
+                            parent_id: parent,
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
             CommentCmd::Update { id, body } => {
                 use comment_update::*;
-                exec::<CommentUpdate>(Variables {
-                    id,
-                    input: CommentUpdateInput {
-                        body: Some(body),
-                        ..Default::default()
+                exec::<CommentUpdate>(
+                    instance,
+                    Variables {
+                        id,
+                        input: CommentUpdateInput {
+                            body: Some(body),
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
-            CommentCmd::Delete { id } => exec::<CommentDelete>(comment_delete::Variables { id }),
+            CommentCmd::Delete { id } => {
+                exec::<CommentDelete>(instance, comment_delete::Variables { id })
+            }
         },
         Cmd::Project(cmd) => match cmd {
             ProjectCmd::List { team, query, page } => {
@@ -785,13 +809,16 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                     }),
                     ..Default::default()
                 };
-                exec::<ProjectList>(Variables {
-                    first: Some(page.limit),
-                    after: page.after,
-                    filter: Some(filter),
-                })
+                exec::<ProjectList>(
+                    instance,
+                    Variables {
+                        first: Some(page.limit),
+                        after: page.after,
+                        filter: Some(filter),
+                    },
+                )
             }
-            ProjectCmd::Get { id } => exec::<ProjectGet>(project_get::Variables { id }),
+            ProjectCmd::Get { id } => exec::<ProjectGet>(instance, project_get::Variables { id }),
             ProjectCmd::Create {
                 name,
                 teams,
@@ -802,18 +829,21 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                 target_date,
             } => {
                 use project_create::*;
-                exec::<ProjectCreate>(Variables {
-                    input: ProjectCreateInput {
-                        name,
-                        team_ids: teams,
-                        description,
-                        lead_id: lead,
-                        status_id: status,
-                        start_date,
-                        target_date,
-                        ..Default::default()
+                exec::<ProjectCreate>(
+                    instance,
+                    Variables {
+                        input: ProjectCreateInput {
+                            name,
+                            team_ids: teams,
+                            description,
+                            lead_id: lead,
+                            status_id: status,
+                            start_date,
+                            target_date,
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
             ProjectCmd::Update {
                 id,
@@ -825,40 +855,54 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                 target_date,
             } => {
                 use project_modify::*;
-                exec::<ProjectModify>(Variables {
-                    id,
-                    input: ProjectUpdateInput {
-                        name,
-                        description,
-                        lead_id: lead,
-                        status_id: status,
-                        start_date,
-                        target_date,
-                        ..Default::default()
+                exec::<ProjectModify>(
+                    instance,
+                    Variables {
+                        id,
+                        input: ProjectUpdateInput {
+                            name,
+                            description,
+                            lead_id: lead,
+                            status_id: status,
+                            start_date,
+                            target_date,
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
         },
         Cmd::Team(cmd) => match cmd {
-            TeamCmd::List { page } => exec::<TeamList>(team_list::Variables {
-                first: Some(page.limit),
-                after: page.after,
-            }),
-            TeamCmd::Get { id } => exec::<TeamGet>(team_get::Variables { id }),
+            TeamCmd::List { page } => exec::<TeamList>(
+                instance,
+                team_list::Variables {
+                    first: Some(page.limit),
+                    after: page.after,
+                },
+            ),
+            TeamCmd::Get { id } => exec::<TeamGet>(instance, team_get::Variables { id }),
         },
         Cmd::User(cmd) => match cmd {
-            UserCmd::List { page } => exec::<UserList>(user_list::Variables {
+            UserCmd::List { page } => exec::<UserList>(
+                instance,
+                user_list::Variables {
+                    first: Some(page.limit),
+                    after: page.after,
+                },
+            ),
+            UserCmd::Get { id } => exec::<UserGet>(instance, user_get::Variables { id }),
+        },
+        Cmd::Workspace(WorkspaceCmd::Get) => {
+            exec::<WorkspaceGet>(instance, workspace_get::Variables {})
+        }
+        Cmd::Cycle(CycleCmd::List { team, page }) => exec::<CycleList>(
+            instance,
+            cycle_list::Variables {
+                team_id: team,
                 first: Some(page.limit),
                 after: page.after,
-            }),
-            UserCmd::Get { id } => exec::<UserGet>(user_get::Variables { id }),
-        },
-        Cmd::Workspace(WorkspaceCmd::Get) => exec::<WorkspaceGet>(workspace_get::Variables {}),
-        Cmd::Cycle(CycleCmd::List { team, page }) => exec::<CycleList>(cycle_list::Variables {
-            team_id: team,
-            first: Some(page.limit),
-            after: page.after,
-        }),
+            },
+        ),
         Cmd::Label(cmd) => match cmd {
             LabelCmd::List { team, page } => {
                 use label_list::*;
@@ -872,11 +916,14 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                     ))),
                     ..Default::default()
                 });
-                exec::<LabelList>(Variables {
-                    first: Some(page.limit),
-                    after: page.after,
-                    filter,
-                })
+                exec::<LabelList>(
+                    instance,
+                    Variables {
+                        first: Some(page.limit),
+                        after: page.after,
+                        filter,
+                    },
+                )
             }
             LabelCmd::Create {
                 name,
@@ -885,15 +932,18 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                 description,
             } => {
                 use label_create::*;
-                exec::<LabelCreate>(Variables {
-                    input: IssueLabelCreateInput {
-                        name,
-                        team_id: team,
-                        color,
-                        description,
-                        ..Default::default()
+                exec::<LabelCreate>(
+                    instance,
+                    Variables {
+                        input: IssueLabelCreateInput {
+                            name,
+                            team_id: team,
+                            color,
+                            description,
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
         },
         Cmd::Status(cmd) => match cmd {
@@ -909,13 +959,16 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                     ))),
                     ..Default::default()
                 });
-                exec::<StatusList>(Variables {
-                    first: Some(page.limit),
-                    after: page.after,
-                    filter,
-                })
+                exec::<StatusList>(
+                    instance,
+                    Variables {
+                        first: Some(page.limit),
+                        after: page.after,
+                        filter,
+                    },
+                )
             }
-            StatusCmd::Get { id } => exec::<StatusGet>(status_get::Variables { id }),
+            StatusCmd::Get { id } => exec::<StatusGet>(instance, status_get::Variables { id }),
         },
         Cmd::Document(cmd) => match cmd {
             DocumentCmd::List {
@@ -945,13 +998,18 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                     })),
                     ..Default::default()
                 };
-                exec::<DocumentList>(Variables {
-                    first: Some(page.limit),
-                    after: page.after,
-                    filter: Some(filter),
-                })
+                exec::<DocumentList>(
+                    instance,
+                    Variables {
+                        first: Some(page.limit),
+                        after: page.after,
+                        filter: Some(filter),
+                    },
+                )
             }
-            DocumentCmd::Get { id } => exec::<DocumentGet>(document_get::Variables { id }),
+            DocumentCmd::Get { id } => {
+                exec::<DocumentGet>(instance, document_get::Variables { id })
+            }
             DocumentCmd::Create {
                 title,
                 content,
@@ -959,48 +1017,62 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                 initiative,
             } => {
                 use document_create::*;
-                exec::<DocumentCreate>(Variables {
-                    input: DocumentCreateInput {
-                        title,
-                        content,
-                        project_id: project,
-                        initiative_id: initiative,
-                        ..Default::default()
+                exec::<DocumentCreate>(
+                    instance,
+                    Variables {
+                        input: DocumentCreateInput {
+                            title,
+                            content,
+                            project_id: project,
+                            initiative_id: initiative,
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
             DocumentCmd::Update { id, title, content } => {
                 use document_update::*;
-                exec::<DocumentUpdate>(Variables {
-                    id,
-                    input: DocumentUpdateInput {
-                        title,
-                        content,
-                        ..Default::default()
+                exec::<DocumentUpdate>(
+                    instance,
+                    Variables {
+                        id,
+                        input: DocumentUpdateInput {
+                            title,
+                            content,
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
         },
         Cmd::Initiative(cmd) => match cmd {
-            InitiativeCmd::List { page } => exec::<InitiativeList>(initiative_list::Variables {
-                first: Some(page.limit),
-                after: page.after,
-            }),
-            InitiativeCmd::Get { id } => exec::<InitiativeGet>(initiative_get::Variables { id }),
+            InitiativeCmd::List { page } => exec::<InitiativeList>(
+                instance,
+                initiative_list::Variables {
+                    first: Some(page.limit),
+                    after: page.after,
+                },
+            ),
+            InitiativeCmd::Get { id } => {
+                exec::<InitiativeGet>(instance, initiative_get::Variables { id })
+            }
             InitiativeCmd::Create {
                 name,
                 description,
                 target_date,
             } => {
                 use initiative_create::*;
-                exec::<InitiativeCreate>(Variables {
-                    input: InitiativeCreateInput {
-                        name,
-                        description,
-                        target_date,
-                        ..Default::default()
+                exec::<InitiativeCreate>(
+                    instance,
+                    Variables {
+                        input: InitiativeCreateInput {
+                            name,
+                            description,
+                            target_date,
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
             InitiativeCmd::Update {
                 id,
@@ -1009,15 +1081,18 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                 target_date,
             } => {
                 use initiative_modify::*;
-                exec::<InitiativeModify>(Variables {
-                    id,
-                    input: InitiativeUpdateInput {
-                        name,
-                        description,
-                        target_date,
-                        ..Default::default()
+                exec::<InitiativeModify>(
+                    instance,
+                    Variables {
+                        id,
+                        input: InitiativeUpdateInput {
+                            name,
+                            description,
+                            target_date,
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
         },
         Cmd::Milestone(cmd) => match cmd {
@@ -1033,13 +1108,18 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                     ))),
                     ..Default::default()
                 });
-                exec::<MilestoneList>(Variables {
-                    first: Some(page.limit),
-                    after: page.after,
-                    filter,
-                })
+                exec::<MilestoneList>(
+                    instance,
+                    Variables {
+                        first: Some(page.limit),
+                        after: page.after,
+                        filter,
+                    },
+                )
             }
-            MilestoneCmd::Get { id } => exec::<MilestoneGet>(milestone_get::Variables { id }),
+            MilestoneCmd::Get { id } => {
+                exec::<MilestoneGet>(instance, milestone_get::Variables { id })
+            }
             MilestoneCmd::Create {
                 project,
                 name,
@@ -1047,15 +1127,18 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                 target_date,
             } => {
                 use milestone_create::*;
-                exec::<MilestoneCreate>(Variables {
-                    input: ProjectMilestoneCreateInput {
-                        project_id: project,
-                        name,
-                        description,
-                        target_date,
-                        ..Default::default()
+                exec::<MilestoneCreate>(
+                    instance,
+                    Variables {
+                        input: ProjectMilestoneCreateInput {
+                            project_id: project,
+                            name,
+                            description,
+                            target_date,
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
             MilestoneCmd::Update {
                 id,
@@ -1064,32 +1147,39 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                 target_date,
             } => {
                 use milestone_update::*;
-                exec::<MilestoneUpdate>(Variables {
-                    id,
-                    input: ProjectMilestoneUpdateInput {
-                        name,
-                        description,
-                        target_date,
-                        ..Default::default()
+                exec::<MilestoneUpdate>(
+                    instance,
+                    Variables {
+                        id,
+                        input: ProjectMilestoneUpdateInput {
+                            name,
+                            description,
+                            target_date,
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
         },
-        Cmd::ProjectLabel(ProjectLabelCmd::List { page }) => {
-            exec::<ProjectLabelList>(project_label_list::Variables {
+        Cmd::ProjectLabel(ProjectLabelCmd::List { page }) => exec::<ProjectLabelList>(
+            instance,
+            project_label_list::Variables {
                 first: Some(page.limit),
                 after: page.after,
-            })
-        }
+            },
+        ),
         Cmd::StatusUpdate(cmd) => match cmd {
             StatusUpdateCmd::Get {
                 id,
                 initiative: false,
-            } => exec::<StatusUpdateGet>(status_update_get::Variables { id }),
+            } => exec::<StatusUpdateGet>(instance, status_update_get::Variables { id }),
             StatusUpdateCmd::Get {
                 id,
                 initiative: true,
-            } => exec::<InitiativeStatusUpdateGet>(initiative_status_update_get::Variables { id }),
+            } => exec::<InitiativeStatusUpdateGet>(
+                instance,
+                initiative_status_update_get::Variables { id },
+            ),
             StatusUpdateCmd::Create {
                 project: Some(project),
                 initiative: None,
@@ -1097,14 +1187,17 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                 health,
             } => {
                 use status_update_create::*;
-                exec::<StatusUpdateCreate>(Variables {
-                    input: ProjectUpdateCreateInput {
-                        project_id: project,
-                        body: Some(body),
-                        health: health.map(parse_enum).transpose()?,
-                        ..Default::default()
+                exec::<StatusUpdateCreate>(
+                    instance,
+                    Variables {
+                        input: ProjectUpdateCreateInput {
+                            project_id: project,
+                            body: Some(body),
+                            health: health.map(parse_enum).transpose()?,
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
             StatusUpdateCmd::Create {
                 initiative: Some(initiative),
@@ -1113,14 +1206,17 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                 ..
             } => {
                 use initiative_status_update_create::*;
-                exec::<InitiativeStatusUpdateCreate>(Variables {
-                    input: InitiativeUpdateCreateInput {
-                        initiative_id: initiative,
-                        body: Some(body),
-                        health: health.map(parse_enum).transpose()?,
-                        ..Default::default()
+                exec::<InitiativeStatusUpdateCreate>(
+                    instance,
+                    Variables {
+                        input: InitiativeUpdateCreateInput {
+                            initiative_id: initiative,
+                            body: Some(body),
+                            health: health.map(parse_enum).transpose()?,
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
             StatusUpdateCmd::Create { .. } => {
                 unreachable!("clap enforces --project xor --initiative")
@@ -1132,14 +1228,17 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                 health,
             } => {
                 use status_update_modify::*;
-                exec::<StatusUpdateModify>(Variables {
-                    id,
-                    input: ProjectUpdateUpdateInput {
-                        body,
-                        health: health.map(parse_enum).transpose()?,
-                        ..Default::default()
+                exec::<StatusUpdateModify>(
+                    instance,
+                    Variables {
+                        id,
+                        input: ProjectUpdateUpdateInput {
+                            body,
+                            health: health.map(parse_enum).transpose()?,
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
             StatusUpdateCmd::Update {
                 id,
@@ -1148,30 +1247,34 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                 health,
             } => {
                 use initiative_status_update_modify::*;
-                exec::<InitiativeStatusUpdateModify>(Variables {
-                    id,
-                    input: InitiativeUpdateUpdateInput {
-                        body,
-                        health: health.map(parse_enum).transpose()?,
-                        ..Default::default()
+                exec::<InitiativeStatusUpdateModify>(
+                    instance,
+                    Variables {
+                        id,
+                        input: InitiativeUpdateUpdateInput {
+                            body,
+                            health: health.map(parse_enum).transpose()?,
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
             StatusUpdateCmd::Delete {
                 id,
                 initiative: false,
-            } => exec::<StatusUpdateArchive>(status_update_archive::Variables { id }),
+            } => exec::<StatusUpdateArchive>(instance, status_update_archive::Variables { id }),
             StatusUpdateCmd::Delete {
                 id,
                 initiative: true,
-            } => {
-                exec::<InitiativeStatusUpdateArchive>(initiative_status_update_archive::Variables {
-                    id,
-                })
-            }
+            } => exec::<InitiativeStatusUpdateArchive>(
+                instance,
+                initiative_status_update_archive::Variables { id },
+            ),
         },
         Cmd::Attachment(cmd) => match cmd {
-            AttachmentCmd::Get { id } => exec::<AttachmentGet>(attachment_get::Variables { id }),
+            AttachmentCmd::Get { id } => {
+                exec::<AttachmentGet>(instance, attachment_get::Variables { id })
+            }
             AttachmentCmd::Create {
                 issue,
                 url,
@@ -1179,18 +1282,21 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
                 subtitle,
             } => {
                 use attachment_create::*;
-                exec::<AttachmentCreate>(Variables {
-                    input: AttachmentCreateInput {
-                        issue_id: issue,
-                        url,
-                        title,
-                        subtitle,
-                        ..Default::default()
+                exec::<AttachmentCreate>(
+                    instance,
+                    Variables {
+                        input: AttachmentCreateInput {
+                            issue_id: issue,
+                            url,
+                            title,
+                            subtitle,
+                            ..Default::default()
+                        },
                     },
-                })
+                )
             }
             AttachmentCmd::Delete { id } => {
-                exec::<AttachmentDelete>(attachment_delete::Variables { id })
+                exec::<AttachmentDelete>(instance, attachment_delete::Variables { id })
             }
         },
     }?;
@@ -1237,9 +1343,10 @@ fn parse_enum<T: serde::de::DeserializeOwned>(s: String) -> Result<T, Box<dyn st
 
 /// POST a compile-time-checked query to Linear, print the `data` JSON on stdout.
 fn exec<Q: GraphQLQuery>(
+    instance: &str,
     variables: Q::Variables,
 ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let key = crate::auth::linear_token()?;
+    let key = crate::auth::linear_token(instance)?;
     let response = reqwest::blocking::Client::new()
         .post(API_URL)
         // Personal API keys are sent bare, no "Bearer" prefix.
@@ -1255,7 +1362,8 @@ fn exec<Q: GraphQLQuery>(
 }
 
 pub fn authenticated() -> bool {
-    crate::auth::linear_token().is_ok()
+    crate::auth::linear_token(crate::provider::DEFAULT_INSTANCE).is_ok()
+        || crate::auth::vendor_has_stored_instances("linear")
 }
 
 #[cfg(test)]

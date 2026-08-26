@@ -6,9 +6,12 @@ Pass `--org SLUG` or set `SENTRY_ORG`. At an interactive terminal,
 `foac auth sentry login` first asks for the Sentry hostname (default
 `sentry.io`, always https; enter your own for a self-hosted instance) and
 saves it alongside the token; piped logins read only the token, so pass
-`--host sentry.example.com` to save a self-hosted instance non-interactively.
-`SENTRY_URL` overrides the saved host. Issue commands accept numeric IDs
-or short IDs like `PROJ-123`.
+`--host sentry.example.com` to save a self-hosted host non-interactively.
+The host is stored with the instance's credentials, so a SaaS and a
+self-hosted Sentry can coexist as named instances (see
+[auth.md](auth.md)). `SENTRY_URL` overrides the saved host for the default
+instance only. Issue commands accept numeric IDs or short IDs like
+`PROJ-123`.
 
 ```sh
 export SENTRY_AUTH_TOKEN=sntrys_...
