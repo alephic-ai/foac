@@ -157,25 +157,28 @@ fn about() {
     } else {
         ("", "", "", "")
     };
+    // The two arms merge into the bar and run out to the right, like the icon.
     let mark = [
-        "──╲      ",
-        "   ╲     ",
-        "─────────",
-        "   ╱     ",
-        "──╱      ",
+        "━━╲     ",
+        "   ╲    ",
+        "━━━━━━━━",
+        "   ╱    ",
+        "━━╱     ",
     ];
+    // Lowercase geometric "foac": a hooked f, a bowl, a stemmed a, an open c.
     let wordmark = [
-        r"  __",
-        r" / _| ___   __ _  ___",
-        r"| |_ / _ \ / _` |/ __|",
-        r"|  _| (_) | (_| | (__",
-        r"|_|  \___/ \__,_|\___|",
+        r" ╭──",
+        r" │",
+        r"─┼──  ╭──╮  ──╮ ╭──",
+        r" │    │  │ ╭──┤ │",
+        r" │    ╰──╯ ╰──┘ ╰──",
     ];
+    println!();
     for (mark_row, wordmark_row) in mark.iter().zip(wordmark) {
-        println!("{amber}{mark_row}{reset}  {bold}{wordmark_row}{reset}");
+        println!("  {amber}{mark_row}{reset}  {bold}{wordmark_row}{reset}");
     }
     println!();
-    println!("           {grey}many services · many agents · one door{reset}");
+    println!("            {grey}many services · many agents · one door{reset}");
     println!();
     println!(
         "{} — v{}",
