@@ -46,6 +46,19 @@ fn version_prints_the_cargo_version() {
 }
 
 #[test]
+fn about_prints_the_banner_version_and_repository() {
+    let out = foac(&["about"]).output().unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(stdout.contains("many services · many agents · one door"));
+    assert!(stdout.contains(concat!("v", env!("CARGO_PKG_VERSION"))));
+    assert!(stdout.contains("https://github.com/alephic-ai/foac"));
+    // Piped stdout is not a TTY, so no ANSI escapes.
+    assert!(!stdout.contains('\x1b'));
+    assert!(out.stderr.is_empty());
+}
+
+#[test]
 fn provider_list_defaults_to_all_enabled_json() {
     let out = foac(&["provider", "list"]).output().unwrap();
     assert!(out.status.success());

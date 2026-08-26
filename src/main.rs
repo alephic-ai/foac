@@ -66,6 +66,8 @@ enum Command {
     Update,
     /// Print the version
     Version,
+    /// Show the foac banner, version, and repository
+    About,
 }
 
 fn main() {
@@ -130,11 +132,57 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             println!("{}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
+        Command::About => {
+            about();
+            Ok(())
+        }
     };
     if !skip_check {
         update::notify_if_outdated();
     }
     result
+}
+
+/// The brand banner (assets/brand/): the Merge mark in amber, the wordmark,
+/// and the tagline, then version and repository. Bypasses the printer and
+/// `--format`, like `version`.
+fn about() {
+    let (amber, grey, bold, reset) = if output::color_enabled() {
+        (
+            "\x1b[38;2;240;136;62m", // Amber on dark, from assets/brand/README.md
+            "\x1b[38;2;140;149;159m",
+            "\x1b[1m",
+            "\x1b[0m",
+        )
+    } else {
+        ("", "", "", "")
+    };
+    let mark = [
+        "──╲      ",
+        "   ╲     ",
+        "─────────",
+        "   ╱     ",
+        "──╱      ",
+    ];
+    let wordmark = [
+        r"  __",
+        r" / _| ___   __ _  ___",
+        r"| |_ / _ \ / _` |/ __|",
+        r"|  _| (_) | (_| | (__",
+        r"|_|  \___/ \__,_|\___|",
+    ];
+    for (mark_row, wordmark_row) in mark.iter().zip(wordmark) {
+        println!("{amber}{mark_row}{reset}  {bold}{wordmark_row}{reset}");
+    }
+    println!();
+    println!("           {grey}many services · many agents · one door{reset}");
+    println!();
+    println!(
+        "{} — v{}",
+        env!("CARGO_PKG_DESCRIPTION"),
+        env!("CARGO_PKG_VERSION")
+    );
+    println!("{}", env!("CARGO_PKG_REPOSITORY"));
 }
 
 #[derive(Subcommand)]
@@ -430,7 +478,7 @@ mod tests {
                 ] {
                     assert_eq!(help_lists(&help, name), expected.contains(&name));
                 }
-                for name in ["auth", "provider", "skill", "update", "version", "help"] {
+                for name in ["about", "auth", "provider", "skill", "update", "version", "help"] {
                     assert!(help_lists(&help, name));
                 }
                 if expected.is_empty() {

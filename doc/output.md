@@ -7,4 +7,4 @@ has more fields than the terminal fits (REST rows carry ~80), only the
 leading columns render and a note counts the rest. Pick a format explicitly with `--format json|table|auto`
 or the `FOAC_FORMAT` environment variable; pipes and CI (`CI` set) always get
 JSON. Errors stay on stderr as JSON with exit code 1, and `auth`, `provider`,
-`version`, `update`, and `skill` ignore `--format`.
+`about`, `version`, `update`, and `skill` ignore `--format`.

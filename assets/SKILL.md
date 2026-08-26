@@ -520,7 +520,8 @@ foac vercel project-domain create --project web preview.example.com --git-branch
 `Unchanged` without rewriting them. `foac update` replaces the binary with the
 latest release and refreshes any foac provider skills already installed in
 `~/.claude/skills` or `~/.agents/skills`; `foac version` prints the installed
-version. foac checks
+version; `foac about` prints the brand banner, version, and repository URL.
+foac checks
 GitHub at most once a day and prints a two-line notice on stderr while a newer
 release exists. It never auto-installs, and the notice is not JSON. Set
 `FOAC_NO_UPDATE_CHECK` (or `CI`) to disable it.
