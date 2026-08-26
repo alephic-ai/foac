@@ -100,9 +100,9 @@ graph LR
    U0200000002 | grace | true | grace@example.com | America/New_York
 
   # Piped onward it's one JSON document per result, so jq keeps composing
-  $ foac linear user list | foac slack user get --from email | jq -r '.user.name + " " + .user.email'
-  ada ada@example.com
-  grace grace@example.com
+  $ foac linear user list | foac slack user get --from email | jq -r '[.user.name, .user.email] | @tsv'
+  ada     ada@example.com
+  grace   grace@example.com
   ```
 
 - **Responses are the provider's raw JSON.** foac does not reshape what an
