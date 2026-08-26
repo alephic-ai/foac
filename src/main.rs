@@ -161,7 +161,7 @@ fn about() {
     let mark = ["━━╲     ", "   ╲    ", "━━━━━━━━", "   ╱    ", "━━╱     "];
     // Lowercase geometric "foac": a hooked f, a bowl, a stemmed a, an open c.
     let wordmark = [
-        r" ╭──",
+        r" ╭───",
         r" │",
         r"─┼──  ╭──╮  ──╮ ╭──",
         r" │    │  │ ╭──┤ │",
