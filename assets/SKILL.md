@@ -223,9 +223,11 @@ foac <provider> <resource> <verb> [flags]
   `version`, `update`, and `skill` ignore `--format`.
   Failures print
   the API's error JSON on stderr and exit non-zero.
-- **Piped joins**: pipe one command's `list` output into a `get` verb and omit
-  the identifying argument to run one get per list item, joining on the field
-  named by `--from`:
+- **Piped joins**: pipe one command's `list` output into a `get` verb that
+  takes its identifier as a positional argument (every `get` except
+  `github release get`, whose selector is `--id`/`--tag`) and omit that
+  argument to run one get per list item, joining on the field named by
+  `--from`:
   `foac <provider> <resource> list | foac <provider> <resource> get --from
   <field>` (the two commands may target different providers; dots in the
   field reach into nested objects, e.g. `--from profile.email`). Piped input that
