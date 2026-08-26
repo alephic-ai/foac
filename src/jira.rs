@@ -233,14 +233,18 @@ macro_rules! agile_path {
     }};
 }
 
-pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(
+    cmd: Cmd,
+    format: crate::output::Format,
+    instance: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let Cmd {
         host,
         email,
         command,
     } = cmd;
     let api = api(
-        crate::auth::atlassian_credentials(host, email, "foac auth jira login")?,
+        crate::auth::atlassian_credentials(host, email, "foac auth jira login", instance)?,
         format,
     )?;
     match command {

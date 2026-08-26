@@ -117,23 +117,36 @@ foac <provider> <resource> <verb> [flags]
   validates a token before saving it in foac's credentials file; when stdin is
   redirected, it reads the token from stdin. Logout removes only foac's stored
   credential. Use `foac auth --help` to list auth targets.
+- **Instances**: a provider can hold several named logins to different
+  tenants (e.g. two Slack workspaces). `foac auth <provider> login --instance
+  <name>` stores one; commands select it with the global `-i`/`--instance`
+  flag, else the nearest `.foac.toml` (or global config) `[defaults]` table
+  (`slack = "workb"`), else the `default`
+  instance — which is the unnamed login and behaves exactly as before.
+  Environment tokens and the `gh` fallback apply to the default instance
+  only; a named instance uses exactly its stored credentials. Instance names
+  are lowercase letters, digits, `-`, `_`.
 - **Provider toggles**: `foac provider <enable|disable> <name>` turns a provider
   on or off (state kept in `~/.config/foac/config.toml`) and prints the same
   per-provider map as `foac provider list`, which reports each provider's
   `enabled`, `authenticated` (a credential resolves; not validated against the
-  API), and `skill_installed` state. Disabled providers are
-  hidden from discovery and their commands refuse to run. A `.foac.toml` file
+  API), and `skill_installed` state, plus one `provider@instance` entry per
+  stored named instance. Add `--instance <name>` to toggle a single instance
+  (stored as `provider@instance` in the same arrays) instead of the whole
+  provider. Disabled providers and instances are hidden from discovery and
+  their commands refuse to run. A `.foac.toml` file
   with `enabled_providers` and/or `disabled_providers` string arrays, found in
   the working directory or the nearest parent, overrides the global toggles
   for that folder tree. Add `--local` to enable/disable to write the toggle to
   that nearest `.foac.toml` instead (created in the working directory if none
   exists).
 - **Storage**: Credentials are pretty-printed in
-  `~/.config/foac/credentials.json`, atomically replaced, and mode `0600`
+  `~/.config/foac/credentials.json` (nested provider → instance → fields),
+  atomically replaced, and mode `0600`
   before secret bytes are written on Unix. Settings use comment-preserving
   TOML. Missing files are valid first-run state; malformed stores fail closed
-  independently with their path and cause. Legacy `config.json` is ignored and
-  is not migrated or deleted.
+  independently with their path and cause. Legacy `config.json` and flat
+  pre-instance credential keys are ignored and not migrated or deleted.
 <!-- foac-provider:linear -->
 - **Linear auth precedence**: `LINEAR_API_KEY`, then the credentials file.
 <!-- /foac-provider:linear -->
@@ -188,9 +201,11 @@ foac <provider> <resource> <verb> [flags]
 - **Auth status**: Status commands perform live validation and print
   `authenticated`, `unauthenticated`, or `error`, including the
   credential source and safe account identity when available. `foac auth status`
-  prints an object keyed by provider; `foac auth <provider> <status|login|logout>`
-  prints a one-key map for that provider (login matches status fields; logout
-  reports `removed`). Agents should parse that JSON (`--format json`). A TTY
+  prints an object keyed by provider, plus one `provider@instance` entry per
+  stored named instance; `foac auth <provider> <status|login|logout>`
+  prints a one-key map for that provider and instance (login matches status
+  fields; logout reports `removed`). Agents should parse that JSON
+  (`--format json`). A TTY
   shows a short summary for the single-provider commands; the all-provider
   table flattens `account` to an identity string. They exit zero after printing
   the report; inspect the JSON status values.
@@ -290,8 +305,9 @@ foac <provider> <resource> <verb> [flags]
   `SENTRY_ORG`; only `org list` works without it. On a TTY,
   `foac auth sentry login` first asks for the Sentry hostname (default
   `sentry.io`, always https) and saves it; with redirected stdin it reads only
-  the token, so pass `--host HOSTNAME` to save a self-hosted instance
-  non-interactively. `SENTRY_URL` overrides the saved host.
+  the token, so pass `--host HOSTNAME` to save a self-hosted host
+  non-interactively. The host is saved with the instance's credentials;
+  `SENTRY_URL` overrides it for the default instance only.
 - **Sentry pagination**: `list` verbs take `--cursor CURSOR`; output is
   `{"items":[...],"pageInfo":{...}}`. Follow `nextCursor` while `hasNextPage`
   is true.

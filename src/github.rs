@@ -725,9 +725,13 @@ macro_rules! path {
     }};
 }
 
-pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(
+    cmd: Cmd,
+    format: crate::output::Format,
+    instance: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let Cmd { repo, command } = cmd;
-    let api = api(crate::auth::github_token()?, format)?;
+    let api = api(crate::auth::github_token(instance)?, format)?;
     match command {
         Resource::Repo(cmd) => run_repo(&api, repo, cmd),
         Resource::Issue(cmd) => run_issue(&api, selected_repo(repo)?, cmd),
@@ -753,7 +757,8 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
 }
 
 pub fn authenticated() -> bool {
-    crate::auth::github_token().is_ok()
+    crate::auth::github_token(crate::provider::DEFAULT_INSTANCE).is_ok()
+        || crate::auth::vendor_has_stored_instances("github")
 }
 
 pub(crate) fn auth_identity(token: &str) -> Result<Value, crate::auth::ValidationError> {

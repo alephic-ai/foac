@@ -252,10 +252,14 @@ macro_rules! path {
     }};
 }
 
-pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(
+    cmd: Cmd,
+    format: crate::output::Format,
+    instance: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let Cmd { team, command } = cmd;
     let team = team.or_else(environment_team);
-    let api = api(crate::auth::vercel_token()?, format)?;
+    let api = api(crate::auth::vercel_token(instance)?, format)?;
     match command {
         Resource::Team(cmd) => run_team(&api, cmd),
         Resource::Project(cmd) => run_project(&api, team.as_deref(), cmd),
@@ -266,7 +270,8 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
 }
 
 pub fn authenticated() -> bool {
-    crate::auth::vercel_token().is_ok()
+    crate::auth::vercel_token(crate::provider::DEFAULT_INSTANCE).is_ok()
+        || crate::auth::vendor_has_stored_instances("vercel")
 }
 
 pub(crate) fn auth_identity(token: &str) -> Result<Value, crate::auth::ValidationError> {

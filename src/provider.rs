@@ -24,6 +24,9 @@ pub const PROVIDERS: [&str; 8] = [
 /// the nearest file wins and overrides the global toggles.
 pub const LOCAL_SETTINGS_FILE: &str = ".foac.toml";
 
+/// The instance an unnamed login creates and unqualified commands use.
+pub const DEFAULT_INSTANCE: &str = "default";
+
 #[derive(Subcommand)]
 pub enum Cmd {
     /// List providers with their enabled, authenticated, and skill state
@@ -49,7 +52,8 @@ pub enum Cmd {
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Settings {
     disabled_providers: Vec<String>,
-    sentry_url: Option<String>,
+    /// Per-provider default instance from the `[defaults]` table.
+    defaults: BTreeMap<String, String>,
     local: Option<LocalSettings>,
 }
 
@@ -60,6 +64,7 @@ struct LocalSettings {
     path: PathBuf,
     enabled_providers: Vec<String>,
     disabled_providers: Vec<String>,
+    defaults: BTreeMap<String, String>,
 }
 
 impl Settings {
@@ -71,15 +76,62 @@ impl Settings {
         }
     }
 
+    /// An instance is active iff its provider is enabled as a whole and the
+    /// qualified `provider@instance` name is not disabled.
+    pub fn instance_enabled(&self, provider: &str, instance: &str) -> bool {
+        self.enabled(provider) && self.enabled(&qualified(provider, instance))
+    }
+
+    /// The instance unqualified commands use: nearest `.foac.toml`
+    /// `[defaults]`, then the global one, then [`DEFAULT_INSTANCE`].
+    pub fn default_instance(&self, provider: &str) -> &str {
+        self.local
+            .as_ref()
+            .and_then(|local| local.defaults.get(provider))
+            .or_else(|| self.defaults.get(provider))
+            .map_or(DEFAULT_INSTANCE, String::as_str)
+    }
+
     fn set_enabled(&mut self, name: &str, enabled: bool) {
         self.disabled_providers.retain(|p| p != name);
         if !enabled {
             self.disabled_providers.push(name.to_owned());
         }
     }
+}
 
-    pub(crate) fn sentry_url(&self) -> Option<&str> {
-        self.sentry_url.as_deref().filter(|url| !url.is_empty())
+/// The qualified toggle/status name for an instance, `provider@instance`.
+pub(crate) fn qualified(provider: &str, instance: &str) -> String {
+    format!("{provider}@{instance}")
+}
+
+/// Validate an instance name: lowercase letters, digits, `-`, `_`.
+pub fn normalize_instance(name: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let name = name.trim();
+    let valid = !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+        && name.starts_with(|c: char| c.is_ascii_alphanumeric());
+    if !valid {
+        return Err(format!(
+            "invalid instance name `{name}`: use lowercase letters, digits, `-`, and `_`, starting with a letter or digit"
+        )
+        .into());
+    }
+    Ok(name.to_owned())
+}
+
+/// The instance a provider invocation targets:
+/// `--instance` flag > `[defaults]` > `default`.
+pub fn resolve_instance(
+    provider: &str,
+    flag: Option<&str>,
+    settings: &Settings,
+) -> Result<String, Box<dyn std::error::Error>> {
+    match flag {
+        Some(name) => normalize_instance(name),
+        None => Ok(settings.default_instance(provider).to_owned()),
     }
 }
 
@@ -89,6 +141,8 @@ pub(crate) enum Credential {
     Github,
     Neon,
     Sentry,
+    /// The base URL of a self-hosted Sentry, stored with the instance's token.
+    SentryUrl,
     SlackBot,
     SlackUser,
     Vercel,
@@ -100,38 +154,82 @@ pub(crate) enum Credential {
 }
 
 impl Credential {
-    fn as_str(self) -> &'static str {
+    /// The credentials-file top-level key; Jira and Confluence share the
+    /// `atlassian` vendor.
+    pub(crate) fn vendor(self) -> &'static str {
         match self {
             Self::Linear => "linear",
             Self::Github => "github",
             Self::Neon => "neon",
-            Self::Sentry => "sentry",
-            Self::SlackBot => "slack_bot",
-            Self::SlackUser => "slack_user",
+            Self::Sentry | Self::SentryUrl => "sentry",
+            Self::SlackBot | Self::SlackUser => "slack",
             Self::Vercel => "vercel",
-            Self::AtlassianHost => "atlassian_host",
-            Self::AtlassianEmail => "atlassian_email",
-            Self::AtlassianToken => "atlassian_token",
+            Self::AtlassianHost | Self::AtlassianEmail | Self::AtlassianToken => "atlassian",
+        }
+    }
+
+    /// The field key inside an instance record.
+    fn field(self) -> &'static str {
+        match self {
+            Self::Linear | Self::Github | Self::Neon | Self::Sentry | Self::Vercel => "token",
+            Self::SentryUrl => "url",
+            Self::SlackBot => "bot_token",
+            Self::SlackUser => "user_token",
+            Self::AtlassianHost => "host",
+            Self::AtlassianEmail => "email",
+            Self::AtlassianToken => "token",
         }
     }
 }
 
+/// Stored credentials: vendor -> instance -> field -> value.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct Credentials {
-    values: BTreeMap<String, String>,
+    values: BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>>,
 }
 
 impl Credentials {
-    pub(crate) fn get(&self, credential: Credential) -> Option<&str> {
-        self.values.get(credential.as_str()).map(String::as_str)
+    pub(crate) fn get(&self, credential: Credential, instance: &str) -> Option<&str> {
+        self.values
+            .get(credential.vendor())?
+            .get(instance)?
+            .get(credential.field())
+            .map(String::as_str)
     }
 
-    fn set(&mut self, credential: Credential, token: String) {
-        self.values.insert(credential.as_str().to_owned(), token);
+    /// The instance names stored for a vendor, in sorted order.
+    pub(crate) fn instances(&self, vendor: &str) -> Vec<String> {
+        self.values
+            .get(vendor)
+            .map(|instances| instances.keys().cloned().collect())
+            .unwrap_or_default()
     }
 
-    fn remove(&mut self, credential: Credential) -> bool {
-        self.values.remove(credential.as_str()).is_some()
+    fn set(&mut self, credential: Credential, instance: &str, token: String) {
+        self.values
+            .entry(credential.vendor().to_owned())
+            .or_default()
+            .entry(instance.to_owned())
+            .or_default()
+            .insert(credential.field().to_owned(), token);
+    }
+
+    fn remove(&mut self, credential: Credential, instance: &str) -> bool {
+        let Some(instances) = self.values.get_mut(credential.vendor()) else {
+            return false;
+        };
+        let Some(fields) = instances.get_mut(instance) else {
+            return false;
+        };
+        let removed = fields.remove(credential.field()).is_some();
+        // Drop emptied records so stored instances stay enumerable.
+        if fields.is_empty() {
+            instances.remove(instance);
+        }
+        if instances.is_empty() {
+            self.values.remove(credential.vendor());
+        }
+        removed
     }
 }
 
@@ -177,14 +275,6 @@ impl SettingsStore {
         set_enabled_local_at(&nearest_local_settings_path(&cwd), name, enabled)?;
         self.load()
     }
-
-    pub(crate) fn set_sentry_url(
-        &self,
-        url: Option<String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let path = settings_path().ok_or("could not determine the settings path")?;
-        set_sentry_url_at(&path, url)
-    }
 }
 
 pub(crate) struct CredentialStore;
@@ -198,28 +288,50 @@ impl CredentialStore {
     pub(crate) fn set_many(
         &self,
         credentials: &[(Credential, &str)],
+        instance: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let path = credentials_path().ok_or("could not determine the credentials path")?;
-        set_credentials_at(&path, credentials)
+        set_credentials_at(&path, credentials, instance)
     }
 
     pub(crate) fn delete_many(
         &self,
         credentials: &[Credential],
+        instance: &str,
     ) -> Result<bool, Box<dyn std::error::Error>> {
         let path = credentials_path().ok_or("could not determine the credentials path")?;
-        delete_credentials_at(&path, credentials)
+        delete_credentials_at(&path, credentials, instance)
     }
 }
 
-pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(
+    cmd: Cmd,
+    format: crate::output::Format,
+    instance: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let instance = instance.as_deref().map(normalize_instance).transpose()?;
     match cmd {
         Cmd::List => {
             crate::output::print(&statuses(&SettingsStore.load()?), format);
             Ok(())
         }
-        Cmd::Enable { provider, local } => set_enabled(provider, true, local, format),
-        Cmd::Disable { provider, local } => set_enabled(provider, false, local, format),
+        Cmd::Enable { provider, local } => set_enabled(provider, instance, true, local, format),
+        Cmd::Disable { provider, local } => set_enabled(provider, instance, false, local, format),
+    }
+}
+
+/// The vendor whose credentials authenticate a provider; Jira and Confluence
+/// share the Atlassian vendor.
+pub(crate) fn provider_vendor(provider: &str) -> &'static str {
+    match provider {
+        "jira" | "confluence" => "atlassian",
+        "github" => "github",
+        "linear" => "linear",
+        "neon" => "neon",
+        "sentry" => "sentry",
+        "slack" => "slack",
+        "vercel" => "vercel",
+        _ => unreachable!("unknown provider"),
     }
 }
 
@@ -228,6 +340,7 @@ fn statuses(settings: &Settings) -> serde_json::Value {
         settings,
         authenticated,
         &crate::update::installed_skill_providers(),
+        &CredentialStore.load().unwrap_or_default(),
     )
 }
 
@@ -235,19 +348,38 @@ fn statuses_with(
     settings: &Settings,
     authenticated: impl Fn(&str) -> bool,
     installed_skills: &[&str],
+    credentials: &Credentials,
 ) -> serde_json::Value {
     serde_json::Value::Object(
         PROVIDERS
             .iter()
-            .map(|name| {
-                (
+            .flat_map(|name| {
+                let provider = std::iter::once((
                     name.to_string(),
                     json!({
                         "enabled": settings.enabled(name),
                         "authenticated": authenticated(name),
                         "skill_installed": installed_skills.contains(name),
                     }),
-                )
+                ));
+                // One row per stored named instance; the bare row is the
+                // default instance.
+                let named = credentials
+                    .instances(provider_vendor(name))
+                    .into_iter()
+                    .filter(|instance| instance != DEFAULT_INSTANCE)
+                    .map(|instance| {
+                        (
+                            qualified(name, &instance),
+                            json!({
+                                "enabled": settings.instance_enabled(name, &instance),
+                                "authenticated": true,
+                                "skill_installed": installed_skills.contains(name),
+                            }),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                provider.chain(named)
             })
             .collect(),
     )
@@ -270,33 +402,54 @@ fn authenticated(name: &str) -> bool {
 
 fn set_enabled(
     provider: Provider,
+    instance: Option<String>,
     enabled: bool,
     local: bool,
     format: crate::output::Format,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let settings = if local {
-        SettingsStore.set_enabled_local(provider.as_str(), enabled)?
-    } else {
-        SettingsStore.set_enabled(provider.as_str(), enabled)?
+    // Bare toggles the whole provider; --instance toggles one instance.
+    let name = match &instance {
+        Some(instance) => qualified(provider.as_str(), instance),
+        None => provider.as_str().to_owned(),
     };
-    crate::output::print_highlighting(&statuses(&settings), format, provider.as_str());
+    let settings = if local {
+        SettingsStore.set_enabled_local(&name, enabled)?
+    } else {
+        SettingsStore.set_enabled(&name, enabled)?
+    };
+    crate::output::print_highlighting(&statuses(&settings), format, &name);
     Ok(())
 }
 
-pub fn ensure_enabled(settings: &Settings, name: &str) -> Result<(), Box<dyn std::error::Error>> {
-    if settings.enabled(name) {
+pub fn ensure_enabled(
+    settings: &Settings,
+    name: &str,
+    instance: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if !settings.enabled(name) {
+        return Err(match &settings.local {
+            Some(local) if local.disabled_providers.iter().any(|p| p == name) => format!(
+                "{name} is disabled by {}; run `foac provider enable {name} --local` to enable it",
+                local.path.display()
+            ),
+            _ => format!("{name} is disabled; run `foac provider enable {name}` to enable it"),
+        }
+        .into());
+    }
+    let qualified = qualified(name, instance);
+    if settings.enabled(&qualified) {
         return Ok(());
     }
-    match &settings.local {
-        Some(local) if local.disabled_providers.iter().any(|p| p == name) => Err(format!(
-            "{name} is disabled by {}; run `foac provider enable {name} --local` to enable it",
+    Err(match &settings.local {
+        Some(local) if local.disabled_providers.iter().any(|p| p == &qualified) => format!(
+            "{qualified} is disabled by {}; run `foac provider enable {name} --instance {instance} --local` to enable it",
             local.path.display()
-        )
-        .into()),
-        _ => Err(
-            format!("{name} is disabled; run `foac provider enable {name}` to enable it").into(),
+        ),
+        _ => format!(
+            "{qualified} is disabled; run `foac provider enable {name} --instance {instance}` to enable it"
         ),
     }
+    .into())
 }
 
 fn settings_path() -> Option<PathBuf> {
@@ -359,6 +512,7 @@ fn load_local_settings(start: &Path) -> Result<Option<LocalSettings>, Box<dyn st
         return Ok(Some(LocalSettings {
             enabled_providers: string_array(&path, &document, "enabled_providers")?,
             disabled_providers: string_array(&path, &document, "disabled_providers")?,
+            defaults: defaults_table(&path, &document)?,
             path,
         }));
     }
@@ -414,22 +568,9 @@ fn set_enabled_local_at(
     string_array(path, &document, "disabled_providers")?;
     document
         .as_table_mut()
-        .retain(|key, _| matches!(key, "enabled_providers" | "disabled_providers"));
+        .retain(|key, _| matches!(key, "enabled_providers" | "disabled_providers" | "defaults"));
     set_provider_listed(&mut document, "enabled_providers", name, enabled);
     set_provider_listed(&mut document, "disabled_providers", name, !enabled);
-    write_settings(path, &document)
-}
-
-fn set_sentry_url_at(path: &Path, url: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
-    let mut document = load_settings_document(path)?;
-    settings_from_document(path, &document)?;
-    retain_recognized_settings(&mut document);
-    match url {
-        Some(url) => set_string(&mut document, "sentry_url", url),
-        None => {
-            document.remove("sentry_url");
-        }
-    }
     write_settings(path, &document)
 }
 
@@ -437,30 +578,47 @@ fn load_credentials_from(path: &Path) -> Result<Credentials, Box<dyn std::error:
     let Some(bytes) = read_file(path, "credentials")? else {
         return Ok(Credentials::default());
     };
-    let values = serde_json::from_slice(&bytes).map_err(|error| {
-        let cause = match error.classify() {
-            serde_json::error::Category::Io => "JSON I/O error",
-            serde_json::error::Category::Syntax => "invalid JSON syntax",
-            serde_json::error::Category::Data => "invalid credential data",
-            serde_json::error::Category::Eof => "unexpected end of JSON input",
-        };
-        format!(
-            "could not parse credentials file {}: {cause} at line {} column {}",
-            path.display(),
-            error.line(),
-            error.column()
-        )
-    })?;
+    let raw: BTreeMap<String, serde_json::Value> =
+        serde_json::from_slice(&bytes).map_err(|error| {
+            let cause = match error.classify() {
+                serde_json::error::Category::Io => "JSON I/O error",
+                serde_json::error::Category::Syntax => "invalid JSON syntax",
+                serde_json::error::Category::Data => "invalid credential data",
+                serde_json::error::Category::Eof => "unexpected end of JSON input",
+            };
+            format!(
+                "could not parse credentials file {}: {cause} at line {} column {}",
+                path.display(),
+                error.line(),
+                error.column()
+            )
+        })?;
+    let mut values = BTreeMap::new();
+    for (vendor, item) in raw {
+        // Flat string entries are the pre-instance format (foac < 2.16), a
+        // deliberately ignored fresh-start format like legacy config.json.
+        if item.is_string() {
+            continue;
+        }
+        let instances = serde_json::from_value(item).map_err(|_| {
+            format!(
+                "could not parse credentials file {}: invalid credential data under `{vendor}`",
+                path.display()
+            )
+        })?;
+        values.insert(vendor, instances);
+    }
     Ok(Credentials { values })
 }
 
 fn set_credentials_at(
     path: &Path,
     updates: &[(Credential, &str)],
+    instance: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut credentials = load_credentials_from(path)?;
     for (credential, token) in updates {
-        credentials.set(*credential, (*token).to_owned());
+        credentials.set(*credential, instance, (*token).to_owned());
     }
     write_credentials(path, &credentials)
 }
@@ -468,11 +626,12 @@ fn set_credentials_at(
 fn delete_credentials_at(
     path: &Path,
     removals: &[Credential],
+    instance: &str,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let mut credentials = load_credentials_from(path)?;
     let mut removed = false;
     for credential in removals {
-        removed = credentials.remove(*credential) || removed;
+        removed = credentials.remove(*credential, instance) || removed;
     }
     if removed {
         write_credentials(path, &credentials)?;
@@ -519,20 +678,38 @@ fn settings_from_document(
     path: &Path,
     document: &DocumentMut,
 ) -> Result<Settings, Box<dyn std::error::Error>> {
-    let disabled_providers = string_array(path, document, "disabled_providers")?;
-    let sentry_url = match document.get("sentry_url") {
-        None => None,
-        Some(item) => Some(
-            item.as_str()
-                .ok_or_else(|| invalid_setting(path, "sentry_url", "a string"))?
-                .to_owned(),
-        ),
-    };
     Ok(Settings {
-        disabled_providers,
-        sentry_url,
+        disabled_providers: string_array(path, document, "disabled_providers")?,
+        defaults: defaults_table(path, document)?,
         local: None,
     })
+}
+
+/// The `[defaults]` table: provider name -> instance name.
+fn defaults_table(
+    path: &Path,
+    document: &DocumentMut,
+) -> Result<BTreeMap<String, String>, Box<dyn std::error::Error>> {
+    let Some(item) = document.get("defaults") else {
+        return Ok(BTreeMap::new());
+    };
+    let table = item
+        .as_table_like()
+        .ok_or_else(|| invalid_setting(path, "defaults", "a table of instance names"))?;
+    let mut defaults = BTreeMap::new();
+    for (provider, value) in table.iter() {
+        let name = value
+            .as_str()
+            .ok_or_else(|| invalid_setting(path, "defaults", "a table of instance names"))?;
+        let instance = normalize_instance(name).map_err(|error| {
+            format!(
+                "could not parse settings file {}: `defaults.{provider}`: {error}",
+                path.display()
+            )
+        })?;
+        defaults.insert(provider.to_owned(), instance);
+    }
+    Ok(defaults)
 }
 
 fn string_array(
@@ -567,7 +744,7 @@ fn invalid_setting(path: &Path, key: &str, expected: &str) -> Box<dyn std::error
 fn retain_recognized_settings(document: &mut DocumentMut) {
     document
         .as_table_mut()
-        .retain(|key, _| matches!(key, "disabled_providers" | "sentry_url"));
+        .retain(|key, _| matches!(key, "disabled_providers" | "defaults"));
 }
 
 fn set_provider_listed(document: &mut DocumentMut, key: &str, name: &str, listed: bool) {
@@ -610,19 +787,6 @@ fn remove_array_value_preserving_previous_decor(array: &mut Array, index: usize)
     } else if !array.is_empty() {
         array.set_trailing_comma(true);
         array.set_trailing(prefix);
-    }
-}
-
-fn set_string(document: &mut DocumentMut, key: &str, text: String) {
-    match document.get_mut(key) {
-        Some(Item::Value(old @ Value::String(_))) => {
-            let decor = old.decor().clone();
-            let mut new = Value::from(text);
-            *new.decor_mut() = decor;
-            *old = new;
-        }
-        Some(_) => unreachable!("settings were validated before mutation"),
-        None => document[key] = value(text),
     }
 }
 
@@ -724,18 +888,17 @@ mod tests {
             "disabled_providers = [\n",
             "  \"linear\", # keep linear\n",
             "  \"github\", # remove github\n",
-            "  \"slack\", # keep slack\n",
+            "  \"slack@workb\", # keep the workb instance off\n",
             "] # providers inline comment\n",
             "# discard with unknown\n",
             "unknown = \"value\" # discard inline\n",
-            "# sentry leading comment\n",
-            "sentry_url = \"https://sentry.example.com\" # sentry inline comment\n",
-            "# trailing document comment\n",
+            "# defaults leading comment\n",
+            "[defaults]\n",
+            "slack = \"worka\" # defaults inline comment\n",
         );
         std::fs::write(&path, input).unwrap();
 
         set_enabled_at(&path, "github", true).unwrap();
-        set_sentry_url_at(&path, Some("https://sentry.changed.example.com".into())).unwrap();
 
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
@@ -744,17 +907,17 @@ mod tests {
                 "# providers leading comment\n",
                 "disabled_providers = [\n",
                 "  \"linear\", # keep linear\n",
-                "  \"slack\", # keep slack\n",
+                "  \"slack@workb\", # keep the workb instance off\n",
                 "] # providers inline comment\n",
-                "# sentry leading comment\n",
-                "sentry_url = \"https://sentry.changed.example.com\" # sentry inline comment\n",
-                "# trailing document comment\n",
+                "# defaults leading comment\n",
+                "[defaults]\n",
+                "slack = \"worka\" # defaults inline comment\n",
             )
         );
     }
 
     #[test]
-    fn credential_updates_are_pretty_and_slack_tokens_are_independent() {
+    fn credential_updates_are_pretty_and_nested_by_instance() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("credentials.json");
         set_credentials_at(
@@ -762,37 +925,79 @@ mod tests {
             &[
                 (Credential::Linear, "linear-token"),
                 (Credential::Github, "github-token"),
-                (Credential::Sentry, "sentry-token"),
                 (Credential::SlackBot, "xoxb-bot"),
                 (Credential::SlackUser, "xoxp-user"),
-                (Credential::Vercel, "vercel-token"),
             ],
+            DEFAULT_INSTANCE,
         )
         .unwrap();
-        assert!(delete_credentials_at(&path, &[Credential::SlackBot]).unwrap());
+        set_credentials_at(&path, &[(Credential::SlackBot, "xoxb-workb")], "workb").unwrap();
+        assert!(delete_credentials_at(&path, &[Credential::SlackBot], DEFAULT_INSTANCE).unwrap());
 
         let credentials = load_credentials_from(&path).unwrap();
-        assert_eq!(credentials.get(Credential::SlackUser), Some("xoxp-user"));
-        assert_eq!(credentials.get(Credential::SlackBot), None);
+        assert_eq!(
+            credentials.get(Credential::SlackUser, DEFAULT_INSTANCE),
+            Some("xoxp-user")
+        );
+        assert_eq!(
+            credentials.get(Credential::SlackBot, DEFAULT_INSTANCE),
+            None
+        );
+        assert_eq!(
+            credentials.get(Credential::SlackBot, "workb"),
+            Some("xoxb-workb")
+        );
+        assert_eq!(credentials.instances("slack"), vec!["default", "workb"]);
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
             concat!(
                 "{\n",
-                "  \"github\": \"github-token\",\n",
-                "  \"linear\": \"linear-token\",\n",
-                "  \"sentry\": \"sentry-token\",\n",
-                "  \"slack_user\": \"xoxp-user\",\n",
-                "  \"vercel\": \"vercel-token\"\n",
+                "  \"github\": {\n",
+                "    \"default\": {\n",
+                "      \"token\": \"github-token\"\n",
+                "    }\n",
+                "  },\n",
+                "  \"linear\": {\n",
+                "    \"default\": {\n",
+                "      \"token\": \"linear-token\"\n",
+                "    }\n",
+                "  },\n",
+                "  \"slack\": {\n",
+                "    \"default\": {\n",
+                "      \"user_token\": \"xoxp-user\"\n",
+                "    },\n",
+                "    \"workb\": {\n",
+                "      \"bot_token\": \"xoxb-workb\"\n",
+                "    }\n",
+                "  }\n",
                 "}"
             )
         );
 
-        assert!(delete_credentials_at(&path, &[Credential::SlackUser]).unwrap());
+        // Removing an instance's last field drops the whole record.
+        assert!(delete_credentials_at(&path, &[Credential::SlackUser], DEFAULT_INSTANCE).unwrap());
+        let credentials = load_credentials_from(&path).unwrap();
         assert_eq!(
-            load_credentials_from(&path)
-                .unwrap()
-                .get(Credential::SlackUser),
+            credentials.get(Credential::SlackUser, DEFAULT_INSTANCE),
             None
+        );
+        assert_eq!(credentials.instances("slack"), vec!["workb"]);
+    }
+
+    #[test]
+    fn legacy_flat_credentials_are_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("credentials.json");
+        std::fs::write(
+            &path,
+            br#"{"github":"legacy-token","slack":{"default":{"bot_token":"xoxb-bot"}}}"#,
+        )
+        .unwrap();
+        let credentials = load_credentials_from(&path).unwrap();
+        assert_eq!(credentials.get(Credential::Github, DEFAULT_INSTANCE), None);
+        assert_eq!(
+            credentials.get(Credential::SlackBot, DEFAULT_INSTANCE),
+            Some("xoxb-bot")
         );
     }
 
@@ -917,7 +1122,12 @@ mod tests {
         let malformed_settings = b"disabled_providers = [";
         std::fs::write(&settings, malformed_settings).unwrap();
 
-        set_credentials_at(&credentials, &[(Credential::Github, "token")]).unwrap();
+        set_credentials_at(
+            &credentials,
+            &[(Credential::Github, "token")],
+            DEFAULT_INSTANCE,
+        )
+        .unwrap();
         assert_eq!(std::fs::read(&settings).unwrap(), malformed_settings);
 
         std::fs::write(&settings, "# settings\ndisabled_providers = []\n").unwrap();
@@ -999,8 +1209,10 @@ mod tests {
             "  \"linear\", # keep linear\n",
             "  \"github\", # remove github\n",
             "]\n",
-            "disabled_providers = [\"slack\"]\n",
+            "disabled_providers = [\"slack@workb\"]\n",
             "unknown = \"value\"\n",
+            "[defaults]\n",
+            "slack = \"worka\"\n",
         );
         std::fs::write(&path, input).unwrap();
 
@@ -1017,7 +1229,9 @@ mod tests {
                 // The removed entry's leading whitespace becomes the array's
                 // trailing decor, hence the indented bracket.
                 "  ]\n",
-                "disabled_providers = [\"slack\", \"github\"]\n",
+                "disabled_providers = [\"slack@workb\", \"github\"]\n",
+                "[defaults]\n",
+                "slack = \"worka\"\n",
             )
         );
     }
@@ -1045,19 +1259,30 @@ mod tests {
     fn ensure_enabled_points_at_the_local_settings_file() {
         let settings = Settings {
             disabled_providers: Vec::new(),
-            sentry_url: None,
+            defaults: BTreeMap::new(),
             local: Some(LocalSettings {
                 path: PathBuf::from("/project/.foac.toml"),
                 enabled_providers: Vec::new(),
-                disabled_providers: vec!["github".into()],
+                disabled_providers: vec!["github".into(), "slack@workb".into()],
+                defaults: BTreeMap::new(),
             }),
         };
-        let error = ensure_enabled(&settings, "github").unwrap_err().to_string();
+        let error = ensure_enabled(&settings, "github", DEFAULT_INSTANCE)
+            .unwrap_err()
+            .to_string();
         assert_eq!(
             error,
             "github is disabled by /project/.foac.toml; run `foac provider enable github --local` to enable it"
         );
-        assert!(ensure_enabled(&settings, "linear").is_ok());
+        let error = ensure_enabled(&settings, "slack", "workb")
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            error,
+            "slack@workb is disabled by /project/.foac.toml; run `foac provider enable slack --instance workb --local` to enable it"
+        );
+        assert!(ensure_enabled(&settings, "linear", DEFAULT_INSTANCE).is_ok());
+        assert!(ensure_enabled(&settings, "slack", DEFAULT_INSTANCE).is_ok());
     }
 
     #[test]
@@ -1074,21 +1299,125 @@ mod tests {
     #[test]
     fn ensure_enabled_reports_disabled_providers() {
         let mut settings = Settings::default();
-        assert!(ensure_enabled(&settings, "github").is_ok());
+        assert!(ensure_enabled(&settings, "github", DEFAULT_INSTANCE).is_ok());
         settings.set_enabled("github", false);
-        let error = ensure_enabled(&settings, "github").unwrap_err().to_string();
+        let error = ensure_enabled(&settings, "github", DEFAULT_INSTANCE)
+            .unwrap_err()
+            .to_string();
         assert_eq!(
             error,
             "github is disabled; run `foac provider enable github` to enable it"
         );
+
+        settings.set_enabled("slack@workb", false);
+        assert!(ensure_enabled(&settings, "slack", DEFAULT_INSTANCE).is_ok());
+        let error = ensure_enabled(&settings, "slack", "workb")
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            error,
+            "slack@workb is disabled; run `foac provider enable slack --instance workb` to enable it"
+        );
     }
 
     #[test]
-    fn statuses_lists_every_provider() {
+    fn instance_toggles_layer_like_provider_toggles() {
+        let dir = tempfile::tempdir().unwrap();
+        let global = dir.path().join("config.toml");
+        std::fs::write(
+            &global,
+            "disabled_providers = [\"slack@workb\", \"github\"]\n",
+        )
+        .unwrap();
+        let project = dir.path().join("project");
+        std::fs::create_dir(&project).unwrap();
+        std::fs::write(
+            project.join(LOCAL_SETTINGS_FILE),
+            concat!(
+                "enabled_providers = [\"slack@workb\"]\n",
+                "disabled_providers = [\"slack@worka\"]\n",
+            ),
+        )
+        .unwrap();
+
+        let mut settings = load_settings_from(&global).unwrap();
+        settings.local = load_local_settings(&project).unwrap();
+
+        assert!(settings.instance_enabled("slack", "workb")); // local enable beats global disable
+        assert!(!settings.instance_enabled("slack", "worka")); // local disable
+        assert!(settings.instance_enabled("slack", DEFAULT_INSTANCE)); // untouched
+        // A whole-provider disable turns off every instance.
+        assert!(!settings.instance_enabled("github", DEFAULT_INSTANCE));
+        assert!(!settings.instance_enabled("github", "work"));
+    }
+
+    #[test]
+    fn default_instance_prefers_local_then_global_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let global = dir.path().join("config.toml");
+        std::fs::write(&global, "[defaults]\nslack = \"worka\"\ngithub = \"org\"\n").unwrap();
+        let project = dir.path().join("project");
+        std::fs::create_dir(&project).unwrap();
+        std::fs::write(
+            project.join(LOCAL_SETTINGS_FILE),
+            "[defaults]\nslack = \"workb\"\n",
+        )
+        .unwrap();
+
+        let mut settings = load_settings_from(&global).unwrap();
+        settings.local = load_local_settings(&project).unwrap();
+
+        assert_eq!(settings.default_instance("slack"), "workb");
+        assert_eq!(settings.default_instance("github"), "org");
+        assert_eq!(settings.default_instance("linear"), DEFAULT_INSTANCE);
+
+        assert_eq!(
+            resolve_instance("slack", Some("workc"), &settings).unwrap(),
+            "workc"
+        );
+        assert_eq!(resolve_instance("slack", None, &settings).unwrap(), "workb");
+        assert!(resolve_instance("slack", Some("Bad Name"), &settings).is_err());
+    }
+
+    #[test]
+    fn malformed_defaults_fail_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[defaults]\nslack = 3\n").unwrap();
+        let error = load_settings_from(&path).unwrap_err().to_string();
+        assert!(error.contains("`defaults` must be a table of instance names"));
+
+        std::fs::write(&path, "[defaults]\nslack = \"Bad Name\"\n").unwrap();
+        let error = load_settings_from(&path).unwrap_err().to_string();
+        assert!(error.contains("`defaults.slack`"));
+        assert!(error.contains("invalid instance name"));
+    }
+
+    #[test]
+    fn instance_names_are_validated() {
+        assert_eq!(normalize_instance("workb").unwrap(), "workb");
+        assert_eq!(normalize_instance(" work-b_2 ").unwrap(), "work-b_2");
+        assert_eq!(normalize_instance("default").unwrap(), DEFAULT_INSTANCE);
+        for invalid in ["", "Work", "a b", "@work", "-work", "wörk"] {
+            assert!(normalize_instance(invalid).is_err(), "{invalid:?}");
+        }
+    }
+
+    #[test]
+    fn statuses_lists_every_provider_and_stored_named_instances() {
         let mut settings = Settings::default();
         settings.set_enabled("sentry", false);
+        settings.set_enabled("slack@workb", false);
+        let mut credentials = Credentials::default();
+        credentials.set(Credential::SlackBot, "workb", "xoxb-b".into());
+        credentials.set(Credential::SlackBot, DEFAULT_INSTANCE, "xoxb-a".into());
         assert_eq!(
-            statuses_with(&settings, |name| name == "github", &["linear"]),
+            statuses_with(
+                &settings,
+                |name| name == "github",
+                &["linear"],
+                &credentials
+            ),
             json!({
                 "confluence": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "github": {"enabled": true, "authenticated": true, "skill_installed": false},
@@ -1097,6 +1426,7 @@ mod tests {
                 "neon": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "sentry": {"enabled": false, "authenticated": false, "skill_installed": false},
                 "slack": {"enabled": true, "authenticated": false, "skill_installed": false},
+                "slack@workb": {"enabled": false, "authenticated": true, "skill_installed": false},
                 "vercel": {"enabled": true, "authenticated": false, "skill_installed": false},
             })
         );

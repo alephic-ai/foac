@@ -10,6 +10,10 @@ struct Cli {
     /// Output format for JSON command output (version, update, and skill ignore it)
     #[arg(long, global = true, value_enum, default_value = "auto")]
     format: output::FormatArg,
+    /// Provider instance to use (from `foac auth <provider> login --instance <name>`);
+    /// defaults to the nearest [defaults] setting
+    #[arg(short = 'i', long, global = true)]
+    instance: Option<String>,
     #[command(subcommand)]
     command: Command,
 }
@@ -92,42 +96,28 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         std::io::IsTerminal::is_terminal(&std::io::stdout()),
     );
     let command = cli.command;
+    let instance_flag = cli.instance;
+    // The instance a provider command targets: --instance flag, then the
+    // nearest [defaults] setting; the resolved provider@instance must not
+    // be disabled.
+    let provider_instance = |name: &str| -> Result<String, Box<dyn std::error::Error>> {
+        let settings = provider::SettingsStore.load()?;
+        let instance = provider::resolve_instance(name, instance_flag.as_deref(), &settings)?;
+        provider::ensure_enabled(&settings, name, &instance)?;
+        Ok(instance)
+    };
     let skip_check = matches!(command, Command::Update);
     let result = match command {
-        Command::Auth(cmd) => auth::run(cmd, format),
-        Command::Confluence(cmd) => {
-            provider::ensure_enabled(&provider::SettingsStore.load()?, "confluence")?;
-            confluence::run(cmd, format)
-        }
-        Command::Github(cmd) => {
-            provider::ensure_enabled(&provider::SettingsStore.load()?, "github")?;
-            github::run(cmd, format)
-        }
-        Command::Jira(cmd) => {
-            provider::ensure_enabled(&provider::SettingsStore.load()?, "jira")?;
-            jira::run(cmd, format)
-        }
-        Command::Linear(cmd) => {
-            provider::ensure_enabled(&provider::SettingsStore.load()?, "linear")?;
-            linear::run(cmd, format)
-        }
-        Command::Neon(cmd) => {
-            provider::ensure_enabled(&provider::SettingsStore.load()?, "neon")?;
-            neon::run(cmd, format)
-        }
-        Command::Sentry(cmd) => {
-            provider::ensure_enabled(&provider::SettingsStore.load()?, "sentry")?;
-            sentry::run(cmd, format)
-        }
-        Command::Slack(cmd) => {
-            provider::ensure_enabled(&provider::SettingsStore.load()?, "slack")?;
-            slack::run(cmd, format)
-        }
-        Command::Vercel(cmd) => {
-            provider::ensure_enabled(&provider::SettingsStore.load()?, "vercel")?;
-            vercel::run(cmd, format)
-        }
-        Command::Provider(cmd) => provider::run(cmd, format),
+        Command::Auth(cmd) => auth::run(cmd, format, instance_flag.clone()),
+        Command::Confluence(cmd) => confluence::run(cmd, format, &provider_instance("confluence")?),
+        Command::Github(cmd) => github::run(cmd, format, &provider_instance("github")?),
+        Command::Jira(cmd) => jira::run(cmd, format, &provider_instance("jira")?),
+        Command::Linear(cmd) => linear::run(cmd, format, &provider_instance("linear")?),
+        Command::Neon(cmd) => neon::run(cmd, format, &provider_instance("neon")?),
+        Command::Sentry(cmd) => sentry::run(cmd, format, &provider_instance("sentry")?),
+        Command::Slack(cmd) => slack::run(cmd, format, &provider_instance("slack")?),
+        Command::Vercel(cmd) => vercel::run(cmd, format, &provider_instance("vercel")?),
+        Command::Provider(cmd) => provider::run(cmd, format, instance_flag.clone()),
         Command::Skill(cmd) => match cmd {
             SkillCmd::Print { provider } => {
                 print!("{}", render_provider_skill(&provider));
@@ -609,6 +599,8 @@ mod tests {
             vec!["foac", "auth", "vercel", "status"],
             vec!["foac", "auth", "vercel", "login"],
             vec!["foac", "auth", "vercel", "logout"],
+            vec!["foac", "auth", "slack", "login", "--instance", "workb"],
+            vec!["foac", "auth", "slack", "logout", "-i", "workb"],
         ] {
             Cli::try_parse_from(args).unwrap();
         }
@@ -652,6 +644,16 @@ mod tests {
             vec!["foac", "provider", "disable", "slack"],
             vec!["foac", "provider", "enable", "github", "--local"],
             vec!["foac", "provider", "disable", "slack", "--local"],
+            vec![
+                "foac",
+                "provider",
+                "disable",
+                "slack",
+                "--instance",
+                "workb",
+                "--local",
+            ],
+            vec!["foac", "provider", "enable", "slack", "-i", "workb"],
         ] {
             Cli::try_parse_from(args).unwrap();
         }
@@ -663,6 +665,31 @@ mod tests {
         assert_eq!(
             error.kind(),
             ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+        );
+    }
+
+    #[test]
+    fn instance_flag_parses_at_any_position() {
+        for args in [
+            vec!["foac", "-i", "workb", "slack", "conversation", "list"],
+            vec![
+                "foac",
+                "slack",
+                "conversation",
+                "list",
+                "--instance",
+                "workb",
+            ],
+            vec!["foac", "slack", "-i", "workb", "conversation", "list"],
+        ] {
+            let cli = Cli::try_parse_from(args).unwrap();
+            assert_eq!(cli.instance.as_deref(), Some("workb"));
+        }
+        assert!(
+            Cli::try_parse_from(["foac", "slack", "conversation", "list"])
+                .unwrap()
+                .instance
+                .is_none()
         );
     }
 

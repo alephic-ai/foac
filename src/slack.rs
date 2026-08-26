@@ -216,7 +216,11 @@ struct Api {
     format: crate::output::Format,
 }
 
-pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(
+    cmd: Cmd,
+    format: crate::output::Format,
+    instance: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     match cmd.command {
         Resource::Search {
             query,
@@ -225,11 +229,11 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
             highlight,
             page,
         } => {
-            let api = Api::slack(crate::auth::slack_user_token()?, format)?;
+            let api = Api::slack(crate::auth::slack_user_token(instance)?, format)?;
             run_search(&api, query, sort, direction, highlight, page)
         }
         command => {
-            let api = Api::slack(crate::auth::slack_token()?, format)?;
+            let api = Api::slack(crate::auth::slack_token(instance)?, format)?;
             match command {
                 Resource::Conversation(cmd) => run_conversation(&api, cmd),
                 Resource::Message(cmd) => run_message(&api, cmd),
@@ -242,7 +246,8 @@ pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::e
 }
 
 pub fn authenticated() -> bool {
-    crate::auth::slack_token().is_ok()
+    crate::auth::slack_token(crate::provider::DEFAULT_INSTANCE).is_ok()
+        || crate::auth::vendor_has_stored_instances("slack")
 }
 
 pub(crate) fn is_bot_token(token: &str) -> bool {

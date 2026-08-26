@@ -154,14 +154,23 @@ not migrated or deleted.
 To toggle providers per project, drop a `.foac.toml` in the project folder:
 
 ```toml
-enabled_providers = ["linear"]   # on here even if disabled globally
-disabled_providers = ["slack"]   # off here even if enabled globally
+enabled_providers = ["linear"]        # on here even if disabled globally
+disabled_providers = ["slack@workb"]  # off here; bare "slack" would disable all instances
+
+[defaults]
+slack = "workb"                       # unqualified slack commands here use workb
 ```
 
 foac uses the nearest `.foac.toml` found from the working directory up to `/`;
 its toggles override the global ones, and auth is never affected.
-`foac provider <enable|disable> <name> --local` edits that nearest file for
-you, creating `./.foac.toml` when none exists.
+`foac provider <enable|disable> <name> [--instance <name>] --local` edits that
+nearest file for you, creating `./.foac.toml` when none exists.
+
+Each provider can hold several named instances — independent logins to
+different tenants, like two Slack workspaces (`foac auth slack login
+--instance workb`, then `foac slack conversation list -i workb`). The
+unnamed login is the `default` instance, used when no instance is selected;
+see [doc/auth.md](doc/auth.md).
 
 Other commands check GitHub for a newer release at most once a day, and print a notice on stderr while one exists. They never auto-install. Set `FOAC_NO_UPDATE_CHECK` (or `CI`) to skip the check.
 

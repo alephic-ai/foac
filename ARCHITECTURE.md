@@ -99,32 +99,50 @@ not duplication.
   compile-time-checked queries via `graphql_client`. REST providers stay
   untyped passthrough. The less to maintain in foac, the better. Don't
   hand-write types for REST responses.
+- Every provider holds named instances: independent logins to different
+  tenants of the same product (two Slack workspaces, two Atlassian sites).
+  An unnamed login is the instance named `default`, which unqualified
+  commands use, so single-tenant setups never see the concept. A command's
+  instance resolves as `--instance` flag > nearest `[defaults]` table
+  (local `.foac.toml`, then global `config.toml`)
+  > `default`, computed once in `main.rs` beside `ensure_enabled` and
+  threaded into each provider's `run`. Auth commands take the flag only, so
+  a login is never silently redirected. `provider@instance` is the qualified
+  grammar wherever an instance is data: toggle arrays, status keys, errors.
 - Auth is a proxy, resolved per provider as env var > credentials file (> `gh`
-  CLI for GitHub). Log in once, reuse everywhere. Credentials live in the
-  atomically replaced `credentials.json`, which is mode 0600 before secret
-  bytes are written on Unix, not the OS keychain (rebuilt binaries lose macOS
-  Keychain ACL trust, #35). Tokens are never printed. Login validates before
-  storing.
+  CLI for GitHub) for the default instance; a named instance reads exactly
+  its stored credentials — env tokens and the `gh` fallback never apply, so
+  an ambient token from one tenant cannot leak into another. Log in once,
+  reuse everywhere. Credentials live in the atomically replaced
+  `credentials.json`, nested provider → instance → fields, mode 0600 before
+  secret bytes are written on Unix, not the OS keychain (rebuilt binaries
+  lose macOS Keychain ACL trust, #35). The `atlassian` entry is vendor-level,
+  shared by Jira and Confluence; a Sentry instance stores its base URL with
+  its token. Tokens are never printed. Login validates before storing.
   Slack stores bot and user credentials independently. Ordinary commands resolve
   bot env > stored bot > user env > stored user; search resolves user env >
   stored user because Slack does not allow bot tokens to call `search.messages`.
   Slack login asks for both and validates the pair before one atomic credential
   write. This makes bot-only, user-only, both-token, and unauthenticated
   installations explicit capability modes.
-- Settings and credentials fail closed independently. Provider toggles and the
-  optional Sentry URL live in comment-preserving `config.toml`; credentials
-  for every provider live in pretty-printed `credentials.json`. Unknown TOML
-  keys are discarded on write. Legacy `config.json` is a deliberately ignored
-  fresh-start format: it is never read, migrated, deleted, or used as fallback.
+- Settings and credentials fail closed independently. Provider toggles and
+  the `[defaults]` instance table live in comment-preserving `config.toml`;
+  credentials for every provider live in pretty-printed `credentials.json`.
+  Unknown TOML keys are discarded on write. Legacy `config.json`, and the
+  flat pre-instance `credentials.json` keys, are deliberately ignored
+  fresh-start formats: never read, migrated, deleted, or used as fallback.
 - Provider toggles layer per folder. The nearest `.foac.toml` from the working
   directory up to `/` overrides the global toggles via its `enabled_providers`
-  and `disabled_providers` arrays (a provider in both is enabled).
-  `foac provider <enable|disable> <name> --local` edits that nearest file
-  (creating one in the working directory when none exists) with the same
-  comment-preserving TOML machinery as the global config; credentials are
-  shared and untouched by toggling. The layering lives in `provider.rs`:
-  settings loads attach the local overrides, so every consumer of
-  `Settings::enabled` sees the effective state.
+  and `disabled_providers` arrays (a name in both is enabled). Entries are
+  bare provider names (the whole provider) or qualified `provider@instance`
+  names (one instance); an instance is active iff its provider is enabled and
+  its qualified name is not disabled.
+  `foac provider <enable|disable> <name> [--instance <name>] --local` edits
+  that nearest file (creating one in the working directory when none exists)
+  with the same comment-preserving TOML machinery as the global config;
+  credentials are shared and untouched by toggling. The layering lives in
+  `provider.rs`: settings loads attach the local overrides, so every consumer
+  of `Settings::enabled` sees the effective state.
 - Inactive providers are invisible. Unauthenticated or disabled providers
   are hidden from `--help`, from suggestions, and from the rendered skill, but
   their commands still parse and their `--help` still works. Auth probing is
@@ -153,10 +171,12 @@ not duplication.
 ### An agent lists Linear issues
 
 1. `foac linear issue list --team ENG --format json` → `main.rs` parses (plain
-   parse, no auth probe) → `provider::ensure_enabled` → `linear::run`.
+   parse, no auth probe) → resolves the instance (flag > `[defaults]` >
+   `default`) → `provider::ensure_enabled` → `linear::run`.
 2. `linear.rs` builds the compile-time-checked `IssueList` query; `eq_filter!`
    turns `ENG` into a key filter (a UUID would become an id filter). Token
-   from `auth::linear_token` (env, else credentials file).
+   from `auth::linear_token` for the resolved instance (env, else credentials
+   file, for `default`; stored only for a named instance).
 3. Response `data` JSON returns to `run` → `output::print` → compact JSON on
    stdout (a TTY without `--format json` would get a table). Errors: provider
    JSON on stderr, exit 1.

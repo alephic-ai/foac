@@ -8,6 +8,12 @@ credential, because Slack's `search.messages` method does not accept bot tokens.
 Conversation arguments accept IDs or names such as `#eng`; `user get` accepts
 an ID, `@name`, display name, or email.
 
+Several workspaces can be logged in at once as named instances:
+`foac auth slack login --instance workb`, then `foac slack ... -i workb` (or
+a `.foac.toml` `[defaults]` entry). A named instance uses only its stored
+tokens — the environment variables above apply to the default instance only.
+See [auth.md](auth.md).
+
 | Available credentials | Ordinary commands | Search |
 | --- | --- | --- |
 | Bot only | Run as the app's bot | Unavailable |

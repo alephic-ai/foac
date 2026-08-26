@@ -5,6 +5,8 @@ use std::process::Command as ProcessCommand;
 use clap::{Args, Subcommand};
 use serde_json::{Value, json};
 
+use crate::provider::DEFAULT_INSTANCE;
+
 #[derive(Args)]
 #[command(arg_required_else_help = true)]
 pub struct Cmd {
@@ -204,105 +206,162 @@ const SLACK_APP_MANIFEST: &str = r#"{
 }"#;
 
 trait SecretStore {
-    fn get(&self, credential: crate::provider::Credential) -> Result<Option<String>, String>;
-    fn set_many(&self, credentials: &[(crate::provider::Credential, &str)]) -> Result<(), String>;
-    fn delete_many(&self, credentials: &[crate::provider::Credential]) -> Result<bool, String>;
+    fn get(
+        &self,
+        credential: crate::provider::Credential,
+        instance: &str,
+    ) -> Result<Option<String>, String>;
+    fn set_many(
+        &self,
+        credentials: &[(crate::provider::Credential, &str)],
+        instance: &str,
+    ) -> Result<(), String>;
+    fn delete_many(
+        &self,
+        credentials: &[crate::provider::Credential],
+        instance: &str,
+    ) -> Result<bool, String>;
+    /// The instance names stored for a vendor, in sorted order.
+    fn instances(&self, vendor: &str) -> Result<Vec<String>, String>;
 }
 
-pub fn run(cmd: Cmd, format: crate::output::Format) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(
+    cmd: Cmd,
+    format: crate::output::Format,
+    instance: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let store = crate::provider::CredentialStore;
+    // Auth commands use the flag only, never env or folder defaults, so a
+    // login can never be silently redirected to another instance.
+    let instance = match instance {
+        Some(name) => crate::provider::normalize_instance(&name)?,
+        None => DEFAULT_INSTANCE.to_owned(),
+    };
+    let instance = instance.as_str();
     match cmd.command {
         AuthCmd::Status => {
             print_all_statuses(&store, format);
             Ok(())
         }
-        AuthCmd::Linear(cmd) => run_provider(Provider::Linear, cmd.command, &store, format),
-        AuthCmd::Github(cmd) => run_provider(Provider::Github, cmd.command, &store, format),
-        AuthCmd::Neon(cmd) => run_provider(Provider::Neon, cmd.command, &store, format),
-        AuthCmd::Jira(cmd) => run_atlassian(Provider::Jira, cmd.command, &store, format),
-        AuthCmd::Confluence(cmd) => {
-            run_atlassian(Provider::Confluence, cmd.command, &store, format)
+        AuthCmd::Linear(cmd) => {
+            run_provider(Provider::Linear, cmd.command, &store, format, instance)
         }
-        AuthCmd::Slack(cmd) => run_slack(cmd.command, &store, format),
+        AuthCmd::Github(cmd) => {
+            run_provider(Provider::Github, cmd.command, &store, format, instance)
+        }
+        AuthCmd::Neon(cmd) => run_provider(Provider::Neon, cmd.command, &store, format, instance),
+        AuthCmd::Jira(cmd) => run_atlassian(Provider::Jira, cmd.command, &store, format, instance),
+        AuthCmd::Confluence(cmd) => {
+            run_atlassian(Provider::Confluence, cmd.command, &store, format, instance)
+        }
+        AuthCmd::Slack(cmd) => run_slack(cmd.command, &store, format, instance),
         AuthCmd::Sentry(cmd) => match cmd.command {
             SentryAction::Status => {
-                print_status(Provider::Sentry, &store, format);
+                print_status(Provider::Sentry, &store, format, instance);
                 Ok(())
             }
-            SentryAction::Login { host } => login(Provider::Sentry, host, &store, format),
-            SentryAction::Logout => logout(Provider::Sentry, &store, format),
+            SentryAction::Login { host } => login(Provider::Sentry, host, &store, format, instance),
+            SentryAction::Logout => logout(Provider::Sentry, &store, format, instance),
         },
-        AuthCmd::Vercel(cmd) => run_provider(Provider::Vercel, cmd.command, &store, format),
+        AuthCmd::Vercel(cmd) => {
+            run_provider(Provider::Vercel, cmd.command, &store, format, instance)
+        }
     }
 }
 
-pub(crate) fn linear_token() -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn linear_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
     resolve_stored(
         Provider::Linear,
         environment_token(Provider::Linear),
         &crate::provider::CredentialStore,
+        instance,
     )
     .map(|credential| credential.token)
     .map_err(Into::into)
 }
 
-pub(crate) fn neon_token() -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn neon_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
     resolve_stored(
         Provider::Neon,
         environment_token(Provider::Neon),
         &crate::provider::CredentialStore,
+        instance,
     )
     .map(|credential| credential.token)
     .map_err(Into::into)
 }
 
-pub(crate) fn sentry_token() -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn sentry_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
     resolve_stored(
         Provider::Sentry,
         environment_token(Provider::Sentry),
         &crate::provider::CredentialStore,
+        instance,
     )
     .map(|credential| credential.token)
     .map_err(Into::into)
 }
 
-pub(crate) fn vercel_token() -> Result<String, Box<dyn std::error::Error>> {
+/// A named Sentry instance's stored base URL, if any; environment and
+/// settings never apply to named instances.
+pub(crate) fn sentry_stored_url(instance: &str) -> Option<String> {
+    crate::provider::CredentialStore
+        .load()
+        .ok()?
+        .get(crate::provider::Credential::SentryUrl, instance)
+        .map(str::to_owned)
+}
+
+pub(crate) fn vercel_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
     resolve_stored(
         Provider::Vercel,
         environment_token(Provider::Vercel),
         &crate::provider::CredentialStore,
+        instance,
     )
     .map(|credential| credential.token)
     .map_err(Into::into)
 }
 
-pub(crate) fn slack_token() -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn slack_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
     resolve_slack(
         environment_token(Provider::Slack),
         environment_slack_user_token(),
         &crate::provider::CredentialStore,
+        instance,
     )
     .map(|credential| credential.token)
     .map_err(Into::into)
 }
 
-pub(crate) fn slack_user_token() -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn slack_user_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
     resolve_slack_user(
         environment_slack_user_token(),
         &crate::provider::CredentialStore,
+        instance,
     )
     .map(|credential| credential.token)
     .map_err(Into::into)
 }
 
-pub(crate) fn github_token() -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn github_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
     resolve_github(
         environment_token(Provider::Github),
         &crate::provider::CredentialStore,
         github_cli_token,
+        instance,
     )
     .map(|credential| credential.token)
     .map_err(Into::into)
+}
+
+/// Whether any instance of a vendor has stored credentials; used by the
+/// providers' `authenticated()` so named-instance-only setups stay visible.
+pub(crate) fn vendor_has_stored_instances(vendor: &str) -> bool {
+    crate::provider::CredentialStore
+        .load()
+        .map(|credentials| !credentials.instances(vendor).is_empty())
+        .unwrap_or(false)
 }
 
 /// Vendor-level Atlassian credentials: every Jira and Confluence request
@@ -330,8 +389,10 @@ pub(crate) fn atlassian_credentials(
     host_flag: Option<String>,
     email_flag: Option<String>,
     login: &str,
+    instance: &str,
 ) -> Result<AtlassianCredentials, Box<dyn std::error::Error>> {
     let store = crate::provider::CredentialStore;
+    let login = login_command(login, instance);
     let host = match host_flag {
         Some(host) => Some(host),
         None => jira_part(
@@ -339,12 +400,16 @@ pub(crate) fn atlassian_credentials(
             crate::provider::Credential::AtlassianHost,
             "Atlassian host",
             &store,
+            instance,
         )?
         .map(|(value, _)| value),
     }
     .ok_or_else(|| {
-        format!(
-            "--host or ATLASSIAN_HOST is not set and no Atlassian host is stored; run `{login}`"
+        missing_atlassian_part(
+            "--host or ATLASSIAN_HOST",
+            "Atlassian host",
+            &login,
+            instance,
         )
     })?;
     let email = match email_flag {
@@ -354,12 +419,16 @@ pub(crate) fn atlassian_credentials(
             crate::provider::Credential::AtlassianEmail,
             "Atlassian email",
             &store,
+            instance,
         )?
         .map(|(value, _)| value),
     }
     .ok_or_else(|| {
-        format!(
-            "--email or ATLASSIAN_EMAIL is not set and no Atlassian email is stored; run `{login}`"
+        missing_atlassian_part(
+            "--email or ATLASSIAN_EMAIL",
+            "Atlassian email",
+            &login,
+            instance,
         )
     })?;
     let token = match jira_part(
@@ -367,6 +436,7 @@ pub(crate) fn atlassian_credentials(
         crate::provider::Credential::AtlassianToken,
         "Atlassian API token",
         &store,
+        instance,
     )? {
         Some((token, _)) => token,
         None if !std::io::stdin().is_terminal() => {
@@ -376,9 +446,15 @@ pub(crate) fn atlassian_credentials(
             }
             token
         }
-        None => {
+        None if instance == DEFAULT_INSTANCE => {
             return Err(format!(
                 "ATLASSIAN_API_TOKEN is not set and no Atlassian API token is stored; pipe the token to stdin or run `{login}`"
+            )
+            .into());
+        }
+        None => {
+            return Err(format!(
+                "no Atlassian API token is stored for instance \"{instance}\"; pipe the token to stdin or run `{login}`"
             )
             .into());
         }
@@ -390,8 +466,31 @@ pub(crate) fn atlassian_credentials(
     })
 }
 
+/// A provider's login command, with `--instance` appended for named instances.
+fn login_command(login: &str, instance: &str) -> String {
+    if instance == DEFAULT_INSTANCE {
+        login.to_owned()
+    } else {
+        format!("{login} --instance {instance}")
+    }
+}
+
+fn missing_atlassian_part(sources: &str, what: &str, login: &str, instance: &str) -> String {
+    if instance == DEFAULT_INSTANCE {
+        format!("{sources} is not set and no {what} is stored; run `{login}`")
+    } else {
+        format!("no {what} is stored for instance \"{instance}\"; run `{login}`")
+    }
+}
+
 pub(crate) fn atlassian_authenticated() -> bool {
-    resolve_jira(jira_environment(), &crate::provider::CredentialStore).is_ok()
+    resolve_jira(
+        jira_environment(),
+        &crate::provider::CredentialStore,
+        DEFAULT_INSTANCE,
+    )
+    .is_ok()
+        || vendor_has_stored_instances("atlassian")
 }
 
 /// The `ATLASSIAN_HOST`, `ATLASSIAN_EMAIL`, and `ATLASSIAN_API_TOKEN`
@@ -407,6 +506,7 @@ fn jira_environment() -> [Option<String>; 3] {
 fn resolve_jira(
     environment: [Option<String>; 3],
     store: &dyn SecretStore,
+    instance: &str,
 ) -> Result<ResolvedJira, ResolveError> {
     let [host_environment, email_environment, token_environment] = environment;
     let resolve = |environment,
@@ -414,10 +514,12 @@ fn resolve_jira(
                    credential,
                    display_name: &str|
      -> Result<(String, CredentialSource), ResolveError> {
-        jira_part(environment, credential, display_name, store)?.ok_or_else(|| {
-            ResolveError::Missing(format!(
-                "{variable} is not set and no {display_name} is stored"
-            ))
+        jira_part(environment, credential, display_name, store, instance)?.ok_or_else(|| {
+            ResolveError::Missing(if instance == DEFAULT_INSTANCE {
+                format!("{variable} is not set and no {display_name} is stored")
+            } else {
+                format!("no {display_name} is stored for instance \"{instance}\"")
+            })
         })
     };
     let (host, _) = resolve(
@@ -451,11 +553,15 @@ fn jira_part(
     credential: crate::provider::Credential,
     display_name: &str,
     store: &dyn SecretStore,
+    instance: &str,
 ) -> Result<Option<(String, CredentialSource)>, ResolveError> {
-    if let Some(value) = environment {
+    // Environment values belong to the default instance only.
+    if instance == DEFAULT_INSTANCE
+        && let Some(value) = environment
+    {
         return Ok(Some((value, CredentialSource::Environment)));
     }
-    match store.get(credential) {
+    match store.get(credential, instance) {
         Ok(Some(value)) => Ok(Some((value, CredentialSource::ConfigFile))),
         Ok(None) => Ok(None),
         Err(error) => Err(ResolveError::Failed(format!(
@@ -547,23 +653,42 @@ impl CredentialSource {
 }
 
 impl SecretStore for crate::provider::CredentialStore {
-    fn get(&self, credential: crate::provider::Credential) -> Result<Option<String>, String> {
+    fn get(
+        &self,
+        credential: crate::provider::Credential,
+        instance: &str,
+    ) -> Result<Option<String>, String> {
         Ok(self
             .load()
             .map_err(|error| error.to_string())?
-            .get(credential)
+            .get(credential, instance)
             .filter(|token| !token.is_empty())
             .map(str::to_owned))
     }
 
-    fn set_many(&self, credentials: &[(crate::provider::Credential, &str)]) -> Result<(), String> {
-        self.set_many(credentials)
+    fn set_many(
+        &self,
+        credentials: &[(crate::provider::Credential, &str)],
+        instance: &str,
+    ) -> Result<(), String> {
+        self.set_many(credentials, instance)
             .map_err(|error| error.to_string())
     }
 
-    fn delete_many(&self, credentials: &[crate::provider::Credential]) -> Result<bool, String> {
-        self.delete_many(credentials)
+    fn delete_many(
+        &self,
+        credentials: &[crate::provider::Credential],
+        instance: &str,
+    ) -> Result<bool, String> {
+        self.delete_many(credentials, instance)
             .map_err(|error| error.to_string())
+    }
+
+    fn instances(&self, vendor: &str) -> Result<Vec<String>, String> {
+        Ok(self
+            .load()
+            .map_err(|error| error.to_string())?
+            .instances(vendor))
     }
 }
 
@@ -572,14 +697,15 @@ fn run_provider(
     action: ProviderAction,
     store: &dyn SecretStore,
     format: crate::output::Format,
+    instance: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match action {
         ProviderAction::Status => {
-            print_status(provider, store, format);
+            print_status(provider, store, format, instance);
             Ok(())
         }
-        ProviderAction::Login => login(provider, None, store, format),
-        ProviderAction::Logout => logout(provider, store, format),
+        ProviderAction::Login => login(provider, None, store, format, instance),
+        ProviderAction::Logout => logout(provider, store, format, instance),
     }
 }
 
@@ -588,16 +714,17 @@ fn run_atlassian(
     action: AtlassianAction,
     store: &dyn SecretStore,
     format: crate::output::Format,
+    instance: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match action {
         AtlassianAction::Status => {
-            print_status(provider, store, format);
+            print_status(provider, store, format, instance);
             Ok(())
         }
         AtlassianAction::Login { host, email } => {
-            atlassian_login(provider, host, email, store, format)
+            atlassian_login(provider, host, email, store, format, instance)
         }
-        AtlassianAction::Logout => logout(provider, store, format),
+        AtlassianAction::Logout => logout(provider, store, format, instance),
     }
 }
 
@@ -605,14 +732,15 @@ fn run_slack(
     action: SlackAction,
     store: &dyn SecretStore,
     format: crate::output::Format,
+    instance: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match action {
         SlackAction::Status => {
-            print_status(Provider::Slack, store, format);
+            print_status(Provider::Slack, store, format, instance);
             Ok(())
         }
-        SlackAction::Login => slack_login(store, format),
-        SlackAction::Logout => logout(Provider::Slack, store, format),
+        SlackAction::Login => slack_login(store, format, instance),
+        SlackAction::Logout => logout(Provider::Slack, store, format, instance),
     }
 }
 
@@ -620,6 +748,7 @@ fn logout(
     provider: Provider,
     store: &dyn SecretStore,
     format: crate::output::Format,
+    instance: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let credentials: &[crate::provider::Credential] = match provider {
         Provider::Slack => &[
@@ -633,12 +762,16 @@ fn logout(
             crate::provider::Credential::AtlassianEmail,
             crate::provider::Credential::AtlassianToken,
         ],
+        Provider::Sentry => &[
+            crate::provider::Credential::Sentry,
+            crate::provider::Credential::SentryUrl,
+        ],
         _ => &[provider.credential()],
     };
     let removed = store
-        .delete_many(credentials)
+        .delete_many(credentials, instance)
         .map_err(|error| format!("could not delete {} credential: {error}", provider.as_str()))?;
-    let report = logout_report(provider, removed);
+    let report = logout_report(provider, instance, removed);
     crate::output::print_text(&logout_summary(removed), &report, format);
     Ok(())
 }
@@ -648,6 +781,7 @@ fn login(
     host: Option<String>,
     store: &dyn SecretStore,
     format: crate::output::Format,
+    instance: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let url = match (provider, host) {
         (Provider::Sentry, Some(host)) => Some(crate::sentry::normalize_host(&host)),
@@ -656,35 +790,35 @@ fn login(
     };
     if provider == Provider::Sentry {
         store
-            .get(provider.credential())
+            .get(provider.credential(), instance)
             .map_err(|error| format!("could not read Sentry credential: {error}"))?;
-        if url.is_some() {
-            crate::provider::SettingsStore.load()?;
-        }
     }
-    print_login_help(provider, url.as_deref())?;
+    print_login_help(provider, url.as_deref(), instance)?;
     let token = read_token()?;
     if token.is_empty() {
         return Err("token cannot be empty".into());
     }
-    let account = validate_and_store(provider, provider.credential(), &token, store, |token| {
-        validate(provider, token, url.as_deref())
+    let mut credentials = vec![(provider.credential(), token.as_str())];
+    if let Some(url) = url.as_deref() {
+        credentials.push((crate::provider::Credential::SentryUrl, url));
+    }
+    let account = validate_and_store(provider, &credentials, store, instance, || {
+        validate(provider, &token, url.as_deref(), instance)
     })?;
-    if let Some(url) = &url {
-        crate::provider::SettingsStore.set_sentry_url(Some(url.clone()))?;
-        if std::env::var("SENTRY_URL").is_ok_and(|url| !url.is_empty()) {
+    if instance == DEFAULT_INSTANCE {
+        if url.is_some() && std::env::var("SENTRY_URL").is_ok_and(|url| !url.is_empty()) {
             eprintln!("Warning: SENTRY_URL is set and takes precedence over the stored URL.");
         }
+        if environment_token(provider).is_some() {
+            eprintln!(
+                "Warning: {} is set and takes precedence over the stored credential.",
+                provider.environment_variable()
+            );
+        }
     }
-    if environment_token(provider).is_some() {
-        eprintln!(
-            "Warning: {} is set and takes precedence over the stored credential.",
-            provider.environment_variable()
-        );
-    }
-    let report = login_report(provider, account);
+    let report = login_report(provider, instance, account);
     crate::output::print_text(
-        &status_summary(provider, &report[provider.as_str()]),
+        &status_summary(provider, &report[status_key(provider, instance)]),
         &report,
         format,
     );
@@ -697,28 +831,34 @@ fn atlassian_login(
     email: Option<String>,
     store: &dyn SecretStore,
     format: crate::output::Format,
+    instance: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    print_login_help(provider, None)?;
+    print_login_help(provider, None, instance)?;
     let (host, email, token) = read_jira_login(host, email)?;
     let host = crate::jira::normalize_host(&host)?;
     let account = atlassian_account(provider, &host, &email, &token)?;
     store
-        .set_many(&[
-            (crate::provider::Credential::AtlassianHost, host.as_str()),
-            (crate::provider::Credential::AtlassianEmail, email.as_str()),
-            (crate::provider::Credential::AtlassianToken, token.as_str()),
-        ])
+        .set_many(
+            &[
+                (crate::provider::Credential::AtlassianHost, host.as_str()),
+                (crate::provider::Credential::AtlassianEmail, email.as_str()),
+                (crate::provider::Credential::AtlassianToken, token.as_str()),
+            ],
+            instance,
+        )
         .map_err(|error| format!("could not store Atlassian credentials: {error}"))?;
-    for variable in ["ATLASSIAN_HOST", "ATLASSIAN_EMAIL", "ATLASSIAN_API_TOKEN"] {
-        if environment(variable).is_some() {
-            eprintln!(
-                "Warning: {variable} is set and takes precedence over the stored credential."
-            );
+    if instance == DEFAULT_INSTANCE {
+        for variable in ["ATLASSIAN_HOST", "ATLASSIAN_EMAIL", "ATLASSIAN_API_TOKEN"] {
+            if environment(variable).is_some() {
+                eprintln!(
+                    "Warning: {variable} is set and takes precedence over the stored credential."
+                );
+            }
         }
     }
-    let report = login_report(provider, account);
+    let report = login_report(provider, instance, account);
     crate::output::print_text(
-        &status_summary(provider, &report[provider.as_str()]),
+        &status_summary(provider, &report[status_key(provider, instance)]),
         &report,
         format,
     );
@@ -820,11 +960,12 @@ struct SlackTokens {
 fn slack_login(
     store: &dyn SecretStore,
     format: crate::output::Format,
+    instance: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    print_login_help(Provider::Slack, None)?;
+    print_login_help(Provider::Slack, None, instance)?;
     let tokens = read_slack_tokens()?;
     let (bot_account, user_account) =
-        validate_and_store_slack(&tokens, store, validate_slack_login_token)?;
+        validate_and_store_slack(&tokens, store, instance, validate_slack_login_token)?;
     let mut stored = Vec::with_capacity(2);
     if tokens.bot.is_some() {
         stored.push("bot");
@@ -833,24 +974,27 @@ fn slack_login(
         stored.push("user");
     }
 
-    if tokens.bot.is_some() && environment_token(Provider::Slack).is_some() {
-        eprintln!(
-            "Warning: SLACK_BOT_TOKEN is set and takes precedence over the stored credential."
-        );
-    }
-    if tokens.user.is_some() && environment_slack_user_token().is_some() {
-        eprintln!(
-            "Warning: SLACK_USER_TOKEN is set and takes precedence over the stored credential."
-        );
+    if instance == DEFAULT_INSTANCE {
+        if tokens.bot.is_some() && environment_token(Provider::Slack).is_some() {
+            eprintln!(
+                "Warning: SLACK_BOT_TOKEN is set and takes precedence over the stored credential."
+            );
+        }
+        if tokens.user.is_some() && environment_slack_user_token().is_some() {
+            eprintln!(
+                "Warning: SLACK_USER_TOKEN is set and takes precedence over the stored credential."
+            );
+        }
     }
 
     let account = bot_account
         .or(user_account)
         .expect("at least one Slack token");
-    let mut report = login_report(Provider::Slack, account);
-    report[Provider::Slack.as_str()]["stored"] = json!(stored);
+    let key = status_key(Provider::Slack, instance);
+    let mut report = login_report(Provider::Slack, instance, account);
+    report[&key]["stored"] = json!(stored);
     crate::output::print_text(
-        &status_summary(Provider::Slack, &report[Provider::Slack.as_str()]),
+        &status_summary(Provider::Slack, &report[&key]),
         &report,
         format,
     );
@@ -869,12 +1013,13 @@ fn validate_slack_login_token(token: &str, bot: bool) -> Result<Value, Validatio
             "Slack {expected} token required"
         )));
     }
-    validate(Provider::Slack, token, None)
+    validate(Provider::Slack, token, None, DEFAULT_INSTANCE)
 }
 
 fn validate_and_store_slack<F>(
     tokens: &SlackTokens,
     store: &dyn SecretStore,
+    instance: &str,
     mut validate: F,
 ) -> Result<(Option<Value>, Option<Value>), Box<dyn std::error::Error>>
 where
@@ -899,7 +1044,7 @@ where
         credentials.push((crate::provider::Credential::SlackUser, token));
     }
     store
-        .set_many(&credentials)
+        .set_many(&credentials, instance)
         .map_err(|error| format!("could not store Slack credentials: {error}"))?;
     Ok((bot_account, user_account))
 }
@@ -950,22 +1095,58 @@ fn print_all_statuses(store: &dyn SecretStore, format: crate::output::Format) {
     }
 }
 
-fn print_status(provider: Provider, store: &dyn SecretStore, format: crate::output::Format) {
-    let report = keyed_provider_status(provider, store);
+fn print_status(
+    provider: Provider,
+    store: &dyn SecretStore,
+    format: crate::output::Format,
+    instance: &str,
+) {
+    let report = nest(
+        provider,
+        instance,
+        provider_status(provider, store, instance),
+    );
     crate::output::print_text(
-        &status_summary(provider, &report[provider.as_str()]),
+        &status_summary(provider, &report[status_key(provider, instance)]),
         &report,
         format,
     );
 }
 
-fn nest(provider: Provider, body: Value) -> Value {
-    json!({ provider.as_str(): body })
+/// The report/status key for an instance: bare provider name for the default
+/// instance, `provider@instance` otherwise.
+fn status_key(provider: Provider, instance: &str) -> String {
+    if instance == DEFAULT_INSTANCE {
+        provider.as_str().to_owned()
+    } else {
+        crate::provider::qualified(provider.as_str(), instance)
+    }
 }
 
-fn login_report(provider: Provider, account: Value) -> Value {
+/// The provider (and instance suffix, if any) a status key names.
+fn provider_from_status_key(key: &str) -> Option<Provider> {
+    let name = key.split_once('@').map_or(key, |(name, _)| name);
+    match name {
+        "linear" => Some(Provider::Linear),
+        "github" => Some(Provider::Github),
+        "neon" => Some(Provider::Neon),
+        "jira" => Some(Provider::Jira),
+        "confluence" => Some(Provider::Confluence),
+        "slack" => Some(Provider::Slack),
+        "sentry" => Some(Provider::Sentry),
+        "vercel" => Some(Provider::Vercel),
+        _ => None,
+    }
+}
+
+fn nest(provider: Provider, instance: &str, body: Value) -> Value {
+    json!({ status_key(provider, instance): body })
+}
+
+fn login_report(provider: Provider, instance: &str, account: Value) -> Value {
     nest(
         provider,
+        instance,
         json!({
             "status": "authenticated",
             "source": CredentialSource::ConfigFile.as_str(),
@@ -974,12 +1155,8 @@ fn login_report(provider: Provider, account: Value) -> Value {
     )
 }
 
-fn logout_report(provider: Provider, removed: bool) -> Value {
-    nest(provider, json!({ "removed": removed }))
-}
-
-fn keyed_provider_status(provider: Provider, store: &dyn SecretStore) -> Value {
-    nest(provider, provider_status(provider, store))
+fn logout_report(provider: Provider, instance: &str, removed: bool) -> Value {
+    nest(provider, instance, json!({ "removed": removed }))
 }
 
 fn flatten_accounts_for_table(statuses: &Value) -> Value {
@@ -987,20 +1164,11 @@ fn flatten_accounts_for_table(statuses: &Value) -> Value {
         return statuses.clone();
     };
     let mut out = map.clone();
-    for provider in [
-        Provider::Linear,
-        Provider::Github,
-        Provider::Neon,
-        Provider::Jira,
-        Provider::Confluence,
-        Provider::Slack,
-        Provider::Sentry,
-        Provider::Vercel,
-    ] {
-        let Some(obj) = out
-            .get_mut(provider.as_str())
-            .and_then(Value::as_object_mut)
-        else {
+    for (key, status) in out.iter_mut() {
+        let Some(provider) = provider_from_status_key(key) else {
+            continue;
+        };
+        let Some(obj) = status.as_object_mut() else {
             continue;
         };
         if let Some(account) = obj.get("account").cloned().filter(Value::is_object) {
@@ -1157,10 +1325,10 @@ fn text_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
         .filter(|text| !text.is_empty())
 }
 
-fn provider_status(provider: Provider, store: &dyn SecretStore) -> Value {
+fn provider_status(provider: Provider, store: &dyn SecretStore, instance: &str) -> Value {
     // Atlassian providers validate with three credentials, not one token.
     if matches!(provider, Provider::Jira | Provider::Confluence) {
-        return match resolve_jira(jira_environment(), store) {
+        return match resolve_jira(jira_environment(), store, instance) {
             Ok(resolved) => credential_status(
                 Ok(ResolvedCredential {
                     token: resolved.credentials.token.clone(),
@@ -1180,45 +1348,72 @@ fn provider_status(provider: Provider, store: &dyn SecretStore) -> Value {
     }
     let resolved = match provider {
         Provider::Linear | Provider::Neon | Provider::Sentry | Provider::Vercel => {
-            resolve_stored(provider, environment_token(provider), store)
+            resolve_stored(provider, environment_token(provider), store, instance)
         }
-        Provider::Github => resolve_github(environment_token(provider), store, github_cli_token),
+        Provider::Github => resolve_github(
+            environment_token(provider),
+            store,
+            github_cli_token,
+            instance,
+        ),
         Provider::Slack => resolve_slack(
             environment_token(Provider::Slack),
             environment_slack_user_token(),
             store,
+            instance,
         ),
         Provider::Jira | Provider::Confluence => unreachable!("handled above"),
     };
-    credential_status(resolved, |token| validate(provider, token, None))
+    credential_status(resolved, |token| validate(provider, token, None, instance))
 }
 
 fn all_provider_statuses(store: &dyn SecretStore) -> Value {
-    json!({
-        "linear": provider_status(Provider::Linear, store),
-        "github": provider_status(Provider::Github, store),
-        "neon": provider_status(Provider::Neon, store),
-        "jira": provider_status(Provider::Jira, store),
-        "confluence": provider_status(Provider::Confluence, store),
-        "slack": provider_status(Provider::Slack, store),
-        "sentry": provider_status(Provider::Sentry, store),
-        "vercel": provider_status(Provider::Vercel, store),
-    })
+    let providers = [
+        Provider::Linear,
+        Provider::Github,
+        Provider::Neon,
+        Provider::Jira,
+        Provider::Confluence,
+        Provider::Slack,
+        Provider::Sentry,
+        Provider::Vercel,
+    ];
+    let mut statuses = serde_json::Map::new();
+    for provider in providers {
+        statuses.insert(
+            provider.as_str().to_owned(),
+            provider_status(provider, store, DEFAULT_INSTANCE),
+        );
+    }
+    // One entry per stored named instance, keyed provider@instance.
+    for provider in providers {
+        let vendor = crate::provider::provider_vendor(provider.as_str());
+        for instance in store.instances(vendor).unwrap_or_default() {
+            if instance == DEFAULT_INSTANCE {
+                continue;
+            }
+            statuses.insert(
+                status_key(provider, &instance),
+                provider_status(provider, store, &instance),
+            );
+        }
+    }
+    Value::Object(statuses)
 }
 
 fn validate_and_store<F>(
     provider: Provider,
-    credential: crate::provider::Credential,
-    token: &str,
+    credentials: &[(crate::provider::Credential, &str)],
     store: &dyn SecretStore,
+    instance: &str,
     validate: F,
 ) -> Result<Value, Box<dyn std::error::Error>>
 where
-    F: FnOnce(&str) -> Result<Value, ValidationError>,
+    F: FnOnce() -> Result<Value, ValidationError>,
 {
-    let account = validate(token)?;
+    let account = validate()?;
     store
-        .set_many(&[(credential, token)])
+        .set_many(credentials, instance)
         .map_err(|error| format!("could not store {} credential: {error}", provider.as_str()))?;
     Ok(account)
 }
@@ -1263,27 +1458,43 @@ where
     }
 }
 
+/// Where a missing named instance sends the user; the default instance keeps
+/// the environment-variable wording.
+fn missing_for_instance(provider: Provider, instance: &str) -> ResolveError {
+    ResolveError::Missing(format!(
+        "no {} credential is stored for instance \"{instance}\"; run `foac auth {} login --instance {instance}`",
+        provider.display_name(),
+        provider.as_str(),
+    ))
+}
+
 fn resolve_stored(
     provider: Provider,
     environment: Option<String>,
     store: &dyn SecretStore,
+    instance: &str,
 ) -> Result<ResolvedCredential, ResolveError> {
-    if let Some(token) = environment {
+    // Environment tokens belong to the default instance only: an ambient
+    // token from one tenant must never leak into a named instance.
+    if instance == DEFAULT_INSTANCE
+        && let Some(token) = environment
+    {
         return Ok(ResolvedCredential {
             token,
             source: CredentialSource::Environment,
         });
     }
-    match store.get(provider.credential()) {
+    match store.get(provider.credential(), instance) {
         Ok(Some(token)) => Ok(ResolvedCredential {
             token,
             source: CredentialSource::ConfigFile,
         }),
-        Ok(None) => Err(ResolveError::Missing(format!(
+        Ok(None) if instance == DEFAULT_INSTANCE => Err(ResolveError::Missing(format!(
             "{} is not set and no {} credential is stored",
             provider.environment_variable(),
             provider.display_name(),
         ))),
+        Ok(None) => Err(missing_for_instance(provider, instance)),
         Err(error) => Err(ResolveError::Failed(format!(
             "could not read {} credential from the credentials file: {error}",
             provider.display_name(),
@@ -1295,15 +1506,20 @@ fn resolve_slack(
     bot_environment: Option<String>,
     user_environment: Option<String>,
     store: &dyn SecretStore,
+    instance: &str,
 ) -> Result<ResolvedCredential, ResolveError> {
-    match resolve_slack_bot(bot_environment, store) {
+    match resolve_slack_bot(bot_environment, store, instance) {
         Ok(credential) => Ok(credential),
-        Err(ResolveError::Missing(_)) => match resolve_slack_user(user_environment, store) {
+        Err(ResolveError::Missing(_)) => match resolve_slack_user(user_environment, store, instance)
+        {
             Ok(credential) => Ok(credential),
-            Err(ResolveError::Missing(_)) => Err(ResolveError::Missing(
-                "SLACK_BOT_TOKEN and SLACK_USER_TOKEN are not set and no Slack credential is stored"
-                    .into(),
-            )),
+            Err(ResolveError::Missing(_)) if instance == DEFAULT_INSTANCE => {
+                Err(ResolveError::Missing(
+                    "SLACK_BOT_TOKEN and SLACK_USER_TOKEN are not set and no Slack credential is stored"
+                        .into(),
+                ))
+            }
+            Err(ResolveError::Missing(_)) => Err(missing_for_instance(Provider::Slack, instance)),
             Err(error) => Err(error),
         },
         Err(error) => Err(error),
@@ -1313,6 +1529,7 @@ fn resolve_slack(
 fn resolve_slack_bot(
     environment: Option<String>,
     store: &dyn SecretStore,
+    instance: &str,
 ) -> Result<ResolvedCredential, ResolveError> {
     let credential = resolve_named_stored(
         environment,
@@ -1320,6 +1537,7 @@ fn resolve_slack_bot(
         "SLACK_BOT_TOKEN is not set and no Slack bot credential is stored",
         "Slack bot",
         store,
+        instance,
     )?;
     if !crate::slack::is_bot_token(&credential.token) {
         return Err(ResolveError::Failed(
@@ -1332,6 +1550,7 @@ fn resolve_slack_bot(
 fn resolve_slack_user(
     environment: Option<String>,
     store: &dyn SecretStore,
+    instance: &str,
 ) -> Result<ResolvedCredential, ResolveError> {
     let credential = resolve_named_stored(
         environment,
@@ -1339,6 +1558,7 @@ fn resolve_slack_user(
         "SLACK_USER_TOKEN is not set and no Slack user credential is stored; Slack search requires a user token with search:read",
         "Slack user",
         store,
+        instance,
     )?;
     if !crate::slack::is_user_token(&credential.token) {
         return Err(ResolveError::Failed(
@@ -1354,15 +1574,18 @@ fn resolve_named_stored(
     missing: &str,
     display_name: &str,
     store: &dyn SecretStore,
+    instance: &str,
 ) -> Result<ResolvedCredential, ResolveError> {
-    if let Some(token) = environment {
+    if instance == DEFAULT_INSTANCE
+        && let Some(token) = environment
+    {
         return Ok(ResolvedCredential {
             token,
             source: CredentialSource::Environment,
         });
     }
     for credential in stored_credentials {
-        match store.get(*credential) {
+        match store.get(*credential, instance) {
             Ok(Some(token)) => {
                 return Ok(ResolvedCredential {
                     token,
@@ -1377,24 +1600,33 @@ fn resolve_named_stored(
             }
         }
     }
-    Err(ResolveError::Missing(missing.into()))
+    if instance == DEFAULT_INSTANCE {
+        Err(ResolveError::Missing(missing.into()))
+    } else {
+        Err(ResolveError::Missing(format!(
+            "no {display_name} credential is stored for instance \"{instance}\""
+        )))
+    }
 }
 
 fn resolve_github<F>(
     environment: Option<String>,
     store: &dyn SecretStore,
     github_cli: F,
+    instance: &str,
 ) -> Result<ResolvedCredential, ResolveError>
 where
     F: FnOnce() -> Result<Option<String>, String>,
 {
-    if let Some(token) = environment {
+    if instance == DEFAULT_INSTANCE
+        && let Some(token) = environment
+    {
         return Ok(ResolvedCredential {
             token,
             source: CredentialSource::Environment,
         });
     }
-    let store_error = match store.get(Provider::Github.credential()) {
+    let store_error = match store.get(Provider::Github.credential(), instance) {
         Ok(Some(token)) => {
             return Ok(ResolvedCredential {
                 token,
@@ -1404,6 +1636,15 @@ where
         Ok(None) => None,
         Err(error) => Some(error),
     };
+    // The `gh` CLI fallback also belongs to the default instance only.
+    if instance != DEFAULT_INSTANCE {
+        return match store_error {
+            Some(error) => Err(ResolveError::Failed(format!(
+                "could not read GitHub credential from the credentials file: {error}"
+            ))),
+            None => Err(missing_for_instance(Provider::Github, instance)),
+        };
+    }
     match github_cli() {
         Ok(Some(token)) => Ok(ResolvedCredential {
             token,
@@ -1430,6 +1671,7 @@ fn validate(
     provider: Provider,
     token: &str,
     sentry_url: Option<&str>,
+    instance: &str,
 ) -> Result<Value, ValidationError> {
     match provider {
         Provider::Linear => crate::linear::auth_identity(token).map(linear_account),
@@ -1439,7 +1681,9 @@ fn validate(
             unreachable!("Atlassian providers validate with host and email, not one token")
         }
         Provider::Slack => crate::slack::auth_identity(token).map(slack_account),
-        Provider::Sentry => crate::sentry::auth_identity(token, sentry_url).map(sentry_account),
+        Provider::Sentry => {
+            crate::sentry::auth_identity(token, sentry_url, instance).map(sentry_account)
+        }
         Provider::Vercel => crate::vercel::auth_identity(token).map(vercel_account),
     }
 }
@@ -1597,6 +1841,7 @@ fn read_token() -> Result<String, Box<dyn std::error::Error>> {
 fn print_login_help(
     provider: Provider,
     sentry_url: Option<&str>,
+    instance: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match provider {
         Provider::Linear => eprintln!(
@@ -1617,7 +1862,7 @@ fn print_login_help(
         Provider::Sentry => {
             let url = match sentry_url {
                 Some(url) => url.to_owned(),
-                None => crate::sentry::base_url()?,
+                None => crate::sentry::base_url(instance),
             };
             eprintln!(
                 "Create a user auth token at {url}/settings/account/api/auth-tokens/ and grant the scopes needed by your foac commands."
@@ -1645,51 +1890,133 @@ mod tests {
 
     #[derive(Default)]
     struct MemoryStore {
-        credentials: RefCell<HashMap<crate::provider::Credential, String>>,
+        credentials: RefCell<HashMap<(crate::provider::Credential, String), String>>,
         get_error: Option<String>,
     }
 
     impl SecretStore for MemoryStore {
-        fn get(&self, credential: crate::provider::Credential) -> Result<Option<String>, String> {
+        fn get(
+            &self,
+            credential: crate::provider::Credential,
+            instance: &str,
+        ) -> Result<Option<String>, String> {
             if let Some(error) = &self.get_error {
                 return Err(error.clone());
             }
-            Ok(self.credentials.borrow().get(&credential).cloned())
+            Ok(self
+                .credentials
+                .borrow()
+                .get(&(credential, instance.to_owned()))
+                .cloned())
         }
 
         fn set_many(
             &self,
             credentials: &[(crate::provider::Credential, &str)],
+            instance: &str,
         ) -> Result<(), String> {
             let mut stored = self.credentials.borrow_mut();
             for (credential, token) in credentials {
-                stored.insert(*credential, (*token).to_owned());
+                stored.insert((*credential, instance.to_owned()), (*token).to_owned());
             }
             Ok(())
         }
 
-        fn delete_many(&self, credentials: &[crate::provider::Credential]) -> Result<bool, String> {
+        fn delete_many(
+            &self,
+            credentials: &[crate::provider::Credential],
+            instance: &str,
+        ) -> Result<bool, String> {
             let mut stored = self.credentials.borrow_mut();
             let mut removed = false;
             for credential in credentials {
-                removed = stored.remove(credential).is_some() || removed;
+                removed = stored.remove(&(*credential, instance.to_owned())).is_some() || removed;
             }
             Ok(removed)
+        }
+
+        fn instances(&self, vendor: &str) -> Result<Vec<String>, String> {
+            let mut names: Vec<String> = self
+                .credentials
+                .borrow()
+                .keys()
+                .filter(|(credential, _)| credential.vendor() == vendor)
+                .map(|(_, instance)| instance.clone())
+                .collect();
+            names.sort();
+            names.dedup();
+            Ok(names)
         }
     }
 
     #[test]
     fn linear_credentials_prefer_environment_then_secret_store() {
         let store = MemoryStore::default();
-        store.set_many(&[(LINEAR_CREDENTIAL, "stored")]).unwrap();
-        let resolved =
-            resolve_stored(Provider::Linear, Some("environment".into()), &store).unwrap();
+        store
+            .set_many(&[(LINEAR_CREDENTIAL, "stored")], DEFAULT_INSTANCE)
+            .unwrap();
+        let resolved = resolve_stored(
+            Provider::Linear,
+            Some("environment".into()),
+            &store,
+            DEFAULT_INSTANCE,
+        )
+        .unwrap();
         assert_eq!(resolved.token, "environment");
         assert_eq!(resolved.source, CredentialSource::Environment);
 
-        let resolved = resolve_stored(Provider::Linear, None, &store).unwrap();
+        let resolved = resolve_stored(Provider::Linear, None, &store, DEFAULT_INSTANCE).unwrap();
         assert_eq!(resolved.token, "stored");
         assert_eq!(resolved.source, CredentialSource::ConfigFile);
+    }
+
+    #[test]
+    fn named_instances_ignore_environment_tokens_and_cli_fallbacks() {
+        let store = MemoryStore::default();
+        store
+            .set_many(&[(LINEAR_CREDENTIAL, "stored-b")], "workb")
+            .unwrap();
+
+        // The ambient env token must never leak into a named instance.
+        let resolved = resolve_stored(
+            Provider::Linear,
+            Some("environment".into()),
+            &store,
+            "workb",
+        )
+        .unwrap();
+        assert_eq!(resolved.token, "stored-b");
+        assert_eq!(resolved.source, CredentialSource::ConfigFile);
+
+        // Nor does it satisfy a named instance with nothing stored.
+        let error = resolve_stored(
+            Provider::Linear,
+            Some("environment".into()),
+            &store,
+            "workc",
+        )
+        .unwrap_err();
+        assert!(matches!(error, ResolveError::Missing(_)));
+        assert_eq!(
+            error.to_string(),
+            "no Linear credential is stored for instance \"workc\"; run `foac auth linear login --instance workc`"
+        );
+
+        // The gh CLI fallback is default-instance only too.
+        let error =
+            resolve_github(None, &store, || Ok(Some("gh-token".into())), "workb").unwrap_err();
+        assert!(error.to_string().contains("instance \"workb\""));
+
+        // Slack env tokens are ignored the same way.
+        let error = resolve_slack(
+            Some("xoxb-env".into()),
+            Some("xoxp-env".into()),
+            &store,
+            "workb",
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("instance \"workb\""));
+        assert!(error.to_string().contains("--instance workb"));
     }
 
     #[test]
@@ -1698,7 +2025,13 @@ mod tests {
             get_error: Some("store unavailable".into()),
             ..Default::default()
         };
-        let resolved = resolve_github(None, &store, || Ok(Some("gh-token".into()))).unwrap();
+        let resolved = resolve_github(
+            None,
+            &store,
+            || Ok(Some("gh-token".into())),
+            DEFAULT_INSTANCE,
+        )
+        .unwrap();
         assert_eq!(resolved.token, "gh-token");
         assert_eq!(resolved.source, CredentialSource::GhCli);
     }
@@ -1706,10 +2039,20 @@ mod tests {
     #[test]
     fn missing_credentials_are_distinct_from_store_errors() {
         assert!(matches!(
-            resolve_stored(Provider::Linear, None, &MemoryStore::default()),
+            resolve_stored(
+                Provider::Linear,
+                None,
+                &MemoryStore::default(),
+                DEFAULT_INSTANCE
+            ),
             Err(ResolveError::Missing(_))
         ));
-        let Err(sentry) = resolve_stored(Provider::Sentry, None, &MemoryStore::default()) else {
+        let Err(sentry) = resolve_stored(
+            Provider::Sentry,
+            None,
+            &MemoryStore::default(),
+            DEFAULT_INSTANCE,
+        ) else {
             panic!("missing Sentry credential should not resolve");
         };
         assert_eq!(
@@ -1721,7 +2064,7 @@ mod tests {
             ..Default::default()
         };
         assert!(matches!(
-            resolve_stored(Provider::Linear, None, &store),
+            resolve_stored(Provider::Linear, None, &store, DEFAULT_INSTANCE),
             Err(ResolveError::Failed(_))
         ));
     }
@@ -1729,29 +2072,35 @@ mod tests {
     #[test]
     fn jira_credentials_resolve_environment_then_store_and_name_the_missing_part() {
         let store = MemoryStore::default();
-        let missing = resolve_jira([None, None, None], &store).unwrap_err();
+        let missing = resolve_jira([None, None, None], &store, DEFAULT_INSTANCE).unwrap_err();
         assert!(matches!(missing, ResolveError::Missing(_)));
         assert!(missing.to_string().contains("ATLASSIAN_HOST"));
 
         store
-            .set_many(&[
-                (
-                    crate::provider::Credential::AtlassianHost,
-                    "https://acme.atlassian.net/",
-                ),
-                (
-                    crate::provider::Credential::AtlassianEmail,
-                    "user@example.com",
-                ),
-            ])
+            .set_many(
+                &[
+                    (
+                        crate::provider::Credential::AtlassianHost,
+                        "https://acme.atlassian.net/",
+                    ),
+                    (
+                        crate::provider::Credential::AtlassianEmail,
+                        "user@example.com",
+                    ),
+                ],
+                DEFAULT_INSTANCE,
+            )
             .unwrap();
-        let missing = resolve_jira([None, None, None], &store).unwrap_err();
+        let missing = resolve_jira([None, None, None], &store, DEFAULT_INSTANCE).unwrap_err();
         assert!(missing.to_string().contains("ATLASSIAN_API_TOKEN"));
 
         store
-            .set_many(&[(crate::provider::Credential::AtlassianToken, "stored-token")])
+            .set_many(
+                &[(crate::provider::Credential::AtlassianToken, "stored-token")],
+                DEFAULT_INSTANCE,
+            )
             .unwrap();
-        let resolved = resolve_jira([None, None, None], &store).unwrap();
+        let resolved = resolve_jira([None, None, None], &store, DEFAULT_INSTANCE).unwrap();
         assert_eq!(resolved.credentials.host, "acme.atlassian.net");
         assert_eq!(resolved.credentials.email, "user@example.com");
         assert_eq!(resolved.credentials.token, "stored-token");
@@ -1766,6 +2115,7 @@ mod tests {
                 Some("env-token".into()),
             ],
             &store,
+            DEFAULT_INSTANCE,
         )
         .unwrap();
         assert_eq!(resolved.credentials.host, "env.atlassian.net");
@@ -1778,7 +2128,7 @@ mod tests {
             ..Default::default()
         };
         assert!(matches!(
-            resolve_jira([None, None, None], &broken),
+            resolve_jira([None, None, None], &broken, DEFAULT_INSTANCE),
             Err(ResolveError::Failed(_))
         ));
     }
@@ -1841,16 +2191,22 @@ mod tests {
     fn slack_credentials_follow_the_capability_matrix() {
         let store = MemoryStore::default();
 
-        let missing = resolve_slack(None, None, &store).unwrap_err();
+        let missing = resolve_slack(None, None, &store, DEFAULT_INSTANCE).unwrap_err();
         assert!(matches!(missing, ResolveError::Missing(_)));
         assert!(missing.to_string().contains("SLACK_BOT_TOKEN"));
         assert!(missing.to_string().contains("SLACK_USER_TOKEN"));
 
-        let bot = resolve_slack(Some("xoxb-environment".into()), None, &store).unwrap();
+        let bot = resolve_slack(
+            Some("xoxb-environment".into()),
+            None,
+            &store,
+            DEFAULT_INSTANCE,
+        )
+        .unwrap();
         assert_eq!(bot.token, "xoxb-environment");
         assert_eq!(bot.source, CredentialSource::Environment);
 
-        let user = resolve_slack(None, Some("xoxp-user".into()), &store).unwrap();
+        let user = resolve_slack(None, Some("xoxp-user".into()), &store, DEFAULT_INSTANCE).unwrap();
         assert_eq!(user.token, "xoxp-user");
         assert_eq!(user.source, CredentialSource::Environment);
 
@@ -1858,19 +2214,25 @@ mod tests {
             Some("xoxb-environment".into()),
             Some("xoxp-user".into()),
             &store,
+            DEFAULT_INSTANCE,
         )
         .unwrap();
         assert_eq!(bot.token, "xoxb-environment");
 
         let stored_user = MemoryStore::default();
         stored_user
-            .set_many(&[(SLACK_USER_CREDENTIAL, "xoxp-stored-user")])
+            .set_many(
+                &[(SLACK_USER_CREDENTIAL, "xoxp-stored-user")],
+                DEFAULT_INSTANCE,
+            )
             .unwrap();
-        let user = resolve_slack(None, None, &stored_user).unwrap();
+        let user = resolve_slack(None, None, &stored_user, DEFAULT_INSTANCE).unwrap();
         assert_eq!(user.token, "xoxp-stored-user");
         assert_eq!(user.source, CredentialSource::ConfigFile);
         assert_eq!(
-            resolve_slack_user(None, &stored_user).unwrap().token,
+            resolve_slack_user(None, &stored_user, DEFAULT_INSTANCE)
+                .unwrap()
+                .token,
             "xoxp-stored-user"
         );
     }
@@ -1879,9 +2241,10 @@ mod tests {
     fn slack_stored_bot_precedes_user_and_invalid_tokens_fail() {
         let store = MemoryStore::default();
         store
-            .set_many(&[(SLACK_BOT_CREDENTIAL, "xoxb-stored")])
+            .set_many(&[(SLACK_BOT_CREDENTIAL, "xoxb-stored")], DEFAULT_INSTANCE)
             .unwrap();
-        let resolved = resolve_slack(None, Some("xoxp-user".into()), &store).unwrap();
+        let resolved =
+            resolve_slack(None, Some("xoxp-user".into()), &store, DEFAULT_INSTANCE).unwrap();
         assert_eq!(resolved.token, "xoxb-stored");
         assert_eq!(resolved.source, CredentialSource::ConfigFile);
 
@@ -1889,12 +2252,14 @@ mod tests {
             Some("not-a-bot-token".into()),
             Some("xoxp-user".into()),
             &store,
+            DEFAULT_INSTANCE,
         )
         .unwrap_err();
         assert!(matches!(error, ResolveError::Failed(_)));
         assert!(error.to_string().contains("xoxb-"));
 
-        let error = resolve_slack_user(Some("not-a-user-token".into()), &store).unwrap_err();
+        let error = resolve_slack_user(Some("not-a-user-token".into()), &store, DEFAULT_INSTANCE)
+            .unwrap_err();
         assert!(matches!(error, ResolveError::Failed(_)));
         assert!(error.to_string().contains("xoxp-"));
     }
@@ -1903,28 +2268,35 @@ mod tests {
     fn slack_stored_tokens_have_independent_environment_precedence() {
         let store = MemoryStore::default();
         store
-            .set_many(&[
-                (SLACK_BOT_CREDENTIAL, "xoxb-stored"),
-                (SLACK_USER_CREDENTIAL, "xoxp-stored"),
-            ])
+            .set_many(
+                &[
+                    (SLACK_BOT_CREDENTIAL, "xoxb-stored"),
+                    (SLACK_USER_CREDENTIAL, "xoxp-stored"),
+                ],
+                DEFAULT_INSTANCE,
+            )
             .unwrap();
 
         assert_eq!(
-            resolve_slack(None, None, &store).unwrap().token,
+            resolve_slack(None, None, &store, DEFAULT_INSTANCE)
+                .unwrap()
+                .token,
             "xoxb-stored"
         );
         assert_eq!(
-            resolve_slack_user(None, &store).unwrap().token,
+            resolve_slack_user(None, &store, DEFAULT_INSTANCE)
+                .unwrap()
+                .token,
             "xoxp-stored"
         );
         assert_eq!(
-            resolve_slack(Some("xoxb-env".into()), None, &store)
+            resolve_slack(Some("xoxb-env".into()), None, &store, DEFAULT_INSTANCE)
                 .unwrap()
                 .token,
             "xoxb-env"
         );
         assert_eq!(
-            resolve_slack_user(Some("xoxp-env".into()), &store)
+            resolve_slack_user(Some("xoxp-env".into()), &store, DEFAULT_INSTANCE)
                 .unwrap()
                 .token,
             "xoxp-env"
@@ -1955,16 +2327,19 @@ mod tests {
     fn slack_login_validates_both_tokens_before_storing_either() {
         let store = MemoryStore::default();
         store
-            .set_many(&[
-                (SLACK_BOT_CREDENTIAL, "xoxb-existing"),
-                (SLACK_USER_CREDENTIAL, "xoxp-existing"),
-            ])
+            .set_many(
+                &[
+                    (SLACK_BOT_CREDENTIAL, "xoxb-existing"),
+                    (SLACK_USER_CREDENTIAL, "xoxp-existing"),
+                ],
+                DEFAULT_INSTANCE,
+            )
             .unwrap();
         let tokens = SlackTokens {
             bot: Some("xoxb-new".into()),
             user: Some("xoxp-bad".into()),
         };
-        let result = validate_and_store_slack(&tokens, &store, |token, _| {
+        let result = validate_and_store_slack(&tokens, &store, DEFAULT_INSTANCE, |token, _| {
             if token == "xoxp-bad" {
                 Err(ValidationError::Rejected("rejected".into()))
             } else {
@@ -1973,15 +2348,21 @@ mod tests {
         });
         assert!(result.is_err());
         assert_eq!(
-            store.get(SLACK_BOT_CREDENTIAL).unwrap().as_deref(),
+            store
+                .get(SLACK_BOT_CREDENTIAL, DEFAULT_INSTANCE)
+                .unwrap()
+                .as_deref(),
             Some("xoxb-existing")
         );
         assert_eq!(
-            store.get(SLACK_USER_CREDENTIAL).unwrap().as_deref(),
+            store
+                .get(SLACK_USER_CREDENTIAL, DEFAULT_INSTANCE)
+                .unwrap()
+                .as_deref(),
             Some("xoxp-existing")
         );
 
-        let result = validate_and_store_slack(&tokens, &store, |token, bot| {
+        let result = validate_and_store_slack(&tokens, &store, DEFAULT_INSTANCE, |token, bot| {
             Ok(json!({
                 "user": token,
                 "token_type": if bot { "bot" } else { "user" },
@@ -1991,11 +2372,17 @@ mod tests {
         assert_eq!(result.0.unwrap()["token_type"], "bot");
         assert_eq!(result.1.unwrap()["token_type"], "user");
         assert_eq!(
-            store.get(SLACK_BOT_CREDENTIAL).unwrap().as_deref(),
+            store
+                .get(SLACK_BOT_CREDENTIAL, DEFAULT_INSTANCE)
+                .unwrap()
+                .as_deref(),
             Some("xoxb-new")
         );
         assert_eq!(
-            store.get(SLACK_USER_CREDENTIAL).unwrap().as_deref(),
+            store
+                .get(SLACK_USER_CREDENTIAL, DEFAULT_INSTANCE)
+                .unwrap()
+                .as_deref(),
             Some("xoxp-bad")
         );
     }
@@ -2004,10 +2391,13 @@ mod tests {
     fn slack_login_partial_updates_preserve_the_other_token() {
         let store = MemoryStore::default();
         store
-            .set_many(&[
-                (SLACK_BOT_CREDENTIAL, "xoxb-existing"),
-                (SLACK_USER_CREDENTIAL, "xoxp-existing"),
-            ])
+            .set_many(
+                &[
+                    (SLACK_BOT_CREDENTIAL, "xoxb-existing"),
+                    (SLACK_USER_CREDENTIAL, "xoxp-existing"),
+                ],
+                DEFAULT_INSTANCE,
+            )
             .unwrap();
         let validate = |token: &str, _| Ok(json!({"user": token}));
 
@@ -2017,15 +2407,22 @@ mod tests {
                 user: None,
             },
             &store,
+            DEFAULT_INSTANCE,
             validate,
         )
         .unwrap();
         assert_eq!(
-            store.get(SLACK_BOT_CREDENTIAL).unwrap().as_deref(),
+            store
+                .get(SLACK_BOT_CREDENTIAL, DEFAULT_INSTANCE)
+                .unwrap()
+                .as_deref(),
             Some("xoxb-new")
         );
         assert_eq!(
-            store.get(SLACK_USER_CREDENTIAL).unwrap().as_deref(),
+            store
+                .get(SLACK_USER_CREDENTIAL, DEFAULT_INSTANCE)
+                .unwrap()
+                .as_deref(),
             Some("xoxp-existing")
         );
 
@@ -2035,15 +2432,22 @@ mod tests {
                 user: Some("xoxp-new".into()),
             },
             &store,
+            DEFAULT_INSTANCE,
             validate,
         )
         .unwrap();
         assert_eq!(
-            store.get(SLACK_BOT_CREDENTIAL).unwrap().as_deref(),
+            store
+                .get(SLACK_BOT_CREDENTIAL, DEFAULT_INSTANCE)
+                .unwrap()
+                .as_deref(),
             Some("xoxb-new")
         );
         assert_eq!(
-            store.get(SLACK_USER_CREDENTIAL).unwrap().as_deref(),
+            store
+                .get(SLACK_USER_CREDENTIAL, DEFAULT_INSTANCE)
+                .unwrap()
+                .as_deref(),
             Some("xoxp-new")
         );
     }
@@ -2052,21 +2456,40 @@ mod tests {
     fn slack_logout_removes_both_tokens() {
         let store = MemoryStore::default();
         store
-            .set_many(&[
-                (SLACK_BOT_CREDENTIAL, "xoxb-bot"),
-                (SLACK_USER_CREDENTIAL, "xoxp-user"),
-            ])
+            .set_many(
+                &[
+                    (SLACK_BOT_CREDENTIAL, "xoxb-bot"),
+                    (SLACK_USER_CREDENTIAL, "xoxp-user"),
+                ],
+                DEFAULT_INSTANCE,
+            )
             .unwrap();
-        logout(Provider::Slack, &store, crate::output::Format::Json).unwrap();
+        logout(
+            Provider::Slack,
+            &store,
+            crate::output::Format::Json,
+            DEFAULT_INSTANCE,
+        )
+        .unwrap();
         assert!(store.credentials.borrow().is_empty());
     }
 
     #[test]
     fn memory_store_logout_is_idempotent() {
         let store = MemoryStore::default();
-        store.set_many(&[(GITHUB_CREDENTIAL, "token")]).unwrap();
-        assert!(store.delete_many(&[GITHUB_CREDENTIAL]).unwrap());
-        assert!(!store.delete_many(&[GITHUB_CREDENTIAL]).unwrap());
+        store
+            .set_many(&[(GITHUB_CREDENTIAL, "token")], DEFAULT_INSTANCE)
+            .unwrap();
+        assert!(
+            store
+                .delete_many(&[GITHUB_CREDENTIAL], DEFAULT_INSTANCE)
+                .unwrap()
+        );
+        assert!(
+            !store
+                .delete_many(&[GITHUB_CREDENTIAL], DEFAULT_INSTANCE)
+                .unwrap()
+        );
     }
 
     #[test]
@@ -2163,6 +2586,7 @@ mod tests {
         // and validates live tokens over the network.
         let status = nest(
             Provider::Linear,
+            DEFAULT_INSTANCE,
             credential_status(
                 Err(ResolveError::Missing("missing".into())),
                 |_| unreachable!(),
@@ -2175,7 +2599,11 @@ mod tests {
 
     #[test]
     fn login_and_logout_reports_nest_under_the_provider_key() {
-        let login = login_report(Provider::Linear, json!({ "id": "user-id" }));
+        let login = login_report(
+            Provider::Linear,
+            DEFAULT_INSTANCE,
+            json!({ "id": "user-id" }),
+        );
         assert_eq!(
             login,
             json!({
@@ -2186,7 +2614,7 @@ mod tests {
                 }
             })
         );
-        let logout = logout_report(Provider::Sentry, false);
+        let logout = logout_report(Provider::Sentry, DEFAULT_INSTANCE, false);
         assert_eq!(logout, json!({ "sentry": { "removed": false } }));
     }
 
@@ -2363,34 +2791,40 @@ mod tests {
     fn login_validates_before_replacing_a_stored_credential() {
         let store = MemoryStore::default();
         store
-            .set_many(&[(LINEAR_CREDENTIAL, "existing-token")])
+            .set_many(&[(LINEAR_CREDENTIAL, "existing-token")], DEFAULT_INSTANCE)
             .unwrap();
 
         let result = validate_and_store(
             Provider::Linear,
-            LINEAR_CREDENTIAL,
-            "bad-token",
+            &[(LINEAR_CREDENTIAL, "bad-token")],
             &store,
-            |_| Err(ValidationError::Rejected("rejected".into())),
+            DEFAULT_INSTANCE,
+            || Err(ValidationError::Rejected("rejected".into())),
         );
         assert!(result.is_err());
         assert_eq!(
-            store.get(LINEAR_CREDENTIAL).unwrap().as_deref(),
+            store
+                .get(LINEAR_CREDENTIAL, DEFAULT_INSTANCE)
+                .unwrap()
+                .as_deref(),
             Some("existing-token")
         );
 
         let account = json!({ "id": "user-id" });
         let result = validate_and_store(
             Provider::Linear,
-            LINEAR_CREDENTIAL,
-            "new-token",
+            &[(LINEAR_CREDENTIAL, "new-token")],
             &store,
-            |_| Ok(account.clone()),
+            DEFAULT_INSTANCE,
+            || Ok(account.clone()),
         )
         .unwrap();
         assert_eq!(result, account);
         assert_eq!(
-            store.get(LINEAR_CREDENTIAL).unwrap().as_deref(),
+            store
+                .get(LINEAR_CREDENTIAL, DEFAULT_INSTANCE)
+                .unwrap()
+                .as_deref(),
             Some("new-token")
         );
     }
