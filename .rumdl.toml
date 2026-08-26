@@ -1,3 +1,11 @@
 [global]
 # Long lines are fine; URLs and install one-liners don't wrap well.
 disable = ["MD013"]
+
+[MD033]
+# Sized image embeds in assets/brand/README.md and theme-aware README headers.
+allowed-elements = ["img", "picture", "source"]
+
+[MD041]
+# The main README opens with the theme-aware brand header image.
+allow-preamble = true

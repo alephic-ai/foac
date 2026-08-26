@@ -1,3 +1,9 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/brand/readme/foac-readme-header-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/brand/readme/foac-readme-header-light.svg">
+  <img alt="foac — many services, many agents, one door" src="assets/brand/readme/foac-readme-header-light.svg">
+</picture>
+
 # foac
 
 foac, the Father Of All CLIs: one CLI for all your SaaS providers (Linear,
