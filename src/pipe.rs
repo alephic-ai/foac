@@ -44,11 +44,15 @@ pub(crate) fn run_get(
     }
     let mut input = String::new();
     std::io::stdin().read_to_string(&mut input)?;
-    run_values(
-        extract_values(&input, from.from.as_deref())?,
-        format,
-        get_one,
-    )
+    let (values, skipped) = extract_values(&input, from.from.as_deref())?;
+    if skipped > 0 {
+        let field = from.from.as_deref().unwrap_or_default();
+        eprintln!(
+            "skipped {skipped} of {} piped items with no {field}",
+            values.len() + skipped
+        );
+    }
+    run_values(values, format, get_one)
 }
 
 fn run_values(
@@ -88,13 +92,14 @@ fn run_values(
     Ok(())
 }
 
-/// The values to get: for a piped JSON list, `field` of each item (REST
-/// `items`, or the first `nodes` array in Linear's GraphQL nesting); for
-/// anything else, one value per non-empty line.
+/// The values to get, plus how many list items were skipped for lacking the
+/// join field: for a piped JSON list, `field` of each item (REST `items`, or
+/// the first `nodes` array in Linear's GraphQL nesting); for anything else,
+/// one value per non-empty line.
 fn extract_values(
     input: &str,
     field: Option<&str>,
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+) -> Result<(Vec<String>, usize), Box<dyn std::error::Error>> {
     let document = serde_json::from_str::<Value>(input)
         .ok()
         .filter(|value| value.is_object() || value.is_array());
@@ -113,7 +118,7 @@ fn extract_values(
                 "nothing piped on stdin; pass a value as an argument or pipe `list` output".into(),
             );
         }
-        return Ok(values);
+        return Ok((values, 0));
     };
     let field = field.ok_or("piped JSON needs --from <field> to name the join key")?;
     let items = list_items(&document).ok_or("piped JSON has no `items` or `nodes` array")?;
@@ -124,7 +129,8 @@ fn extract_values(
     if values.is_empty() && !items.is_empty() {
         return Err(format!("no {field} values in the piped list items").into());
     }
-    Ok(values)
+    let skipped = items.len() - values.len();
+    Ok((values, skipped))
 }
 
 fn list_items(document: &Value) -> Option<&Vec<Value>> {
@@ -161,14 +167,15 @@ mod tests {
     fn extracts_field_values_from_rest_items() {
         let input =
             r#"{"items":[{"name":"web","id":1},{"name":"api","id":2},{"id":3}],"pageInfo":{}}"#;
+        // The item with no name is skipped and counted.
         assert_eq!(
             extract_values(input, Some("name")).unwrap(),
-            vec!["web", "api"]
+            (vec!["web".into(), "api".into()], 1)
         );
         // Numeric join keys (GitHub numbers, IDs) become strings.
         assert_eq!(
             extract_values(input, Some("id")).unwrap(),
-            vec!["1", "2", "3"]
+            (vec!["1".into(), "2".into(), "3".into()], 0)
         );
     }
 
@@ -176,13 +183,13 @@ mod tests {
     fn extracts_field_values_from_linear_nodes() {
         let depth1 = r#"{"users":{"nodes":[{"email":"a@b.c"},{"email":"d@e.f"}],"pageInfo":{}}}"#;
         assert_eq!(
-            extract_values(depth1, Some("email")).unwrap(),
+            extract_values(depth1, Some("email")).unwrap().0,
             vec!["a@b.c", "d@e.f"]
         );
         let depth2 = r#"{"team":{"id":"t1","cycles":{"nodes":[{"number":4}],"pageInfo":{}}}}"#;
-        assert_eq!(extract_values(depth2, Some("number")).unwrap(), vec!["4"]);
+        assert_eq!(extract_values(depth2, Some("number")).unwrap().0, vec!["4"]);
         let array = r#"[{"name":"web"}]"#;
-        assert_eq!(extract_values(array, Some("name")).unwrap(), vec!["web"]);
+        assert_eq!(extract_values(array, Some("name")).unwrap().0, vec!["web"]);
     }
 
     #[test]
@@ -191,7 +198,7 @@ mod tests {
         // must not win the join, whatever the field order.
         let relation_first = r#"{"issue":{"labels":{"nodes":[{"name":"bug"}]},"children":{"nodes":[{"identifier":"ENG-2"}],"pageInfo":{}}}}"#;
         assert_eq!(
-            extract_values(relation_first, Some("identifier")).unwrap(),
+            extract_values(relation_first, Some("identifier")).unwrap().0,
             vec!["ENG-2"]
         );
         // Only bare relation nodes: not a list shape at all.
@@ -206,11 +213,11 @@ mod tests {
     #[test]
     fn non_json_input_is_one_value_per_line() {
         assert_eq!(
-            extract_values("a@b.c\n\n  d@e.f \n", None).unwrap(),
+            extract_values("a@b.c\n\n  d@e.f \n", None).unwrap().0,
             vec!["a@b.c", "d@e.f"]
         );
         // A single numeric line parses as JSON but is still line input.
-        assert_eq!(extract_values("123\n", None).unwrap(), vec!["123"]);
+        assert_eq!(extract_values("123\n", None).unwrap().0, vec!["123"]);
         assert!(extract_values("", None).is_err());
         assert!(extract_values("a@b.c\n", Some("email")).is_err());
     }
@@ -224,7 +231,7 @@ mod tests {
         // An empty list is a legitimate empty join, not an error.
         assert_eq!(
             extract_values(r#"{"items":[],"pageInfo":{}}"#, Some("name")).unwrap(),
-            Vec::<String>::new()
+            (Vec::new(), 0)
         );
     }
 
