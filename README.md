@@ -18,17 +18,10 @@ and one-off CLIs, each with its own config and its own copy of your tokens:
 
 ```mermaid
 graph LR
-    CC([Claude Code]) --> LMCP & GHCLI & AMCP & NCLI & SMCP & SLMCPA & SLMCPB & VCLI
-    CU([Cursor]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCPA & SLMCPB & VCLI
-    GRK([Grok Build]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCPA & SLMCPB & VCLI
-    CX([Codex]) --> LMCP & GHCLI & AMCP & NCLI & SMCP & SLMCPA & SLMCPB & VCLI
-    GEM([Gemini CLI]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCPA & SLMCPB & VCLI
+    CC([Claude Code]) --> LMCP & GHCLI & SLMCPA & SLMCPB & VCLI
+    CX([Codex]) --> LMCP & GHCLI & SLMCPA & SLMCPB & VCLI
     LMCP{{Linear MCP server}} --> Linear[(Linear)]
-    GHMCP{{GitHub MCP server}} --> GitHub[(GitHub)]
-    GHCLI[[gh CLI]] --> GitHub
-    AMCP{{Atlassian MCP server}} --> Jira[(Jira)] & Confluence[(Confluence)]
-    NCLI[[neonctl CLI]] --> Neon[(Neon)]
-    SMCP{{Sentry MCP server}} --> Sentry[(Sentry)]
+    GHCLI[[gh CLI]] --> GitHub[(GitHub)]
     SLMCPA{{Slack MCP server A}} --> SlackA[(Slack workspace A)]
     SLMCPB{{Slack MCP server B}} --> SlackB[(Slack workspace B)]
     VCLI[[Vercel CLI]] --> Vercel[(Vercel)]
@@ -36,16 +29,17 @@ graph LR
     classDef mcp fill:#ffe0b2,stroke:#e65100,color:#000
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
-    class CC,CU,GRK,CX,GEM harness
-    class LMCP,GHMCP,AMCP,SMCP,SLMCPA,SLMCPB mcp
-    class GHCLI,NCLI,VCLI cli
-    class Linear,GitHub,Jira,Confluence,Neon,Sentry,SlackA,SlackB,Vercel provider
+    class CC,CX harness
+    class LMCP,SLMCPA,SLMCPB mcp
+    class GHCLI,VCLI cli
+    class Linear,GitHub,SlackA,SlackB,Vercel provider
 ```
 
-Five harnesses and eight adapters is forty integrations to configure
+Two harnesses and five adapters is already ten integrations to configure
 and keep authenticated — a second Slack workspace alone means its own MCP
-server configured in every harness. Every harness or adapter you add
-multiplies that number.
+server configured in every harness — and that's before counting the rest of
+your harnesses and providers. Every harness or adapter you add multiplies
+that number.
 
 With foac, install once and log in once; every harness talks to every
 provider through the same binary — even to several instances of the same
@@ -54,17 +48,14 @@ provider, like two Slack workspaces:
 ```mermaid
 graph LR
     CC([Claude Code]) --> F
-    CU([Cursor]) --> F
-    GRK([Grok Build]) --> F
-    CX([Codex]) --> F
-    GEM([Gemini CLI]) --> F[[foac CLI]]
-    F --> Linear[(Linear)] & GitHub[(GitHub)] & Jira[(Jira)] & Confluence[(Confluence)] & Neon[(Neon)] & Sentry[(Sentry)] & SlackA[(Slack workspace A)] & SlackB[(Slack workspace B)] & Vercel[(Vercel)]
+    CX([Codex]) --> F[[foac CLI]]
+    F --> Linear[(Linear)] & GitHub[(GitHub)] & SlackA[(Slack workspace A)] & SlackB[(Slack workspace B)] & Vercel[(Vercel)]
     classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
-    class CC,CU,GRK,CX,GEM harness
+    class CC,CX harness
     class F cli
-    class Linear,GitHub,Jira,Confluence,Neon,Sentry,SlackA,SlackB,Vercel provider
+    class Linear,GitHub,SlackA,SlackB,Vercel provider
 ```
 
 ## Why harnesses like foac
