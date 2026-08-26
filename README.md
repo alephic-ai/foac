@@ -94,15 +94,15 @@ graph LR
   ```sh
   # Look up the Slack profile of every Linear user, matching on email
   $ foac linear user list | foac slack user get --from email
-   id          | name  | ok   | email             | tz
-  -------------+-------+------+-------------------+------------------
-   U0200000001 | ada   | true | ada@example.com   | Europe/London
-   U0200000002 | grace | true | grace@example.com | America/New_York
+   id          | name  | ok   | real_name    | tz
+  -------------+-------+------+--------------+------------------
+   U0200000001 | ada   | true | Ada Lovelace | Europe/London
+   U0200000002 | grace | true | Grace Hopper | America/New_York
 
   # Piped onward it's one JSON document per result, so jq keeps composing
-  $ foac linear user list | foac slack user get --from email | jq -r '[.user.name, .user.email] | @tsv'
-  ada     ada@example.com
-  grace   grace@example.com
+  $ foac linear user list | foac slack user get --from email | jq -r '.user.real_name'
+  Ada Lovelace
+  Grace Hopper
   ```
 
 - **Responses are the provider's raw JSON.** foac does not reshape what an
