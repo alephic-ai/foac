@@ -46,7 +46,8 @@ and keep authenticated. Every harness or adapter you add multiplies that
 number.
 
 With foac, install once and log in once; every harness talks to every
-provider through the same binary:
+provider through the same binary — even to several instances of the same
+provider, like two Slack workspaces:
 
 ```mermaid
 graph LR
@@ -55,13 +56,13 @@ graph LR
     GRK([Grok Build]) --> F
     CX([Codex]) --> F
     GEM([Gemini CLI]) --> F[[foac CLI]]
-    F --> Linear[(Linear)] & GitHub[(GitHub)] & Jira[(Jira)] & Confluence[(Confluence)] & Neon[(Neon)] & Sentry[(Sentry)] & Slack[(Slack)] & Vercel[(Vercel)]
+    F --> Linear[(Linear)] & GitHub[(GitHub)] & Jira[(Jira)] & Confluence[(Confluence)] & Neon[(Neon)] & Sentry[(Sentry)] & SlackA[(Slack workspace A)] & SlackB[(Slack workspace B)] & Vercel[(Vercel)]
     classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
     class CC,CU,GRK,CX,GEM harness
     class F cli
-    class Linear,GitHub,Jira,Confluence,Neon,Sentry,Slack,Vercel provider
+    class Linear,GitHub,Jira,Confluence,Neon,Sentry,SlackA,SlackB,Vercel provider
 ```
 
 ## Why harnesses like foac
