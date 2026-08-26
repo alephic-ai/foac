@@ -141,6 +141,7 @@ fn notify_if_outdated_inner() -> Result<(), Box<dyn std::error::Error>> {
     if !should_check(
         std::env::var_os("FOAC_NO_UPDATE_CHECK").is_some(),
         std::env::var_os("CI").is_some(),
+        std::io::IsTerminal::is_terminal(&std::io::stderr()),
     ) {
         return Ok(());
     }
@@ -200,8 +201,10 @@ enum CheckOutcome {
     Outdated { current: String, latest: String },
 }
 
-fn should_check(no_update_check: bool, ci: bool) -> bool {
-    !no_update_check && !ci
+// The notice targets a human at a terminal; a captured stderr must stay
+// clean for composition (e.g. piped `get` joins promise a single summary line).
+fn should_check(no_update_check: bool, ci: bool, stderr_is_terminal: bool) -> bool {
+    !no_update_check && !ci && stderr_is_terminal
 }
 
 fn cache_path(xdg_cache_home: Option<&str>, home: Option<&Path>) -> Option<PathBuf> {
@@ -434,11 +437,12 @@ mod tests {
     }
 
     #[test]
-    fn should_check_respects_opt_out_and_ci() {
-        assert!(should_check(false, false));
-        assert!(!should_check(true, false));
-        assert!(!should_check(false, true));
-        assert!(!should_check(true, true));
+    fn should_check_respects_opt_out_ci_and_captured_stderr() {
+        assert!(should_check(false, false, true));
+        assert!(!should_check(true, false, true));
+        assert!(!should_check(false, true, true));
+        assert!(!should_check(true, true, true));
+        assert!(!should_check(false, false, false));
     }
 
     #[test]

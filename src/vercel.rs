@@ -6,6 +6,7 @@ use clap::{Args, Subcommand};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
+use crate::pipe::{self, FromFlag};
 use crate::rest::{self, Api, Auth, insert_opt, push_query};
 
 const BASE_URL: &str = "https://api.vercel.com";
@@ -56,7 +57,11 @@ enum TeamCmd {
         cursor: Cursor,
     },
     /// Get a team by ID like team_...
-    Get { id: String },
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
 }
 
 #[derive(Args, Default)]
@@ -95,7 +100,11 @@ enum ProjectCmd {
         cursor: Cursor,
     },
     /// Get a project by ID or name
-    Get { id: String },
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Create a project
     Create {
         /// Project name
@@ -144,7 +153,11 @@ enum DeploymentCmd {
         cursor: Cursor,
     },
     /// Get a deployment by ID or URL
-    Get { id: String },
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Cancel a deployment
     Cancel { id: String },
     /// Delete a deployment
@@ -159,7 +172,11 @@ enum DomainCmd {
         cursor: Cursor,
     },
     /// Get a domain by name
-    Get { name: String },
+    Get {
+        name: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Get the DNS configuration Vercel expects for a domain
     Config {
         name: String,
@@ -211,7 +228,9 @@ enum ProjectDomainCmd {
     Get {
         #[arg(long)]
         project: String,
-        name: String,
+        name: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
     },
     /// Add a domain to a project
     Create {
@@ -304,7 +323,9 @@ fn run_team(api: &Api, cmd: TeamCmd) -> Result<(), Box<dyn std::error::Error>> {
             list_query(None, "until", cursor),
             "teams",
         ),
-        TeamCmd::Get { id } => api.print(Method::GET, path!["v2", "teams", id], Vec::new(), None),
+        TeamCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!["v2", "teams", id], Vec::new())
+        }),
     }
 }
 
@@ -324,12 +345,9 @@ fn run_project(
             push_query(&mut query, "repo", repo);
             print_list(api, path!["v10", "projects"], query, "projects")
         }
-        ProjectCmd::Get { id } => api.print(
-            Method::GET,
-            path!["v9", "projects", id],
-            team_query(team),
-            None,
-        ),
+        ProjectCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!["v9", "projects", id], team_query(team))
+        }),
         ProjectCmd::Create { name, opts } => {
             let mut payload = project_payload(opts);
             payload.insert("name".into(), name.into());
@@ -387,12 +405,9 @@ fn run_deployment(
             push_query(&mut query, "sha", sha);
             print_list(api, path!["v7", "deployments"], query, "deployments")
         }
-        DeploymentCmd::Get { id } => api.print(
-            Method::GET,
-            path!["v13", "deployments", id],
-            team_query(team),
-            None,
-        ),
+        DeploymentCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!["v13", "deployments", id], team_query(team))
+        }),
         DeploymentCmd::Cancel { id } => api.print(
             Method::PATCH,
             path!["v12", "deployments", id, "cancel"],
@@ -420,12 +435,9 @@ fn run_domain(
             list_query(team, "until", cursor),
             "domains",
         ),
-        DomainCmd::Get { name } => api.print(
-            Method::GET,
-            path!["v5", "domains", name],
-            team_query(team),
-            None,
-        ),
+        DomainCmd::Get { name, from } => pipe::run_get(name, from, api.format, |name| {
+            api.get_body(path!["v5", "domains", name], team_query(team))
+        }),
         DomainCmd::Config {
             name,
             project,
@@ -481,12 +493,16 @@ fn run_project_domain(
             list_query(team, "until", cursor),
             "domains",
         ),
-        ProjectDomainCmd::Get { project, name } => api.print(
-            Method::GET,
-            path!["v9", "projects", project, "domains", name],
-            team_query(team),
-            None,
-        ),
+        ProjectDomainCmd::Get {
+            project,
+            name,
+            from,
+        } => pipe::run_get(name, from, api.format, |name| {
+            api.get_body(
+                path!["v9", "projects", project, "domains", name],
+                team_query(team),
+            )
+        }),
         ProjectDomainCmd::Create {
             project,
             name,

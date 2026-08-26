@@ -7,6 +7,7 @@ use clap::{Args, Subcommand};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
+use crate::pipe::{self, FromFlag};
 use crate::rest::{self, Api, Auth, BodyInput, id_string, insert_opt, is_numeric_id, push_query};
 
 #[derive(Args)]
@@ -73,7 +74,11 @@ enum IssueCmd {
         after: Option<String>,
     },
     /// Get an issue by key like ENG-123
-    Get { key: String },
+    Get {
+        key: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Create an issue
     Create {
         /// Project key or numeric ID
@@ -173,7 +178,11 @@ enum ProjectCmd {
         page: Page,
     },
     /// Get a project by key or numeric ID
-    Get { key: String },
+    Get {
+        key: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
 }
 
 #[derive(Subcommand)]
@@ -190,7 +199,11 @@ enum SprintCmd {
         page: Page,
     },
     /// Get a sprint by numeric ID
-    Get { id: u64 },
+    Get {
+        id: Option<u64>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
 }
 
 #[derive(Subcommand)]
@@ -204,7 +217,11 @@ enum UserCmd {
         page: Page,
     },
     /// Get a user by account ID
-    Get { account_id: String },
+    Get {
+        account_id: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
 }
 
 #[derive(Subcommand)]
@@ -325,7 +342,9 @@ fn run_issue(api: &Api, cmd: IssueCmd) -> Result<(), Box<dyn std::error::Error>>
             );
             Ok(())
         }
-        IssueCmd::Get { key } => api.print(Method::GET, path!["issue", key], Vec::new(), None),
+        IssueCmd::Get { key, from } => pipe::run_get(key, from, api.format, |key| {
+            api.get_body(path!["issue", key], Vec::new())
+        }),
         IssueCmd::Create {
             project,
             issue_type,
@@ -426,7 +445,9 @@ fn run_project(api: &Api, cmd: ProjectCmd) -> Result<(), Box<dyn std::error::Err
                 Some("values"),
             )
         }
-        ProjectCmd::Get { key } => api.print(Method::GET, path!["project", key], Vec::new(), None),
+        ProjectCmd::Get { key, from } => pipe::run_get(key, from, api.format, |key| {
+            api.get_body(path!["project", key], Vec::new())
+        }),
     }
 }
 
@@ -444,9 +465,9 @@ fn run_sprint(api: &Api, cmd: SprintCmd) -> Result<(), Box<dyn std::error::Error
                 Some("values"),
             )
         }
-        SprintCmd::Get { id } => {
-            api.print(Method::GET, agile_path!["sprint", id], Vec::new(), None)
-        }
+        SprintCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(agile_path!["sprint", id], Vec::new())
+        }),
     }
 }
 
@@ -462,12 +483,11 @@ fn run_user(api: &Api, cmd: UserCmd) -> Result<(), Box<dyn std::error::Error>> {
             ),
             None => print_offset_list(api, path!["users", "search"], Vec::new(), page, None),
         },
-        UserCmd::Get { account_id } => api.print(
-            Method::GET,
-            path!["user"],
-            vec![("accountId", account_id)],
-            None,
-        ),
+        UserCmd::Get { account_id, from } => {
+            pipe::run_get(account_id, from, api.format, |account_id| {
+                api.get_body(path!["user"], vec![("accountId", account_id)])
+            })
+        }
     }
 }
 

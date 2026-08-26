@@ -6,6 +6,7 @@ use clap::{Args, Subcommand};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
+use crate::pipe::{self, FromFlag};
 use crate::rest::{self, Api, Auth, insert_opt, push_query};
 
 const BASE_URL: &str = "https://console.neon.tech";
@@ -108,7 +109,11 @@ enum BranchCmd {
         cursor: Cursor,
     },
     /// Get a branch by ID like br-...
-    Get { id: String },
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Create a branch
     Create {
         /// Branch name; Neon generates one when omitted
@@ -147,7 +152,11 @@ enum EndpointCmd {
     /// List the project's compute endpoints
     List,
     /// Get an endpoint by ID like ep-...
-    Get { id: String },
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
     /// Start an endpoint
     Start { id: String },
     /// Suspend an endpoint
@@ -164,7 +173,11 @@ enum OperationCmd {
         cursor: Cursor,
     },
     /// Get an operation by ID
-    Get { id: String },
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
 }
 
 macro_rules! path {
@@ -295,12 +308,9 @@ fn run_branch(
                 cursor,
             )
         }
-        BranchCmd::Get { id } => api.print(
-            Method::GET,
-            path!["projects", project, "branches", id],
-            Vec::new(),
-            None,
-        ),
+        BranchCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!["projects", project, "branches", id], Vec::new())
+        }),
         BranchCmd::Create { name, parent } => {
             let mut branch = Map::new();
             insert_opt(&mut branch, "name", name);
@@ -352,12 +362,9 @@ fn run_endpoint(
 ) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
         EndpointCmd::List => print_list(api, path!["projects", project, "endpoints"], "endpoints"),
-        EndpointCmd::Get { id } => api.print(
-            Method::GET,
-            path!["projects", project, "endpoints", id],
-            Vec::new(),
-            None,
-        ),
+        EndpointCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!["projects", project, "endpoints", id], Vec::new())
+        }),
         EndpointCmd::Start { id } => endpoint_action(api, &project, &id, "start"),
         EndpointCmd::Suspend { id } => endpoint_action(api, &project, &id, "suspend"),
         EndpointCmd::Restart { id } => endpoint_action(api, &project, &id, "restart"),
@@ -391,12 +398,9 @@ fn run_operation(
             "operations",
             cursor,
         ),
-        OperationCmd::Get { id } => api.print(
-            Method::GET,
-            path!["projects", project, "operations", id],
-            Vec::new(),
-            None,
-        ),
+        OperationCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!["projects", project, "operations", id], Vec::new())
+        }),
     }
 }
 

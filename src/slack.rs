@@ -4,6 +4,7 @@ use clap::{Args, Subcommand, ValueEnum};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
+use crate::pipe::{self, FromFlag};
 use crate::rest::{self, insert_opt, parse_response};
 
 const API_URL: &str = "https://slack.com/api/";
@@ -120,7 +121,11 @@ enum ConversationCmd {
         page: Page,
     },
     /// Get a conversation by ID or channel name such as #eng
-    Get { conversation: String },
+    Get {
+        conversation: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
 }
 
 #[derive(Subcommand)]
@@ -140,10 +145,12 @@ enum MessageCmd {
         /// Conversation ID or channel name such as #eng
         conversation: String,
         /// Message timestamp
-        ts: String,
+        ts: Option<String>,
         /// Parent message timestamp when getting a thread reply
         #[arg(long)]
         thread_ts: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
     },
     /// Post a message or thread reply
     Create {
@@ -184,7 +191,11 @@ enum UserCmd {
         page: Page,
     },
     /// Get a user by ID, @name, display name, or email
-    Get { user: String },
+    Get {
+        user: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
 }
 
 #[derive(Subcommand)]
@@ -295,14 +306,17 @@ fn run_conversation(api: &Api, cmd: ConversationCmd) -> Result<(), Box<dyn std::
             }
             api.print_list("conversations.list", query, ListShape::Key("channels"))
         }
-        ConversationCmd::Get { conversation } => {
-            let channel = resolve_conversation(api, &conversation)?;
-            api.print(
-                Method::GET,
-                "conversations.info",
-                vec![("channel", channel)],
-                None,
-            )
+        ConversationCmd::Get { conversation, from } => {
+            let mut cache = PageCache::default();
+            pipe::run_get(conversation, from, api.format, |conversation| {
+                let channel = resolve_conversation(api, &mut cache, &conversation)?;
+                api.send(
+                    Method::GET,
+                    "conversations.info",
+                    &[("channel", channel)],
+                    None,
+                )
+            })
         }
     }
 }
@@ -314,7 +328,7 @@ fn run_message(api: &Api, cmd: MessageCmd) -> Result<(), Box<dyn std::error::Err
             thread_ts,
             page,
         } => {
-            let channel = resolve_conversation(api, &conversation)?;
+            let channel = resolve_conversation(api, &mut PageCache::default(), &conversation)?;
             let mut query = page_query(page);
             query.push(("channel", channel));
             let method = if let Some(thread_ts) = thread_ts {
@@ -329,22 +343,22 @@ fn run_message(api: &Api, cmd: MessageCmd) -> Result<(), Box<dyn std::error::Err
             conversation,
             ts,
             thread_ts,
+            from,
         } => {
-            let channel = resolve_conversation(api, &conversation)?;
-            let mut query = vec![("channel", channel), ("limit", "1".into())];
-            let method = if let Some(thread_ts) = thread_ts {
-                query.push(("ts", thread_ts));
+            let channel = resolve_conversation(api, &mut PageCache::default(), &conversation)?;
+            pipe::run_get(ts, from, api.format, |ts| {
+                let mut query = vec![("channel", channel.clone()), ("limit", "1".into())];
+                let method = if let Some(thread_ts) = &thread_ts {
+                    query.push(("ts", thread_ts.clone()));
+                    "conversations.replies"
+                } else {
+                    "conversations.history"
+                };
                 query.push(("oldest", ts.clone()));
-                query.push(("latest", ts));
+                query.push(("latest", ts.clone()));
                 query.push(("inclusive", "true".into()));
-                "conversations.replies"
-            } else {
-                query.push(("oldest", ts.clone()));
-                query.push(("latest", ts));
-                query.push(("inclusive", "true".into()));
-                "conversations.history"
-            };
-            api.print(Method::GET, method, query, None)
+                message_hit(api.send(Method::GET, method, &query, None)?, &ts)
+            })
         }
         MessageCmd::Create {
             conversation,
@@ -352,7 +366,7 @@ fn run_message(api: &Api, cmd: MessageCmd) -> Result<(), Box<dyn std::error::Err
             thread_ts,
             reply_broadcast,
         } => {
-            let channel = resolve_conversation(api, &conversation)?;
+            let channel = resolve_conversation(api, &mut PageCache::default(), &conversation)?;
             let mut payload = Map::new();
             payload.insert("channel".into(), channel.into());
             payload.insert("text".into(), body.required()?.into());
@@ -372,7 +386,7 @@ fn run_message(api: &Api, cmd: MessageCmd) -> Result<(), Box<dyn std::error::Err
             ts,
             body,
         } => {
-            let channel = resolve_conversation(api, &conversation)?;
+            let channel = resolve_conversation(api, &mut PageCache::default(), &conversation)?;
             api.print(
                 Method::POST,
                 "chat.update",
@@ -381,7 +395,7 @@ fn run_message(api: &Api, cmd: MessageCmd) -> Result<(), Box<dyn std::error::Err
             )
         }
         MessageCmd::Delete { conversation, ts } => {
-            let channel = resolve_conversation(api, &conversation)?;
+            let channel = resolve_conversation(api, &mut PageCache::default(), &conversation)?;
             api.print(
                 Method::POST,
                 "chat.delete",
@@ -397,20 +411,18 @@ fn run_user(api: &Api, cmd: UserCmd) -> Result<(), Box<dyn std::error::Error>> {
         UserCmd::List { page } => {
             api.print_list("users.list", page_query(page), ListShape::Key("members"))
         }
-        UserCmd::Get { user } => {
-            if is_user_id(&user) {
-                return api.print(Method::GET, "users.info", vec![("user", user)], None);
-            }
-            if is_email(&user) {
-                return api.print(
-                    Method::GET,
-                    "users.lookupByEmail",
-                    vec![("email", user)],
-                    None,
-                );
-            }
-            let user = resolve_user(api, &user)?;
-            api.print(Method::GET, "users.info", vec![("user", user)], None)
+        UserCmd::Get { user, from } => {
+            let mut cache = PageCache::default();
+            pipe::run_get(user, from, api.format, move |user| {
+                if is_user_id(&user) {
+                    return api.send(Method::GET, "users.info", &[("user", user)], None);
+                }
+                if is_email(&user) {
+                    return api.send(Method::GET, "users.lookupByEmail", &[("email", user)], None);
+                }
+                let user = resolve_user(api, &mut cache, &user)?;
+                api.send(Method::GET, "users.info", &[("user", user)], None)
+            })
         }
     }
 }
@@ -457,7 +469,7 @@ fn run_reaction(api: &Api, cmd: ReactionCmd) -> Result<(), Box<dyn std::error::E
             name,
         } => ("reactions.remove", conversation, ts, name),
     };
-    let channel = resolve_conversation(api, &conversation)?;
+    let channel = resolve_conversation(api, &mut PageCache::default(), &conversation)?;
     api.print(
         Method::POST,
         method,
@@ -529,6 +541,12 @@ impl Api {
         let status = response.status();
         let body = parse_response(status, response.text()?);
         if !status.is_success() || body["ok"] == false {
+            // Slack reports a missing resource as HTTP 200 with an error
+            // code like channel_not_found / users_not_found.
+            let code = body["error"].as_str().unwrap_or_default();
+            if code == "not_found" || code.ends_with("_not_found") {
+                return Err(crate::pipe::NotFound(body.to_string()).into());
+            }
             return Err(body.to_string().into());
         }
         Ok(body)
@@ -546,66 +564,103 @@ impl BodyInput {
     }
 }
 
-fn resolve_conversation(api: &Api, value: &str) -> Result<String, Box<dyn std::error::Error>> {
+/// A nonexistent ts is HTTP 200 ok:true with an empty `messages` array, not
+/// an API error; report it as a miss so pipe mode can count it.
+fn message_hit(body: Value, ts: &str) -> Result<Value, Box<dyn std::error::Error>> {
+    if body["messages"].as_array().is_none_or(Vec::is_empty) {
+        return Err(crate::pipe::NotFound(format!("no message at ts {ts}")).into());
+    }
+    Ok(body)
+}
+
+fn resolve_conversation(
+    api: &Api,
+    cache: &mut PageCache,
+    value: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
     if is_conversation_id(value) {
         return Ok(value.to_owned());
     }
     let name = value.strip_prefix('#').unwrap_or(value);
-    resolve_from_pages(api, "conversations.list", "channels", |item| {
-        (item["name"].as_str() == Some(name))
+    cache
+        .find(api, "conversations.list", "channels", |item| {
+            (item["name"].as_str() == Some(name))
+                .then(|| item["id"].as_str().map(str::to_owned))
+                .flatten()
+        })?
+        .ok_or_else(|| {
+            crate::pipe::NotFound(format!("could not resolve Slack conversation {value}")).into()
+        })
+}
+
+fn resolve_user(
+    api: &Api,
+    cache: &mut PageCache,
+    value: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let name = value.strip_prefix('@').unwrap_or(value);
+    cache
+        .find(api, "users.list", "members", |item| {
+            let profile = &item["profile"];
+            [
+                item["name"].as_str(),
+                profile["display_name"].as_str(),
+                profile["real_name"].as_str(),
+            ]
+            .into_iter()
+            .flatten()
+            .any(|candidate| candidate.eq_ignore_ascii_case(name))
             .then(|| item["id"].as_str().map(str::to_owned))
             .flatten()
-    })?
-    .ok_or_else(|| format!("could not resolve Slack conversation {value}").into())
+        })?
+        .ok_or_else(|| {
+            crate::pipe::NotFound(format!("could not resolve Slack user {value}")).into()
+        })
 }
 
-fn resolve_user(api: &Api, value: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let name = value.strip_prefix('@').unwrap_or(value);
-    resolve_from_pages(api, "users.list", "members", |item| {
-        let profile = &item["profile"];
-        [
-            item["name"].as_str(),
-            profile["display_name"].as_str(),
-            profile["real_name"].as_str(),
-        ]
-        .into_iter()
-        .flatten()
-        .any(|candidate| candidate.eq_ignore_ascii_case(name))
-        .then(|| item["id"].as_str().map(str::to_owned))
-        .flatten()
-    })?
-    .ok_or_else(|| format!("could not resolve Slack user {value}").into())
+/// Listing pages fetched so far for one name-resolution source. A piped join
+/// resolves many names; caching pages and resuming the cursor keeps that at
+/// one full listing scan per run instead of one per name, while a single
+/// lookup still stops at the page that matches.
+#[derive(Default)]
+struct PageCache {
+    items: Vec<Value>,
+    cursor: Option<String>,
+    exhausted: bool,
 }
 
-fn resolve_from_pages<F>(
-    api: &Api,
-    method: &str,
-    key: &str,
-    mut find: F,
-) -> Result<Option<String>, Box<dyn std::error::Error>>
-where
-    F: FnMut(&Value) -> Option<String>,
-{
-    let mut cursor = None;
-    loop {
-        let mut query = vec![("limit", "200".into())];
-        if method == "conversations.list" {
-            query.push(("types", "public_channel,private_channel,mpim,im".into()));
-        }
-        if let Some(cursor) = cursor {
-            query.push(("cursor", cursor));
-        }
-        let body = api.send(Method::GET, method, &query, None)?;
-        let items = body[key]
-            .as_array()
-            .ok_or_else(|| format!("Slack {method} response did not contain an array at {key}"))?;
-        if let Some(found) = items.iter().find_map(&mut find) {
+impl PageCache {
+    fn find(
+        &mut self,
+        api: &Api,
+        method: &str,
+        key: &str,
+        mut find: impl FnMut(&Value) -> Option<String>,
+    ) -> Result<Option<String>, Box<dyn std::error::Error>> {
+        if let Some(found) = self.items.iter().find_map(&mut find) {
             return Ok(Some(found));
         }
-        cursor = next_cursor(&body);
-        if cursor.is_none() {
-            return Ok(None);
+        while !self.exhausted {
+            let mut query = vec![("limit", "200".into())];
+            if method == "conversations.list" {
+                query.push(("types", "public_channel,private_channel,mpim,im".into()));
+            }
+            if let Some(cursor) = self.cursor.take() {
+                query.push(("cursor", cursor));
+            }
+            let body = api.send(Method::GET, method, &query, None)?;
+            let page = body[key].as_array().ok_or_else(|| {
+                format!("Slack {method} response did not contain an array at {key}")
+            })?;
+            self.cursor = next_cursor(&body);
+            self.exhausted = self.cursor.is_none();
+            let start = self.items.len();
+            self.items.extend(page.iter().cloned());
+            if let Some(found) = self.items[start..].iter().find_map(&mut find) {
+                return Ok(Some(found));
+            }
         }
+        Ok(None)
     }
 }
 
@@ -780,20 +835,56 @@ mod tests {
     }
 
     #[test]
+    fn empty_message_get_is_a_miss() {
+        let hit = json!({"ok": true, "messages": [{"ts": "1.2", "text": "hi"}]});
+        assert_eq!(message_hit(hit.clone(), "1.2").unwrap(), hit);
+        let error = message_hit(json!({"ok": true, "messages": []}), "1.2").unwrap_err();
+        assert!(error.is::<crate::pipe::NotFound>());
+    }
+
+    #[test]
     fn resolves_channel_and_user_names() {
         let (api, _, server) = test_api(
             "200 OK",
             r#"{"ok":true,"channels":[{"id":"C123","name":"eng"}],"response_metadata":{"next_cursor":""}}"#,
         );
-        assert_eq!(resolve_conversation(&api, "#eng").unwrap(), "C123");
+        assert_eq!(
+            resolve_conversation(&api, &mut PageCache::default(), "#eng").unwrap(),
+            "C123"
+        );
         server.join().unwrap();
 
         let (api, _, server) = test_api(
             "200 OK",
             r#"{"ok":true,"members":[{"id":"U123","name":"alice","profile":{"display_name":"Alice A"}}],"response_metadata":{"next_cursor":""}}"#,
         );
-        assert_eq!(resolve_user(&api, "@alice").unwrap(), "U123");
+        assert_eq!(
+            resolve_user(&api, &mut PageCache::default(), "@alice").unwrap(),
+            "U123"
+        );
         server.join().unwrap();
+    }
+
+    #[test]
+    fn page_cache_resolves_many_names_from_one_listing() {
+        // The server accepts exactly one request; later lookups, hit or
+        // miss, must come from the cache.
+        let (api, _, server) = test_api(
+            "200 OK",
+            r#"{"ok":true,"channels":[{"id":"C1","name":"eng"},{"id":"C2","name":"ops"}],"response_metadata":{"next_cursor":""}}"#,
+        );
+        let mut cache = PageCache::default();
+        assert_eq!(
+            resolve_conversation(&api, &mut cache, "#eng").unwrap(),
+            "C1"
+        );
+        server.join().unwrap();
+        assert_eq!(
+            resolve_conversation(&api, &mut cache, "#ops").unwrap(),
+            "C2"
+        );
+        let error = resolve_conversation(&api, &mut cache, "#nope").unwrap_err();
+        assert!(error.is::<crate::pipe::NotFound>());
     }
 
     fn test_api(
