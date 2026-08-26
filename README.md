@@ -18,32 +18,34 @@ and one-off CLIs, each with its own config and its own copy of your tokens:
 
 ```mermaid
 graph LR
-    CC([Claude Code]) --> LMCP & GHCLI & AMCP & NCLI & SMCP & SLMCP & VCLI
-    CU([Cursor]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCP & VCLI
-    GRK([Grok Build]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCP & VCLI
-    CX([Codex]) --> LMCP & GHCLI & AMCP & NCLI & SMCP & SLMCP & VCLI
-    GEM([Gemini CLI]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCP & VCLI
+    CC([Claude Code]) --> LMCP & GHCLI & AMCP & NCLI & SMCP & SLMCPA & SLMCPB & VCLI
+    CU([Cursor]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCPA & SLMCPB & VCLI
+    GRK([Grok Build]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCPA & SLMCPB & VCLI
+    CX([Codex]) --> LMCP & GHCLI & AMCP & NCLI & SMCP & SLMCPA & SLMCPB & VCLI
+    GEM([Gemini CLI]) --> LMCP & GHMCP & AMCP & NCLI & SMCP & SLMCPA & SLMCPB & VCLI
     LMCP{{Linear MCP server}} --> Linear[(Linear)]
     GHMCP{{GitHub MCP server}} --> GitHub[(GitHub)]
     GHCLI[[gh CLI]] --> GitHub
     AMCP{{Atlassian MCP server}} --> Jira[(Jira)] & Confluence[(Confluence)]
     NCLI[[neonctl CLI]] --> Neon[(Neon)]
     SMCP{{Sentry MCP server}} --> Sentry[(Sentry)]
-    SLMCP{{Slack MCP server}} --> Slack[(Slack)]
+    SLMCPA{{Slack MCP server A}} --> SlackA[(Slack workspace A)]
+    SLMCPB{{Slack MCP server B}} --> SlackB[(Slack workspace B)]
     VCLI[[Vercel CLI]] --> Vercel[(Vercel)]
     classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
     classDef mcp fill:#ffe0b2,stroke:#e65100,color:#000
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
     class CC,CU,GRK,CX,GEM harness
-    class LMCP,GHMCP,AMCP,SMCP,SLMCP mcp
+    class LMCP,GHMCP,AMCP,SMCP,SLMCPA,SLMCPB mcp
     class GHCLI,NCLI,VCLI cli
-    class Linear,GitHub,Jira,Confluence,Neon,Sentry,Slack,Vercel provider
+    class Linear,GitHub,Jira,Confluence,Neon,Sentry,SlackA,SlackB,Vercel provider
 ```
 
-Five harnesses and seven adapters is thirty-five integrations to configure
-and keep authenticated. Every harness or adapter you add multiplies that
-number.
+Five harnesses and eight adapters is forty integrations to configure
+and keep authenticated — a second Slack workspace alone means its own MCP
+server configured in every harness. Every harness or adapter you add
+multiplies that number.
 
 With foac, install once and log in once; every harness talks to every
 provider through the same binary — even to several instances of the same
