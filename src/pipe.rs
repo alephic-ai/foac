@@ -58,11 +58,20 @@ fn run_values(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let total = values.len();
     let mut missed = Vec::new();
+    // JSON streams one document per get; a table renders once at the end,
+    // one row per response, instead of one boxed table per response.
+    let mut rows = Vec::new();
     for value in values {
         match get_one(value.clone()) {
-            Ok(body) => crate::output::print(&body, format),
+            Ok(body) => match format {
+                crate::output::Format::Json => crate::output::print(&body, format),
+                crate::output::Format::Table => rows.push(body),
+            },
             Err(_) => missed.push(value),
         }
+    }
+    if !rows.is_empty() {
+        crate::output::print_get_rows(&rows);
     }
     if missed.is_empty() {
         return Ok(());

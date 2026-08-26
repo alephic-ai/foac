@@ -86,10 +86,14 @@ graph LR
   per project without touching auth: each project can run with a different
   set of providers, and re-enabling one never asks you to log in again.
 - **Composable.** Compact JSON on stdout, errors as JSON on stderr with exit
-  code 1, so providers pipe into each other:
+  code 1, so foac commands chain like any Unix tool. Better: pipe one
+  provider's `list` straight into another's `get` and foac does the join
+  itself — `--from` names the field to match on, no `jq` or `xargs` glue
+  needed:
 
   ```sh
-  foac linear user list | jq -r '.users.nodes[].email' | xargs -n1 foac slack user get
+  # Look up the Slack profile of every Linear user, matching on email
+  foac linear user list | foac slack user get --from email
   ```
 
 - **Responses are the provider's raw JSON.** foac does not reshape what an

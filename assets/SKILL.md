@@ -229,9 +229,10 @@ foac <provider> <resource> <verb> [flags]
   `foac <provider> <resource> list | foac <provider> <resource> get --from
   <field>` (the two commands may target different providers). Piped input that
   is not JSON is one value per line, so `grep` output composes too. Successes
-  stream as one JSON document per get on stdout; misses are summarized in a
-  single stderr line (`5 of 21 not found: ...`); the exit code is 0 when at
-  least one get succeeded, 1 when all failed.
+  stream as one JSON document per get on stdout (a TTY renders them as one
+  combined table, one row per result); misses are summarized in a single
+  stderr line (`5 of 21 not found: ...`); the exit code is 0 when at least
+  one get succeeded, 1 when all failed.
 <!-- foac-provider:linear -->
 - **Linear pagination**: `list` verbs take `--limit N` (default 50) and
   `--after CURSOR`; loop using `pageInfo.endCursor` while `hasNextPage` is true.
