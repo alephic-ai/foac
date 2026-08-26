@@ -478,7 +478,9 @@ mod tests {
                 ] {
                     assert_eq!(help_lists(&help, name), expected.contains(&name));
                 }
-                for name in ["about", "auth", "provider", "skill", "update", "version", "help"] {
+                for name in [
+                    "about", "auth", "provider", "skill", "update", "version", "help",
+                ] {
                     assert!(help_lists(&help, name));
                 }
                 if expected.is_empty() {
