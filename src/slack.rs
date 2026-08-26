@@ -354,9 +354,9 @@ fn run_message(api: &Api, cmd: MessageCmd) -> Result<(), Box<dyn std::error::Err
                     "conversations.history"
                 };
                 query.push(("oldest", ts.clone()));
-                query.push(("latest", ts));
+                query.push(("latest", ts.clone()));
                 query.push(("inclusive", "true".into()));
-                api.send(Method::GET, method, &query, None)
+                message_hit(api.send(Method::GET, method, &query, None)?, &ts)
             })
         }
         MessageCmd::Create {
@@ -558,6 +558,15 @@ impl BodyInput {
             (Some(_), Some(_)) => unreachable!("clap enforces --body xor --body-file"),
         }
     }
+}
+
+/// A nonexistent ts is HTTP 200 ok:true with an empty `messages` array, not
+/// an API error; report it as a miss so pipe mode can count it.
+fn message_hit(body: Value, ts: &str) -> Result<Value, Box<dyn std::error::Error>> {
+    if body["messages"].as_array().is_none_or(Vec::is_empty) {
+        return Err(crate::pipe::NotFound(format!("no message at ts {ts}")).into());
+    }
+    Ok(body)
 }
 
 fn resolve_conversation(api: &Api, value: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -791,6 +800,14 @@ mod tests {
         server.join().unwrap();
         assert_eq!(identity["user"], "person");
         assert!(identity.get("bot_id").is_none());
+    }
+
+    #[test]
+    fn empty_message_get_is_a_miss() {
+        let hit = json!({"ok": true, "messages": [{"ts": "1.2", "text": "hi"}]});
+        assert_eq!(message_hit(hit.clone(), "1.2").unwrap(), hit);
+        let error = message_hit(json!({"ok": true, "messages": []}), "1.2").unwrap_err();
+        assert!(error.is::<crate::pipe::NotFound>());
     }
 
     #[test]
