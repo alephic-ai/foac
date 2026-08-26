@@ -76,19 +76,23 @@ pub fn print_get_rows(bodies: &[Value]) {
     );
 }
 
-/// A get response as a table row. A wrapper holding exactly one nested
-/// value which is an object (Slack's `{ok, user}`, Linear's `{user}`,
-/// Jira's `{key, fields}`) flattens into the wrapper's scalars plus the
-/// inner object's fields, so the row shows the resource, not the envelope.
+/// A get response as a table row. A known envelope — a one-key wrapper
+/// (Linear's `{user}`), Slack's `ok` beside the resource, or Jira's
+/// `fields` — flattens into the wrapper's scalars plus the inner object's
+/// fields, so the row shows the resource, not the envelope. A flat resource
+/// whose one nested value is incidental (Jira user's `avatarUrls`) is left
+/// alone.
 fn get_row(body: &Value) -> Value {
     let Some(wrapper) = body.as_object() else {
         return body.clone();
     };
     let mut nested = wrapper
-        .values()
-        .filter(|value| value.is_object() || value.is_array());
+        .iter()
+        .filter(|(_, value)| value.is_object() || value.is_array());
     match (nested.next(), nested.next()) {
-        (Some(Value::Object(inner)), None) => {
+        (Some((key, Value::Object(inner))), None)
+            if wrapper.len() == 1 || wrapper.contains_key("ok") || key == "fields" =>
+        {
             let mut row: Map<String, Value> = wrapper
                 .iter()
                 .filter(|(_, value)| !value.is_object())
@@ -516,6 +520,14 @@ mod tests {
         assert_eq!(get_row(&multi), multi);
         let array = json!({ "id": 1, "labels": [] });
         assert_eq!(get_row(&array), array);
+        // A flat resource whose only nested value is incidental is not an
+        // envelope: Jira users must not grow avatar-size columns.
+        let jira_user = json!({
+            "accountId": "a1",
+            "displayName": "Ada",
+            "avatarUrls": { "16x16": "https://x/16.png", "48x48": "https://x/48.png" },
+        });
+        assert_eq!(get_row(&jira_user), jira_user);
     }
 
     #[test]
