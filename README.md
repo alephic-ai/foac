@@ -148,8 +148,7 @@ foac stores editable provider settings in
 `~/.config/foac/config.toml` and machine-managed credentials in
 `~/.config/foac/credentials.json` (or the equivalent paths under
 `XDG_CONFIG_HOME`). The credentials file is atomically replaced and kept mode
-`0600` on Unix. Legacy `config.json` files are intentionally ignored and are
-not migrated or deleted.
+`0600` on Unix.
 
 To toggle providers per project, drop a `.foac.toml` in the project folder:
 

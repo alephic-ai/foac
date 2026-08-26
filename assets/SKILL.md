@@ -145,8 +145,7 @@ foac <provider> <resource> <verb> [flags]
   atomically replaced, and mode `0600`
   before secret bytes are written on Unix. Settings use comment-preserving
   TOML. Missing files are valid first-run state; malformed stores fail closed
-  independently with their path and cause. Legacy `config.json` and flat
-  pre-instance credential keys are ignored and not migrated or deleted.
+  independently with their path and cause.
 <!-- foac-provider:linear -->
 - **Linear auth precedence**: `LINEAR_API_KEY`, then the credentials file.
 <!-- /foac-provider:linear -->

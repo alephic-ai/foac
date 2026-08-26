@@ -404,12 +404,12 @@ fn sentry_login_preflights_the_credential_store_before_mutating() {
 }
 
 #[test]
-fn lone_legacy_config_is_ignored_and_unchanged() {
-    let config_home = config_home("legacy-config");
-    let legacy_path = config_home.join("foac/config.json");
-    let original = br#"{"disabled_providers":["github"],"credentials":{"linear":"legacy-token"}}"#;
-    std::fs::create_dir_all(legacy_path.parent().unwrap()).unwrap();
-    std::fs::write(&legacy_path, original).unwrap();
+fn stray_config_json_is_ignored_and_unchanged() {
+    let config_home = config_home("stray-config");
+    let stray_path = config_home.join("foac/config.json");
+    let original = br#"{"disabled_providers":["github"],"credentials":{"linear":"stray-token"}}"#;
+    std::fs::create_dir_all(stray_path.parent().unwrap()).unwrap();
+    std::fs::write(&stray_path, original).unwrap();
 
     let providers = foac(&["provider", "list"])
         .env("XDG_CONFIG_HOME", &config_home)
@@ -428,7 +428,7 @@ fn lone_legacy_config_is_ignored_and_unchanged() {
     assert!(auth.stderr.is_empty());
     let auth: serde_json::Value = serde_json::from_slice(&auth.stdout).unwrap();
     assert_eq!(auth["linear"]["status"], "unauthenticated");
-    assert_eq!(std::fs::read(&legacy_path).unwrap(), original);
+    assert_eq!(std::fs::read(&stray_path).unwrap(), original);
 
     std::fs::remove_dir_all(config_home).unwrap();
 }

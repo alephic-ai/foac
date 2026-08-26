@@ -40,9 +40,8 @@ API token, validates it, and stores it in foac's machine-managed credentials
 file (`~/.config/foac/credentials.json`, or under `XDG_CONFIG_HOME`), which
 foac atomically replaces and keeps mode `0600` on Unix before writing secret
 bytes. Editable provider settings live separately in
-`~/.config/foac/config.toml`. Legacy `config.json` files, and the flat
-pre-instance `credentials.json` keys, are intentionally not read, migrated, or
-deleted. Pipe a token to `login` for non-interactive use.
+`~/.config/foac/config.toml`. Pipe a token to `login` for non-interactive
+use.
 
 ## Instances
 

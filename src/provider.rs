@@ -595,8 +595,7 @@ fn load_credentials_from(path: &Path) -> Result<Credentials, Box<dyn std::error:
         })?;
     let mut values = BTreeMap::new();
     for (vendor, item) in raw {
-        // Flat string entries are the pre-instance format (foac < 2.16), a
-        // deliberately ignored fresh-start format like legacy config.json.
+        // Skip entries that are not instance maps.
         if item.is_string() {
             continue;
         }
@@ -985,12 +984,12 @@ mod tests {
     }
 
     #[test]
-    fn legacy_flat_credentials_are_ignored() {
+    fn non_instance_credential_entries_are_ignored() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("credentials.json");
         std::fs::write(
             &path,
-            br#"{"github":"legacy-token","slack":{"default":{"bot_token":"xoxb-bot"}}}"#,
+            br#"{"github":"stray-token","slack":{"default":{"bot_token":"xoxb-bot"}}}"#,
         )
         .unwrap();
         let credentials = load_credentials_from(&path).unwrap();

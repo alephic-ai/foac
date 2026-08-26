@@ -74,5 +74,4 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   validation live here too. Reads and
   failures are isolated per store; writes use the shared atomic replacement
   path, with credentials mode `0600` before secret bytes are written on
-  Unix. Legacy `config.json` and flat pre-instance credential keys are
-  ignored.
+  Unix.

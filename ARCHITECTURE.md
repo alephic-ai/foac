@@ -128,9 +128,7 @@ not duplication.
 - Settings and credentials fail closed independently. Provider toggles and
   the `[defaults]` instance table live in comment-preserving `config.toml`;
   credentials for every provider live in pretty-printed `credentials.json`.
-  Unknown TOML keys are discarded on write. Legacy `config.json`, and the
-  flat pre-instance `credentials.json` keys, are deliberately ignored
-  fresh-start formats: never read, migrated, deleted, or used as fallback.
+  Unknown TOML keys are discarded on write.
 - Provider toggles layer per folder. The nearest `.foac.toml` from the working
   directory up to `/` overrides the global toggles via its `enabled_providers`
   and `disabled_providers` arrays (a name in both is enabled). Entries are
