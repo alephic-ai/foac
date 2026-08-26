@@ -158,13 +158,7 @@ fn about() {
         ("", "", "", "")
     };
     // The two arms merge into the bar and run out to the right, like the icon.
-    let mark = [
-        "━━╲     ",
-        "   ╲    ",
-        "━━━━━━━━",
-        "   ╱    ",
-        "━━╱     ",
-    ];
+    let mark = ["━━╲     ", "   ╲    ", "━━━━━━━━", "   ╱    ", "━━╱     "];
     // Lowercase geometric "foac": a hooked f, a bowl, a stemmed a, an open c.
     let wordmark = [
         r" ╭──",
