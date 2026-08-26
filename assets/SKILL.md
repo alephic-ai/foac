@@ -223,6 +223,15 @@ foac <provider> <resource> <verb> [flags]
   `version`, `update`, and `skill` ignore `--format`.
   Failures print
   the API's error JSON on stderr and exit non-zero.
+- **Piped joins**: pipe one command's `list` output into a `get` verb and omit
+  the identifying argument to run one get per list item, joining on the field
+  named by `--from`:
+  `foac <provider> <resource> list | foac <provider> <resource> get --from
+  <field>` (the two commands may target different providers). Piped input that
+  is not JSON is one value per line, so `grep` output composes too. Successes
+  stream as one JSON document per get on stdout; misses are summarized in a
+  single stderr line (`5 of 21 not found: ...`); the exit code is 0 when at
+  least one get succeeded, 1 when all failed.
 <!-- foac-provider:linear -->
 - **Linear pagination**: `list` verbs take `--limit N` (default 50) and
   `--after CURSOR`; loop using `pageInfo.endCursor` while `hasNextPage` is true.

@@ -62,6 +62,7 @@ src/
 ├── auth.rs      # Credential resolution (env > credentials file > gh CLI), validation, auth commands
 ├── provider.rs  # Comment-preserving TOML settings + private JSON credentials
 ├── output.rs    # The one success printer: compact JSON, or shape-heuristic tables on a TTY
+├── pipe.rs      # get pipe mode: piped list output joins into one get per extracted value
 ├── update.rs    # Self-update from GitHub Releases + once-a-day version check
 └── lib.rs       # Library target so tests/ and doc tests can link; main.rs is the only consumer
 assets/

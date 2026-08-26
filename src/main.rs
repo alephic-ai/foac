@@ -764,6 +764,40 @@ mod tests {
     }
 
     #[test]
+    fn get_verbs_parse_the_piped_join_form() {
+        // Positional omitted, with or without --from: pipe mode.
+        for args in [
+            vec!["foac", "linear", "issue", "get", "--from", "identifier"],
+            vec!["foac", "linear", "user", "get"],
+            vec!["foac", "github", "issue", "get", "--from", "number"],
+            vec!["foac", "jira", "issue", "get", "--from", "key"],
+            vec!["foac", "confluence", "page", "get", "--from", "id"],
+            vec!["foac", "neon", "branch", "get", "--from", "id"],
+            vec![
+                "foac", "sentry", "issue", "get", "--org", "acme", "--from", "shortId",
+            ],
+            vec!["foac", "slack", "user", "get", "--from", "email"],
+            vec!["foac", "slack", "message", "get", "#eng", "--from", "ts"],
+            vec!["foac", "vercel", "project", "get", "--from", "name"],
+            vec![
+                "foac",
+                "vercel",
+                "project-domain",
+                "get",
+                "--project",
+                "web",
+                "--from",
+                "name",
+            ],
+        ] {
+            Cli::try_parse_from(args).unwrap();
+        }
+        // The single-value form is unchanged.
+        Cli::try_parse_from(["foac", "linear", "issue", "get", "ENG-123"]).unwrap();
+        Cli::try_parse_from(["foac", "github", "pull", "get", "42"]).unwrap();
+    }
+
+    #[test]
     fn skill_requires_subcommand() {
         assert!(Cli::try_parse_from(["foac", "skill"]).is_err());
         let missing_provider = Cli::try_parse_from(["foac", "skill", "print"])

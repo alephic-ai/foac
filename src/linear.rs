@@ -225,7 +225,11 @@ pub enum IssueCmd {
         page: Page,
     },
     /// Get one issue by UUID or identifier like ENG-123
-    Get { id: String },
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: crate::pipe::FromFlag,
+    },
     /// Create an issue
     Create {
         /// Team UUID
@@ -295,7 +299,11 @@ pub enum ProjectCmd {
         page: Page,
     },
     /// Get one project by UUID
-    Get { id: String },
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: crate::pipe::FromFlag,
+    },
     /// Create a project
     Create {
         #[arg(long)]
@@ -349,7 +357,11 @@ pub enum TeamCmd {
         page: Page,
     },
     /// Get one team by UUID
-    Get { id: String },
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: crate::pipe::FromFlag,
+    },
 }
 
 #[derive(clap::Subcommand)]
@@ -360,7 +372,11 @@ pub enum UserCmd {
         page: Page,
     },
     /// Get one user by UUID
-    Get { id: String },
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: crate::pipe::FromFlag,
+    },
 }
 
 #[derive(clap::Subcommand)]
@@ -417,7 +433,11 @@ pub enum StatusCmd {
         page: Page,
     },
     /// Get one workflow state by UUID
-    Get { id: String },
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: crate::pipe::FromFlag,
+    },
 }
 
 #[derive(clap::Subcommand)]
@@ -434,7 +454,11 @@ pub enum DocumentCmd {
         page: Page,
     },
     /// Get one document by UUID or slug, including its content
-    Get { id: String },
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: crate::pipe::FromFlag,
+    },
     /// Create a document
     Create {
         #[arg(long)]
@@ -469,7 +493,11 @@ pub enum InitiativeCmd {
         page: Page,
     },
     /// Get one initiative by UUID
-    Get { id: String },
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: crate::pipe::FromFlag,
+    },
     /// Create an initiative
     Create {
         #[arg(long)]
@@ -505,7 +533,11 @@ pub enum MilestoneCmd {
         page: Page,
     },
     /// Get one milestone by UUID
-    Get { id: String },
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: crate::pipe::FromFlag,
+    },
     /// Create a milestone
     Create {
         /// Project UUID
@@ -546,10 +578,12 @@ pub enum ProjectLabelCmd {
 pub enum StatusUpdateCmd {
     /// Get a status update by UUID
     Get {
-        id: String,
+        id: Option<String>,
         /// The id is an initiative status update, not a project one
         #[arg(long)]
         initiative: bool,
+        #[command(flatten)]
+        from: crate::pipe::FromFlag,
     },
     /// Post a status update on a project or an initiative
     Create {
@@ -597,7 +631,11 @@ pub enum StatusUpdateCmd {
 #[derive(clap::Subcommand)]
 pub enum AttachmentCmd {
     /// Get one attachment by UUID
-    Get { id: String },
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: crate::pipe::FromFlag,
+    },
     /// Attach a URL to an issue
     Create {
         /// Issue UUID or identifier like ENG-123
@@ -697,7 +735,11 @@ pub fn run(
                     filter: Some(issue_filter(team, assignee, state, project, label, query)),
                 },
             ),
-            IssueCmd::Get { id } => exec::<IssueGet>(instance, issue_get::Variables { id }),
+            IssueCmd::Get { id, from } => {
+                return crate::pipe::run_get(id, from, format, |id| {
+                    exec::<IssueGet>(instance, issue_get::Variables { id })
+                });
+            }
             IssueCmd::Create { team, title, opts } => {
                 use issue_create::*;
                 exec::<IssueCreate>(
@@ -818,7 +860,11 @@ pub fn run(
                     },
                 )
             }
-            ProjectCmd::Get { id } => exec::<ProjectGet>(instance, project_get::Variables { id }),
+            ProjectCmd::Get { id, from } => {
+                return crate::pipe::run_get(id, from, format, |id| {
+                    exec::<ProjectGet>(instance, project_get::Variables { id })
+                });
+            }
             ProjectCmd::Create {
                 name,
                 teams,
@@ -880,7 +926,11 @@ pub fn run(
                     after: page.after,
                 },
             ),
-            TeamCmd::Get { id } => exec::<TeamGet>(instance, team_get::Variables { id }),
+            TeamCmd::Get { id, from } => {
+                return crate::pipe::run_get(id, from, format, |id| {
+                    exec::<TeamGet>(instance, team_get::Variables { id })
+                });
+            }
         },
         Cmd::User(cmd) => match cmd {
             UserCmd::List { page } => exec::<UserList>(
@@ -890,7 +940,11 @@ pub fn run(
                     after: page.after,
                 },
             ),
-            UserCmd::Get { id } => exec::<UserGet>(instance, user_get::Variables { id }),
+            UserCmd::Get { id, from } => {
+                return crate::pipe::run_get(id, from, format, |id| {
+                    exec::<UserGet>(instance, user_get::Variables { id })
+                });
+            }
         },
         Cmd::Workspace(WorkspaceCmd::Get) => {
             exec::<WorkspaceGet>(instance, workspace_get::Variables {})
@@ -968,7 +1022,11 @@ pub fn run(
                     },
                 )
             }
-            StatusCmd::Get { id } => exec::<StatusGet>(instance, status_get::Variables { id }),
+            StatusCmd::Get { id, from } => {
+                return crate::pipe::run_get(id, from, format, |id| {
+                    exec::<StatusGet>(instance, status_get::Variables { id })
+                });
+            }
         },
         Cmd::Document(cmd) => match cmd {
             DocumentCmd::List {
@@ -1007,8 +1065,10 @@ pub fn run(
                     },
                 )
             }
-            DocumentCmd::Get { id } => {
-                exec::<DocumentGet>(instance, document_get::Variables { id })
+            DocumentCmd::Get { id, from } => {
+                return crate::pipe::run_get(id, from, format, |id| {
+                    exec::<DocumentGet>(instance, document_get::Variables { id })
+                });
             }
             DocumentCmd::Create {
                 title,
@@ -1053,8 +1113,10 @@ pub fn run(
                     after: page.after,
                 },
             ),
-            InitiativeCmd::Get { id } => {
-                exec::<InitiativeGet>(instance, initiative_get::Variables { id })
+            InitiativeCmd::Get { id, from } => {
+                return crate::pipe::run_get(id, from, format, |id| {
+                    exec::<InitiativeGet>(instance, initiative_get::Variables { id })
+                });
             }
             InitiativeCmd::Create {
                 name,
@@ -1117,8 +1179,10 @@ pub fn run(
                     },
                 )
             }
-            MilestoneCmd::Get { id } => {
-                exec::<MilestoneGet>(instance, milestone_get::Variables { id })
+            MilestoneCmd::Get { id, from } => {
+                return crate::pipe::run_get(id, from, format, |id| {
+                    exec::<MilestoneGet>(instance, milestone_get::Variables { id })
+                });
             }
             MilestoneCmd::Create {
                 project,
@@ -1171,15 +1235,20 @@ pub fn run(
         Cmd::StatusUpdate(cmd) => match cmd {
             StatusUpdateCmd::Get {
                 id,
-                initiative: false,
-            } => exec::<StatusUpdateGet>(instance, status_update_get::Variables { id }),
-            StatusUpdateCmd::Get {
-                id,
-                initiative: true,
-            } => exec::<InitiativeStatusUpdateGet>(
-                instance,
-                initiative_status_update_get::Variables { id },
-            ),
+                initiative,
+                from,
+            } => {
+                return crate::pipe::run_get(id, from, format, |id| {
+                    if initiative {
+                        exec::<InitiativeStatusUpdateGet>(
+                            instance,
+                            initiative_status_update_get::Variables { id },
+                        )
+                    } else {
+                        exec::<StatusUpdateGet>(instance, status_update_get::Variables { id })
+                    }
+                });
+            }
             StatusUpdateCmd::Create {
                 project: Some(project),
                 initiative: None,
@@ -1272,8 +1341,10 @@ pub fn run(
             ),
         },
         Cmd::Attachment(cmd) => match cmd {
-            AttachmentCmd::Get { id } => {
-                exec::<AttachmentGet>(instance, attachment_get::Variables { id })
+            AttachmentCmd::Get { id, from } => {
+                return crate::pipe::run_get(id, from, format, |id| {
+                    exec::<AttachmentGet>(instance, attachment_get::Variables { id })
+                });
             }
             AttachmentCmd::Create {
                 issue,

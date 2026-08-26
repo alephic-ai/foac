@@ -4,6 +4,7 @@ use clap::{Args, Subcommand, ValueEnum};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
+use crate::pipe::{self, FromFlag};
 use crate::rest::{self, insert_opt, parse_response};
 
 const API_URL: &str = "https://slack.com/api/";
@@ -120,7 +121,11 @@ enum ConversationCmd {
         page: Page,
     },
     /// Get a conversation by ID or channel name such as #eng
-    Get { conversation: String },
+    Get {
+        conversation: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
 }
 
 #[derive(Subcommand)]
@@ -140,10 +145,12 @@ enum MessageCmd {
         /// Conversation ID or channel name such as #eng
         conversation: String,
         /// Message timestamp
-        ts: String,
+        ts: Option<String>,
         /// Parent message timestamp when getting a thread reply
         #[arg(long)]
         thread_ts: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
     },
     /// Post a message or thread reply
     Create {
@@ -184,7 +191,11 @@ enum UserCmd {
         page: Page,
     },
     /// Get a user by ID, @name, display name, or email
-    Get { user: String },
+    Get {
+        user: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
 }
 
 #[derive(Subcommand)]
@@ -295,14 +306,16 @@ fn run_conversation(api: &Api, cmd: ConversationCmd) -> Result<(), Box<dyn std::
             }
             api.print_list("conversations.list", query, ListShape::Key("channels"))
         }
-        ConversationCmd::Get { conversation } => {
-            let channel = resolve_conversation(api, &conversation)?;
-            api.print(
-                Method::GET,
-                "conversations.info",
-                vec![("channel", channel)],
-                None,
-            )
+        ConversationCmd::Get { conversation, from } => {
+            pipe::run_get(conversation, from, api.format, |conversation| {
+                let channel = resolve_conversation(api, &conversation)?;
+                api.send(
+                    Method::GET,
+                    "conversations.info",
+                    &[("channel", channel)],
+                    None,
+                )
+            })
         }
     }
 }
@@ -329,22 +342,22 @@ fn run_message(api: &Api, cmd: MessageCmd) -> Result<(), Box<dyn std::error::Err
             conversation,
             ts,
             thread_ts,
+            from,
         } => {
             let channel = resolve_conversation(api, &conversation)?;
-            let mut query = vec![("channel", channel), ("limit", "1".into())];
-            let method = if let Some(thread_ts) = thread_ts {
-                query.push(("ts", thread_ts));
+            pipe::run_get(ts, from, api.format, |ts| {
+                let mut query = vec![("channel", channel.clone()), ("limit", "1".into())];
+                let method = if let Some(thread_ts) = &thread_ts {
+                    query.push(("ts", thread_ts.clone()));
+                    "conversations.replies"
+                } else {
+                    "conversations.history"
+                };
                 query.push(("oldest", ts.clone()));
                 query.push(("latest", ts));
                 query.push(("inclusive", "true".into()));
-                "conversations.replies"
-            } else {
-                query.push(("oldest", ts.clone()));
-                query.push(("latest", ts));
-                query.push(("inclusive", "true".into()));
-                "conversations.history"
-            };
-            api.print(Method::GET, method, query, None)
+                api.send(Method::GET, method, &query, None)
+            })
         }
         MessageCmd::Create {
             conversation,
@@ -397,21 +410,16 @@ fn run_user(api: &Api, cmd: UserCmd) -> Result<(), Box<dyn std::error::Error>> {
         UserCmd::List { page } => {
             api.print_list("users.list", page_query(page), ListShape::Key("members"))
         }
-        UserCmd::Get { user } => {
+        UserCmd::Get { user, from } => pipe::run_get(user, from, api.format, |user| {
             if is_user_id(&user) {
-                return api.print(Method::GET, "users.info", vec![("user", user)], None);
+                return api.send(Method::GET, "users.info", &[("user", user)], None);
             }
             if is_email(&user) {
-                return api.print(
-                    Method::GET,
-                    "users.lookupByEmail",
-                    vec![("email", user)],
-                    None,
-                );
+                return api.send(Method::GET, "users.lookupByEmail", &[("email", user)], None);
             }
             let user = resolve_user(api, &user)?;
-            api.print(Method::GET, "users.info", vec![("user", user)], None)
-        }
+            api.send(Method::GET, "users.info", &[("user", user)], None)
+        }),
     }
 }
 
