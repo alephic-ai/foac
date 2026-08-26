@@ -142,7 +142,10 @@ fn list_items(document: &Value) -> Option<&Vec<Value>> {
 /// {"nodes":[...]}}}`) list shapes.
 fn find_nodes(value: &Value) -> Option<&Vec<Value>> {
     let object = value.as_object()?;
-    if let Some(nodes) = object.get("nodes").and_then(Value::as_array) {
+    // `nodes` only counts as the list when `pageInfo` sits beside it, the
+    // same rule the table renderer applies: bare `nodes` (issue labels,
+    // team members) are relation fields, not the piped list.
+    if let (Some(Value::Array(nodes)), Some(_)) = (object.get("nodes"), object.get("pageInfo")) {
         return Some(nodes);
     }
     object.values().find_map(find_nodes)
@@ -180,6 +183,24 @@ mod tests {
         assert_eq!(extract_values(depth2, Some("number")).unwrap(), vec!["4"]);
         let array = r#"[{"name":"web"}]"#;
         assert_eq!(extract_values(array, Some("name")).unwrap(), vec!["web"]);
+    }
+
+    #[test]
+    fn relation_nodes_without_page_info_are_not_the_list() {
+        // A relation (`labels.nodes`, no pageInfo) before the real connection
+        // must not win the join, whatever the field order.
+        let relation_first = r#"{"issue":{"labels":{"nodes":[{"name":"bug"}]},"children":{"nodes":[{"identifier":"ENG-2"}],"pageInfo":{}}}}"#;
+        assert_eq!(
+            extract_values(relation_first, Some("identifier")).unwrap(),
+            vec!["ENG-2"]
+        );
+        // Only bare relation nodes: not a list shape at all.
+        let error = extract_values(
+            r#"{"issue":{"labels":{"nodes":[{"name":"bug"}]}}}"#,
+            Some("name"),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("no `items` or `nodes` array"));
     }
 
     #[test]
