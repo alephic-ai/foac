@@ -81,6 +81,9 @@ graph LR
   agent discovers commands progressively and only reads what the task needs.
   Knowing `foac linear user list` exists is knowing `foac slack user list`
   exists.
+- **Several tenants of one provider, side by side.** Log in to two Slack
+  workspaces or Atlassian sites as named instances and address either one
+  from any folder; see [doc/auth.md](doc/auth.md).
 - **The CLI shrinks and grows with what you enable.** Disabled or
   unauthenticated providers disappear from `--help` and from the installed
   agent skills, so they never take up context. Toggle providers globally or
