@@ -115,8 +115,7 @@ not duplication.
   an ambient token from one tenant cannot leak into another. Log in once,
   reuse everywhere. Credentials live in the atomically replaced
   `credentials.json`, nested provider → instance → fields, mode 0600 before
-  secret bytes are written on Unix, not the OS keychain (rebuilt binaries
-  lose macOS Keychain ACL trust, #35). The `atlassian` entry is vendor-level,
+  secret bytes are written on Unix. The `atlassian` entry is vendor-level,
   shared by Jira and Confluence; a Sentry instance stores its base URL with
   its token. Tokens are never printed. Login validates before storing.
   Slack stores bot and user credentials independently. Ordinary commands resolve
