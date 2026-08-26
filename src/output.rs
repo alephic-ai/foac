@@ -121,7 +121,7 @@ fn emit(value: &Value, format: Format, highlight_key: Option<&str>) {
     print!("{}", render_inner(value, format, width, highlight_key));
 }
 
-fn color_enabled() -> bool {
+pub fn color_enabled() -> bool {
     std::io::stdout().is_terminal()
         && std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty())
 }
