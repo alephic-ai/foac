@@ -537,6 +537,12 @@ impl Api {
         let status = response.status();
         let body = parse_response(status, response.text()?);
         if !status.is_success() || body["ok"] == false {
+            // Slack reports a missing resource as HTTP 200 with an error
+            // code like channel_not_found / users_not_found.
+            let code = body["error"].as_str().unwrap_or_default();
+            if code == "not_found" || code.ends_with("_not_found") {
+                return Err(crate::pipe::NotFound(body.to_string()).into());
+            }
             return Err(body.to_string().into());
         }
         Ok(body)
@@ -564,7 +570,7 @@ fn resolve_conversation(api: &Api, value: &str) -> Result<String, Box<dyn std::e
             .then(|| item["id"].as_str().map(str::to_owned))
             .flatten()
     })?
-    .ok_or_else(|| format!("could not resolve Slack conversation {value}").into())
+    .ok_or_else(|| crate::pipe::NotFound(format!("could not resolve Slack conversation {value}")).into())
 }
 
 fn resolve_user(api: &Api, value: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -582,7 +588,7 @@ fn resolve_user(api: &Api, value: &str) -> Result<String, Box<dyn std::error::Er
         .then(|| item["id"].as_str().map(str::to_owned))
         .flatten()
     })?
-    .ok_or_else(|| format!("could not resolve Slack user {value}").into())
+    .ok_or_else(|| crate::pipe::NotFound(format!("could not resolve Slack user {value}")).into())
 }
 
 fn resolve_from_pages<F>(

@@ -18,12 +18,27 @@ pub struct FromFlag {
     pub from: Option<String>,
 }
 
+/// A get that reached the API and came back "no such resource"; displays as
+/// the API's error body. Pipe mode counts these as misses; any other error
+/// (auth, rate limit, network) is a failure and prints as itself.
+#[derive(Debug)]
+pub(crate) struct NotFound(pub(crate) String);
+
+impl std::fmt::Display for NotFound {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for NotFound {}
+
 /// Run a `get` verb through `get_one`, which fetches one value's response
 /// body. With the positional present, behavior is unchanged: one get, its
 /// error propagated. Without it, stdin must be piped `list` output; each
 /// extracted value is fetched, successes stream as JSON documents on stdout,
-/// misses end in a single stderr summary line, and the command fails only
-/// when every get failed.
+/// misses ([`NotFound`]) end in a single stderr summary line, and any other
+/// failure prints its error as it happens. The command succeeds when every
+/// value was fetched, or when at least one was and the rest were misses.
 pub(crate) fn run_get<V>(
     value: Option<V>,
     from: FromFlag,
@@ -82,6 +97,7 @@ fn run_values<V: Clone + std::fmt::Display>(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let total = values.len();
     let mut missed = Vec::new();
+    let mut failed = 0;
     // JSON streams one document per get; a table renders once at the end,
     // one row per response, instead of one boxed table per response.
     let mut rows = Vec::new();
@@ -91,24 +107,30 @@ fn run_values<V: Clone + std::fmt::Display>(
                 crate::output::Format::Json => crate::output::print(&body, format),
                 crate::output::Format::Table => rows.push(body),
             },
-            Err(_) => missed.push(value.to_string()),
+            Err(error) if error.is::<NotFound>() => missed.push(value.to_string()),
+            Err(error) => {
+                failed += 1;
+                eprintln!("{value}: {error}");
+            }
         }
     }
     if !rows.is_empty() {
         crate::output::print_get_rows(&rows);
     }
-    if missed.is_empty() {
-        return Ok(());
+    if !missed.is_empty() {
+        let summary = format!(
+            "{} of {total} not found: {}",
+            missed.len(),
+            missed.join(", ")
+        );
+        if missed.len() == total {
+            return Err(summary.into());
+        }
+        eprintln!("{summary}");
     }
-    let summary = format!(
-        "{} of {total} not found: {}",
-        missed.len(),
-        missed.join(", ")
-    );
-    if missed.len() == total {
-        return Err(summary.into());
+    if failed > 0 {
+        return Err(format!("{failed} of {total} gets failed").into());
     }
-    eprintln!("{summary}");
     Ok(())
 }
 
@@ -270,21 +292,29 @@ mod tests {
     }
 
     #[test]
-    fn run_values_fails_only_when_every_get_failed() {
+    fn run_values_separates_misses_from_failures() {
         let format = crate::output::Format::Json;
         let get = |value: String| -> Result<Value, Box<dyn std::error::Error>> {
             if value.starts_with("ok") {
                 Ok(json!({ "value": value }))
+            } else if value.starts_with("miss") {
+                Err(NotFound(format!("no such {value}")).into())
             } else {
-                Err("not found".into())
+                Err("429 rate limited".into())
             }
         };
         let values = |list: &[&str]| list.iter().map(|v| (*v).to_owned()).collect::<Vec<String>>();
+        // Misses alongside a success are a summarized, successful run.
         assert!(run_values(values(&["ok-1", "ok-2"]), format, get).is_ok());
         assert!(run_values(values(&["ok-1", "miss"]), format, get).is_ok());
         assert!(run_values(values(&[]), format, get).is_ok());
         let error = run_values(values(&["miss-1", "miss-2"]), format, get).unwrap_err();
         assert_eq!(error.to_string(), "2 of 2 not found: miss-1, miss-2");
+        // Any real failure fails the command, even beside successes.
+        let error = run_values(values(&["ok-1", "fail"]), format, get).unwrap_err();
+        assert_eq!(error.to_string(), "1 of 2 gets failed");
+        let error = run_values(values(&["fail-1", "fail-2"]), format, get).unwrap_err();
+        assert_eq!(error.to_string(), "2 of 2 gets failed");
     }
 
     #[test]

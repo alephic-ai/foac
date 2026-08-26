@@ -1427,7 +1427,13 @@ fn exec<Q: GraphQLQuery>(
     let status = response.status();
     let mut body: serde_json::Value = response.json()?;
     if !status.is_success() || body.get("errors").is_some_and(|e| !e.is_null()) {
-        return Err(body.to_string().into());
+        let text = body.to_string();
+        // ponytail: Linear only signals a missing entity in the error text
+        // ("Entity not found: Issue - ..."); there is no typed code to match.
+        if text.contains("Entity not found") {
+            return Err(crate::pipe::NotFound(text).into());
+        }
+        return Err(text.into());
     }
     Ok(body["data"].take())
 }

@@ -231,9 +231,11 @@ foac <provider> <resource> <verb> [flags]
   field reach into nested objects, e.g. `--from profile.email`). Piped input that
   is not JSON is one value per line, so `grep` output composes too. Successes
   stream as one JSON document per get on stdout (a TTY renders them as one
-  combined table, one row per result); misses are summarized in a single
-  stderr line (`5 of 21 not found: ...`); the exit code is 0 when at least
-  one get succeeded, 1 when all failed.
+  combined table, one row per result); values the API reports as missing are
+  summarized in a single stderr line (`5 of 21 not found: ...`); any other
+  failure (auth, rate limit, network) prints its error JSON on stderr as it
+  happens. The exit code is 0 when at least one get succeeded and the rest
+  were misses, 1 when all missed or any get failed outright.
 <!-- foac-provider:linear -->
 - **Linear pagination**: `list` verbs take `--limit N` (default 50) and
   `--after CURSOR`; loop using `pageInfo.endCursor` while `hasNextPage` is true.

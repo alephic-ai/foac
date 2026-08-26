@@ -81,6 +81,9 @@ impl Api {
             .and_then(|value| value.to_str().ok())
             .map(str::to_owned);
         let body = parse_response(status, response.text()?);
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Err(crate::pipe::NotFound(body.to_string()).into());
+        }
         if !status.is_success() {
             return Err(body.to_string().into());
         }
