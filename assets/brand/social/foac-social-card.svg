@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+  <title id="title">foac GitHub social preview card</title>
+  <desc id="desc">The foac Merge icon and lowercase wordmark with the pitch One CLI for all your SaaS providers, built for coding agents.</desc>
+  <rect width="1280" height="640" fill="#0d1117"/>
+  <g opacity=".38" transform="translate(804 38) scale(1.15)" fill="none" stroke="#30363d" stroke-width="64" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M64 96H160L256 256H448"/><path d="M64 256H448"/><path d="M64 416H160L256 256"/>
+  </g>
+  <rect x="80" y="80" width="8" height="480" fill="#f0883e"/>
+  <g transform="translate(120 112) scale(.35)" fill="none" stroke="#f0883e" stroke-width="64" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M64 96H160L256 256H448"/><path d="M64 256H448"/><path d="M64 416H160L256 256"/>
+  </g>
+  <g transform="translate(352 72) scale(.62)" fill="none" stroke="#f0f6fc" stroke-width="56" stroke-linecap="square" stroke-linejoin="round">
+    <path d="M168 64H112C80 64 64 80 64 112V320M24 160H184"/>
+    <rect x="232" y="144" width="184" height="176" rx="88"/><rect x="472" y="144" width="184" height="176" rx="88"/>
+    <path d="M656 144V320"/><path d="M912 184C888 156 860 144 824 144C752 144 712 184 712 232S752 320 824 320C860 320 888 308 912 280"/>
+  </g>
+  <text x="352" y="386" fill="#f0f6fc" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="32" font-weight="600" letter-spacing="-.4">
+    <tspan x="352" dy="0">One CLI for all your SaaS providers,</tspan>
+    <tspan x="352" dy="52">built for coding agents.</tspan>
+  </text>
+  <text x="352" y="528" fill="#f0883e" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="700" letter-spacing="2.2">OPEN SOURCE / RUST</text>
+</svg>

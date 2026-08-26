@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="384" viewBox="0 0 960 384" role="img" aria-labelledby="title desc">
+  <title id="title">foac wordmark for dark backgrounds</title>
+  <desc id="desc">A custom lowercase monoline wordmark with monospace proportions.</desc>
+  <g fill="none" stroke="#f0f6fc" stroke-width="56" stroke-linecap="square" stroke-linejoin="round">
+    <path d="M168 64H112C80 64 64 80 64 112V320M24 160H184"/>
+    <rect x="232" y="144" width="184" height="176" rx="88"/>
+    <rect x="472" y="144" width="184" height="176" rx="88"/>
+    <path d="M656 144V320"/>
+    <path d="M912 184C888 156 860 144 824 144C752 144 712 184 712 232S752 320 824 320C860 320 888 308 912 280"/>
+  </g>
+</svg>
