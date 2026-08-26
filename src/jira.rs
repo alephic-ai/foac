@@ -468,7 +468,7 @@ fn run_sprint(api: &Api, cmd: SprintCmd) -> Result<(), Box<dyn std::error::Error
             )
         }
         SprintCmd::Get { id, from } => {
-            pipe::run_get(id.map(|id| id.to_string()), from, api.format, |id| {
+            pipe::run_get(id, from, api.format, |id| {
                 Ok(api
                     .send(Method::GET, &agile_path!["sprint", id], &[], None)?
                     .body)

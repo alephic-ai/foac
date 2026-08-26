@@ -907,7 +907,7 @@ fn run_issue(api: &Api, repo: Repo, cmd: IssueCmd) -> Result<(), Box<dyn std::er
             )
         }
         IssueCmd::Get { number, from } => pipe::run_get(
-            number.map(|number| number.to_string()),
+            number,
             from,
             api.format,
             |number| {
@@ -1026,7 +1026,7 @@ fn run_pull(api: &Api, repo: Repo, cmd: PullCmd) -> Result<(), Box<dyn std::erro
             )
         }
         PullCmd::Get { number, from } => pipe::run_get(
-            number.map(|number| number.to_string()),
+            number,
             from,
             api.format,
             |number| {
@@ -1256,7 +1256,7 @@ fn run_actions_run(api: &Api, repo: Repo, cmd: RunCmd) -> Result<(), Box<dyn std
             )
         }
         RunCmd::Get { id, from } => {
-            pipe::run_get(id.map(|id| id.to_string()), from, api.format, |id| {
+            pipe::run_get(id, from, api.format, |id| {
                 Ok(api
                     .send(Method::GET, &path!(&repo, "actions", "runs", id), &[], None)?
                     .body)
@@ -1417,7 +1417,7 @@ fn run_commit_comment(
             ListShape::Array,
         ),
         CommitCommentCmd::Get { id, from } => {
-            pipe::run_get(id.map(|id| id.to_string()), from, api.format, |id| {
+            pipe::run_get(id, from, api.format, |id| {
                 Ok(api
                     .send(Method::GET, &path!(&repo, "comments", id), &[], None)?
                     .body)
@@ -1514,7 +1514,7 @@ fn run_check_run(
             )
         }
         CheckRunCmd::Get { id, from } => {
-            pipe::run_get(id.map(|id| id.to_string()), from, api.format, |id| {
+            pipe::run_get(id, from, api.format, |id| {
                 Ok(api
                     .send(Method::GET, &path!(&repo, "check-runs", id), &[], None)?
                     .body)
@@ -1543,7 +1543,7 @@ fn run_check_suite(
             ListShape::Key("check_suites"),
         ),
         CheckSuiteCmd::Get { id, from } => {
-            pipe::run_get(id.map(|id| id.to_string()), from, api.format, |id| {
+            pipe::run_get(id, from, api.format, |id| {
                 Ok(api
                     .send(Method::GET, &path!(&repo, "check-suites", id), &[], None)?
                     .body)
@@ -1657,7 +1657,7 @@ fn run_release_asset(
             ListShape::Array,
         ),
         ReleaseAssetCmd::Get { id, from } => {
-            pipe::run_get(id.map(|id| id.to_string()), from, api.format, |id| {
+            pipe::run_get(id, from, api.format, |id| {
                 Ok(api
                     .send(
                         Method::GET,
@@ -1691,7 +1691,7 @@ fn run_artifact(api: &Api, repo: Repo, cmd: ArtifactCmd) -> Result<(), Box<dyn s
             )
         }
         ArtifactCmd::Get { id, from } => {
-            pipe::run_get(id.map(|id| id.to_string()), from, api.format, |id| {
+            pipe::run_get(id, from, api.format, |id| {
                 Ok(api
                     .send(
                         Method::GET,

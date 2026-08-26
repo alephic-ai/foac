@@ -24,12 +24,15 @@ pub struct FromFlag {
 /// extracted value is fetched, successes stream as JSON documents on stdout,
 /// misses end in a single stderr summary line, and the command fails only
 /// when every get failed.
-pub(crate) fn run_get(
-    value: Option<String>,
+pub(crate) fn run_get<V>(
+    value: Option<V>,
     from: FromFlag,
     format: crate::output::Format,
-    mut get_one: impl FnMut(String) -> Result<Value, Box<dyn std::error::Error>>,
-) -> Result<(), Box<dyn std::error::Error>> {
+    mut get_one: impl FnMut(V) -> Result<Value, Box<dyn std::error::Error>>,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    V: Clone + std::fmt::Display + std::str::FromStr,
+{
     if let Some(value) = value {
         if from.from.is_some() {
             return Err(
@@ -53,13 +56,29 @@ pub(crate) fn run_get(
             values.len() + skipped
         );
     }
-    run_values(values, format, get_one)
+    run_values(parse_values(values)?, format, get_one)
 }
 
-fn run_values(
+/// Piped values re-enter the type the positional argument would have had
+/// from clap (GitHub's numeric IDs), so a wrong --from field is a hard
+/// error, not a run of 404 "misses".
+fn parse_values<V: std::str::FromStr>(
     values: Vec<String>,
+) -> Result<Vec<V>, Box<dyn std::error::Error>> {
+    values
+        .into_iter()
+        .map(|raw| {
+            raw.parse().map_err(|_| {
+                format!("piped value {raw:?} is not valid for this get's identifying argument; check the --from field").into()
+            })
+        })
+        .collect()
+}
+
+fn run_values<V: Clone + std::fmt::Display>(
+    values: Vec<V>,
     format: crate::output::Format,
-    mut get_one: impl FnMut(String) -> Result<Value, Box<dyn std::error::Error>>,
+    mut get_one: impl FnMut(V) -> Result<Value, Box<dyn std::error::Error>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let total = values.len();
     let mut missed = Vec::new();
@@ -72,7 +91,7 @@ fn run_values(
                 crate::output::Format::Json => crate::output::print(&body, format),
                 crate::output::Format::Table => rows.push(body),
             },
-            Err(_) => missed.push(value),
+            Err(_) => missed.push(value.to_string()),
         }
     }
     if !rows.is_empty() {
@@ -260,17 +279,33 @@ mod tests {
                 Err("not found".into())
             }
         };
-        assert!(run_values(vec!["ok-1".into(), "ok-2".into()], format, get).is_ok());
-        assert!(run_values(vec!["ok-1".into(), "miss".into()], format, get).is_ok());
-        assert!(run_values(Vec::new(), format, get).is_ok());
-        let error = run_values(vec!["miss-1".into(), "miss-2".into()], format, get).unwrap_err();
+        let values = |list: &[&str]| list.iter().map(|v| (*v).to_owned()).collect::<Vec<String>>();
+        assert!(run_values(values(&["ok-1", "ok-2"]), format, get).is_ok());
+        assert!(run_values(values(&["ok-1", "miss"]), format, get).is_ok());
+        assert!(run_values(values(&[]), format, get).is_ok());
+        let error = run_values(values(&["miss-1", "miss-2"]), format, get).unwrap_err();
         assert_eq!(error.to_string(), "2 of 2 not found: miss-1, miss-2");
+    }
+
+    #[test]
+    fn piped_values_must_parse_as_the_argument_type() {
+        assert_eq!(
+            parse_values::<u64>(vec!["1".into(), "42".into()]).unwrap(),
+            vec![1, 42]
+        );
+        let error = parse_values::<u64>(vec!["1".into(), "Fix the build".into()]).unwrap_err();
+        assert!(error.to_string().contains("\"Fix the build\""));
+        // String arguments accept anything, as before.
+        assert_eq!(
+            parse_values::<String>(vec!["ENG-1".into()]).unwrap(),
+            vec!["ENG-1"]
+        );
     }
 
     #[test]
     fn run_get_rejects_from_alongside_a_positional() {
         let error = run_get(
-            Some("value".into()),
+            Some("value".to_owned()),
             FromFlag {
                 from: Some("email".into()),
             },
