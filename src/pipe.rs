@@ -12,7 +12,8 @@ use serde_json::Value;
 #[derive(clap::Args, Default)]
 pub struct FromFlag {
     /// With `list` JSON piped on stdin and the positional argument omitted,
-    /// run one get per list item, joining on this field
+    /// run one get per list item, joining on this field; dots reach into
+    /// nested objects (`profile.email`)
     #[arg(long)]
     pub from: Option<String>,
 }
@@ -122,9 +123,13 @@ fn extract_values(
     };
     let field = field.ok_or("piped JSON needs --from <field> to name the join key")?;
     let items = list_items(&document).ok_or("piped JSON has no `items` or `nodes` array")?;
+    // Dots descend into nested objects (Slack's `profile.email`).
+    // ponytail: a field name containing a literal dot cannot be addressed.
     let values: Vec<String> = items
         .iter()
-        .filter_map(|item| crate::rest::id_string(&item[field]))
+        .filter_map(|item| {
+            crate::rest::id_string(field.split('.').fold(item, |value, key| &value[key]))
+        })
         .collect();
     if values.is_empty() && !items.is_empty() {
         return Err(format!("no {field} values in the piped list items").into());
@@ -190,6 +195,16 @@ mod tests {
         assert_eq!(extract_values(depth2, Some("number")).unwrap().0, vec!["4"]);
         let array = r#"[{"name":"web"}]"#;
         assert_eq!(extract_values(array, Some("name")).unwrap().0, vec!["web"]);
+    }
+
+    #[test]
+    fn dotted_from_reaches_nested_fields() {
+        // Slack members carry email at profile.email.
+        let input = r#"{"items":[{"id":"U1","profile":{"email":"a@b.c"}},{"id":"U2","profile":{}}],"pageInfo":{}}"#;
+        assert_eq!(
+            extract_values(input, Some("profile.email")).unwrap(),
+            (vec!["a@b.c".into()], 1)
+        );
     }
 
     #[test]

@@ -227,7 +227,8 @@ foac <provider> <resource> <verb> [flags]
   the identifying argument to run one get per list item, joining on the field
   named by `--from`:
   `foac <provider> <resource> list | foac <provider> <resource> get --from
-  <field>` (the two commands may target different providers). Piped input that
+  <field>` (the two commands may target different providers; dots in the
+  field reach into nested objects, e.g. `--from profile.email`). Piped input that
   is not JSON is one value per line, so `grep` output composes too. Successes
   stream as one JSON document per get on stdout (a TTY renders them as one
   combined table, one row per result); misses are summarized in a single
