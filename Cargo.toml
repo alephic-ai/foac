@@ -1,6 +1,6 @@
 [package]
 name = "foac"
-version = "2.18.4"
+version = "2.19.0"
 edition = "2024"
 description = "foac, the Father Of All CLIs"
 license = "GPL-3.0-or-later"
