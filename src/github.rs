@@ -17,11 +17,18 @@ const HEADERS: &[(&str, &str)] = &[
 
 #[derive(Args)]
 pub struct Cmd {
+    #[command(subcommand)]
+    command: Resource,
+}
+
+/// A resource whose every verb targets one repository.
+#[derive(Args)]
+struct Scoped<C: Subcommand> {
     /// Repository as OWNER/NAME; defaults to the current GitHub git remote
     #[arg(long, global = true)]
     repo: Option<String>,
     #[command(subcommand)]
-    command: Resource,
+    command: C,
 }
 
 #[derive(Subcommand)]
@@ -30,62 +37,43 @@ enum Resource {
     #[command(subcommand)]
     Repo(RepoCmd),
     /// Issues (pull requests are excluded from list results)
-    #[command(subcommand)]
-    Issue(IssueCmd),
+    Issue(Scoped<IssueCmd>),
     /// Conversation comments on issues or pull requests
-    #[command(subcommand)]
-    Comment(CommentCmd),
+    Comment(Scoped<CommentCmd>),
     /// Pull requests
-    #[command(subcommand)]
-    Pull(PullCmd),
+    Pull(Scoped<PullCmd>),
     /// Pull request reviews
-    #[command(subcommand)]
-    Review(ReviewCmd),
+    Review(Scoped<ReviewCmd>),
     /// GitHub Actions workflows
-    #[command(subcommand)]
-    Workflow(WorkflowCmd),
+    Workflow(Scoped<WorkflowCmd>),
     /// GitHub Actions workflow runs
-    #[command(subcommand)]
-    Run(RunCmd),
+    Run(Scoped<RunCmd>),
     /// Branches
-    #[command(subcommand)]
-    Branch(BranchCmd),
+    Branch(Scoped<BranchCmd>),
     /// Git references
-    #[command(subcommand)]
-    Ref(RefCmd),
+    Ref(Scoped<RefCmd>),
     /// Branch protection rules
-    #[command(subcommand)]
-    BranchProtection(BranchProtectionCmd),
+    BranchProtection(Scoped<BranchProtectionCmd>),
     /// Commits
-    #[command(subcommand)]
-    Commit(CommitCmd),
+    Commit(Scoped<CommitCmd>),
     /// Commit comments
-    #[command(subcommand)]
-    CommitComment(CommitCommentCmd),
+    CommitComment(Scoped<CommitCommentCmd>),
     /// Commit statuses
-    #[command(subcommand)]
-    Status(StatusCmd),
+    Status(Scoped<StatusCmd>),
     /// Check runs
-    #[command(subcommand)]
-    CheckRun(CheckRunCmd),
+    CheckRun(Scoped<CheckRunCmd>),
     /// Check suites
-    #[command(subcommand)]
-    CheckSuite(CheckSuiteCmd),
+    CheckSuite(Scoped<CheckSuiteCmd>),
     /// Releases
-    #[command(subcommand)]
-    Release(ReleaseCmd),
+    Release(Scoped<ReleaseCmd>),
     /// Release asset metadata
-    #[command(subcommand)]
-    ReleaseAsset(ReleaseAssetCmd),
+    ReleaseAsset(Scoped<ReleaseAssetCmd>),
     /// GitHub Actions artifact metadata
-    #[command(subcommand)]
-    Artifact(ArtifactCmd),
+    Artifact(Scoped<ArtifactCmd>),
     /// Issue and pull request labels
-    #[command(subcommand)]
-    Label(LabelCmd),
+    Label(Scoped<LabelCmd>),
     /// Repository collaborators
-    #[command(subcommand)]
-    Collaborator(CollaboratorCmd),
+    Collaborator(Scoped<CollaboratorCmd>),
 }
 
 #[derive(Args, Clone)]
@@ -116,7 +104,11 @@ enum RepoCmd {
     },
     /// Get the selected repository
     #[command(after_long_help = outdoc::rest_obj("raw GitHub repository object", "full_name (OWNER/NAME); id is numeric"))]
-    Get,
+    Get {
+        /// Repository as OWNER/NAME; defaults to the current GitHub git remote
+        #[arg(value_name = "OWNER/NAME")]
+        repo: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -862,29 +854,36 @@ pub fn run(
     format: crate::output::Format,
     instance: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let Cmd { repo, command } = cmd;
     let api = api(crate::auth::github_token(instance)?, format)?;
-    match command {
-        Resource::Repo(cmd) => run_repo(&api, repo, cmd),
-        Resource::Issue(cmd) => run_issue(&api, selected_repo(repo)?, cmd),
-        Resource::Comment(cmd) => run_comment(&api, selected_repo(repo)?, cmd),
-        Resource::Pull(cmd) => run_pull(&api, selected_repo(repo)?, cmd),
-        Resource::Review(cmd) => run_review(&api, selected_repo(repo)?, cmd),
-        Resource::Workflow(cmd) => run_workflow(&api, selected_repo(repo)?, cmd),
-        Resource::Run(cmd) => run_actions_run(&api, selected_repo(repo)?, cmd),
-        Resource::Branch(cmd) => run_branch(&api, selected_repo(repo)?, cmd),
-        Resource::Ref(cmd) => run_ref(&api, selected_repo(repo)?, cmd),
-        Resource::BranchProtection(cmd) => run_branch_protection(&api, selected_repo(repo)?, cmd),
-        Resource::Commit(cmd) => run_commit(&api, selected_repo(repo)?, cmd),
-        Resource::CommitComment(cmd) => run_commit_comment(&api, selected_repo(repo)?, cmd),
-        Resource::Status(cmd) => run_status(&api, selected_repo(repo)?, cmd),
-        Resource::CheckRun(cmd) => run_check_run(&api, selected_repo(repo)?, cmd),
-        Resource::CheckSuite(cmd) => run_check_suite(&api, selected_repo(repo)?, cmd),
-        Resource::Release(cmd) => run_release(&api, selected_repo(repo)?, cmd),
-        Resource::ReleaseAsset(cmd) => run_release_asset(&api, selected_repo(repo)?, cmd),
-        Resource::Artifact(cmd) => run_artifact(&api, selected_repo(repo)?, cmd),
-        Resource::Label(cmd) => run_label(&api, selected_repo(repo)?, cmd),
-        Resource::Collaborator(cmd) => run_collaborator(&api, selected_repo(repo)?, cmd),
+    match cmd.command {
+        Resource::Repo(cmd) => run_repo(&api, cmd),
+        Resource::Issue(cmd) => run_issue(&api, selected_repo(cmd.repo)?, cmd.command),
+        Resource::Comment(cmd) => run_comment(&api, selected_repo(cmd.repo)?, cmd.command),
+        Resource::Pull(cmd) => run_pull(&api, selected_repo(cmd.repo)?, cmd.command),
+        Resource::Review(cmd) => run_review(&api, selected_repo(cmd.repo)?, cmd.command),
+        Resource::Workflow(cmd) => run_workflow(&api, selected_repo(cmd.repo)?, cmd.command),
+        Resource::Run(cmd) => run_actions_run(&api, selected_repo(cmd.repo)?, cmd.command),
+        Resource::Branch(cmd) => run_branch(&api, selected_repo(cmd.repo)?, cmd.command),
+        Resource::Ref(cmd) => run_ref(&api, selected_repo(cmd.repo)?, cmd.command),
+        Resource::BranchProtection(cmd) => {
+            run_branch_protection(&api, selected_repo(cmd.repo)?, cmd.command)
+        }
+        Resource::Commit(cmd) => run_commit(&api, selected_repo(cmd.repo)?, cmd.command),
+        Resource::CommitComment(cmd) => {
+            run_commit_comment(&api, selected_repo(cmd.repo)?, cmd.command)
+        }
+        Resource::Status(cmd) => run_status(&api, selected_repo(cmd.repo)?, cmd.command),
+        Resource::CheckRun(cmd) => run_check_run(&api, selected_repo(cmd.repo)?, cmd.command),
+        Resource::CheckSuite(cmd) => run_check_suite(&api, selected_repo(cmd.repo)?, cmd.command),
+        Resource::Release(cmd) => run_release(&api, selected_repo(cmd.repo)?, cmd.command),
+        Resource::ReleaseAsset(cmd) => {
+            run_release_asset(&api, selected_repo(cmd.repo)?, cmd.command)
+        }
+        Resource::Artifact(cmd) => run_artifact(&api, selected_repo(cmd.repo)?, cmd.command),
+        Resource::Label(cmd) => run_label(&api, selected_repo(cmd.repo)?, cmd.command),
+        Resource::Collaborator(cmd) => {
+            run_collaborator(&api, selected_repo(cmd.repo)?, cmd.command)
+        }
     }
 }
 
@@ -909,11 +908,7 @@ fn auth_identity_at(token: &str, url: reqwest::Url) -> Result<Value, crate::auth
     )
 }
 
-fn run_repo(
-    api: &Api,
-    repo: Option<String>,
-    cmd: RepoCmd,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn run_repo(api: &Api, cmd: RepoCmd) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
         RepoCmd::List {
             visibility,
@@ -935,7 +930,7 @@ fn run_repo(
                 ListShape::Array,
             )
         }
-        RepoCmd::Get => {
+        RepoCmd::Get { repo } => {
             let repo = selected_repo(repo)?;
             api.print(
                 Method::GET,

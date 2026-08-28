@@ -2,8 +2,9 @@
 
 `foac github` talks to GitHub.com's REST API. It uses `GITHUB_TOKEN`, a
 credential saved by `foac auth github login`, or `gh auth token`, in that order.
-Repository-scoped commands accept `--repo OWNER/NAME`; without it, foac uses the
-current checkout's GitHub remote.
+Repository-scoped commands accept `--repo OWNER/NAME` anywhere after the
+resource name; without it, foac uses the current checkout's GitHub remote.
+`repo list` is account-wide and takes no `--repo`.
 
 For classic tokens, the `repo` scope covers private-repository commands. For
 fine-grained tokens, grant Metadata read plus read or write access (matching the

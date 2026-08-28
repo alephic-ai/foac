@@ -261,9 +261,10 @@ foac <provider> <resource> <verb> [flags]
 - **GitHub pagination**: `list` verbs take `--limit N` (default 50, maximum
   100) and `--page N`; output is `{"items":[...],"pageInfo":{...}}`. Follow
   `nextPage` while `hasNextPage` is true.
-- **GitHub repositories**: pass `--repo OWNER/NAME` anywhere after `github`,
-  or omit it inside a git checkout whose `origin` (or another remote) points to
-  github.com.
+- **GitHub repositories**: repository-scoped commands take `--repo OWNER/NAME`
+  anywhere after the resource name (`issue`, `pull`, ...); omit it inside a git
+  checkout whose `origin` (or another remote) points to github.com. `repo list`
+  is account-wide and takes no `--repo`.
 - **GitHub identifiers**: commands use GitHub numbers, database IDs, usernames,
   refs, names, or file names as described by their help. `release get` requires
   an explicit `--id` or `--tag`, so numeric tags remain unambiguous.
