@@ -4,6 +4,7 @@ use clap::{Args, Subcommand, ValueEnum};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
+use crate::outdoc;
 use crate::pipe::{self, FromFlag};
 use crate::rest::{self, insert_opt, parse_response};
 
@@ -27,6 +28,11 @@ enum Resource {
     #[command(subcommand)]
     User(UserCmd),
     /// Search workspace messages (requires a Slack user credential)
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Slack search match objects (the channel is an object at channel.id / channel.name)",
+        &["ts"],
+        &outdoc::END_CURSOR,
+    ))]
     Search {
         /// Slack search query, e.g. `"deployment in:eng from:@alice"`
         query: String,
@@ -110,6 +116,11 @@ impl Direction {
 #[derive(Subcommand)]
 enum ConversationCmd {
     /// List conversations visible to the token
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Slack conversation objects",
+        &["id", "name"],
+        &outdoc::END_CURSOR,
+    ))]
     List {
         /// Comma-separated Slack conversation types
         #[arg(long, default_value = "public_channel,private_channel,mpim,im")]
@@ -121,6 +132,7 @@ enum ConversationCmd {
         page: Page,
     },
     /// Get a conversation by ID or channel name such as #eng
+    #[command(after_long_help = outdoc::slack_ok("channel", "channel.id"))]
     Get {
         conversation: Option<String>,
         #[command(flatten)]
@@ -131,6 +143,11 @@ enum ConversationCmd {
 #[derive(Subcommand)]
 enum MessageCmd {
     /// List channel history or replies in a thread
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Slack message objects",
+        &["ts"],
+        &outdoc::END_CURSOR,
+    ))]
     List {
         /// Conversation ID or channel name such as #eng
         conversation: String,
@@ -141,6 +158,10 @@ enum MessageCmd {
         page: Page,
     },
     /// Get one message by timestamp
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"ok": true, "messages": [{...}], ...}, the raw Slack conversations.history/replies envelope, unmodified"#,
+        "The message is messages[0]; primary identifier: messages[0].ts",
+    ]))]
     Get {
         /// Conversation ID or channel name such as #eng
         conversation: String,
@@ -153,6 +174,10 @@ enum MessageCmd {
         from: FromFlag,
     },
     /// Post a message or thread reply
+    #[command(after_long_help = outdoc::slack_ok(
+        "message",
+        "ts and channel at the top level; message is the posted message",
+    ))]
     Create {
         /// Conversation ID or channel name such as #eng
         conversation: String,
@@ -166,6 +191,10 @@ enum MessageCmd {
         reply_broadcast: bool,
     },
     /// Update a message posted by the authenticated user
+    #[command(after_long_help = outdoc::slack_ok(
+        "message",
+        "ts and channel at the top level; message is the updated message",
+    ))]
     Update {
         /// Conversation ID or channel name such as #eng
         conversation: String,
@@ -175,6 +204,10 @@ enum MessageCmd {
         body: BodyInput,
     },
     /// Delete a message posted by the authenticated user
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"ok": true, "channel": "...", "ts": "..."}, the raw Slack envelope, unmodified"#,
+        "channel and ts identify the deleted message",
+    ]))]
     Delete {
         /// Conversation ID or channel name such as #eng
         conversation: String,
@@ -186,11 +219,20 @@ enum MessageCmd {
 #[derive(Subcommand)]
 enum UserCmd {
     /// List workspace users
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Slack user objects",
+        &["id", "name", "profile.email"],
+        &outdoc::END_CURSOR,
+    ))]
     List {
         #[command(flatten)]
         page: Page,
     },
     /// Get a user by ID, @name, display name, or email
+    #[command(after_long_help = outdoc::slack_ok(
+        "user",
+        "user.id; email at user.profile.email",
+    ))]
     Get {
         user: Option<String>,
         #[command(flatten)]
@@ -201,6 +243,9 @@ enum UserCmd {
 #[derive(Subcommand)]
 enum ReactionCmd {
     /// Add an emoji reaction to a message
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"ok": true}, the raw Slack acknowledgement, unmodified"#,
+    ]))]
     Add {
         /// Conversation ID or channel name such as #eng
         conversation: String,
@@ -210,6 +255,9 @@ enum ReactionCmd {
         name: String,
     },
     /// Remove an emoji reaction from a message
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"ok": true}, the raw Slack acknowledgement, unmodified"#,
+    ]))]
     Remove {
         /// Conversation ID or channel name such as #eng
         conversation: String,

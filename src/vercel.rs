@@ -6,6 +6,7 @@ use clap::{Args, Subcommand};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
+use crate::outdoc;
 use crate::pipe::{self, FromFlag};
 use crate::rest::{self, Api, Auth, insert_opt, push_query};
 
@@ -52,11 +53,17 @@ struct Cursor {
 #[derive(Subcommand)]
 enum TeamCmd {
     /// List teams visible to the access token
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Vercel team objects",
+        &["id"],
+        &outdoc::END_CURSOR,
+    ))]
     List {
         #[command(flatten)]
         cursor: Cursor,
     },
     /// Get a team by ID like team_...
+    #[command(after_long_help = outdoc::rest_obj("raw Vercel team object", "id"))]
     Get {
         id: Option<String>,
         #[command(flatten)]
@@ -89,6 +96,11 @@ struct ProjectOpts {
 #[derive(Subcommand)]
 enum ProjectCmd {
     /// List projects
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Vercel project objects",
+        &["id", "name"],
+        &outdoc::END_CURSOR,
+    ))]
     List {
         /// Search project names
         #[arg(long)]
@@ -100,12 +112,17 @@ enum ProjectCmd {
         cursor: Cursor,
     },
     /// Get a project by ID or name
+    #[command(after_long_help = outdoc::rest_obj(
+        "raw Vercel project object",
+        "id; name also works as an identifier",
+    ))]
     Get {
         id: Option<String>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Create a project
+    #[command(after_long_help = outdoc::rest_obj("raw Vercel project object", "id"))]
     Create {
         /// Project name
         #[arg(long)]
@@ -114,6 +131,7 @@ enum ProjectCmd {
         opts: ProjectOpts,
     },
     /// Update a project; only supplied fields are changed
+    #[command(after_long_help = outdoc::rest_obj("raw Vercel project object", "id"))]
     Update {
         /// Project ID or name
         id: String,
@@ -127,12 +145,18 @@ enum ProjectCmd {
         opts: ProjectOpts,
     },
     /// Delete a project
+    #[command(after_long_help = outdoc::rest_delete())]
     Delete { id: String },
 }
 
 #[derive(Subcommand)]
 enum DeploymentCmd {
     /// List deployments
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Vercel deployment objects",
+        &["uid", "url"],
+        &outdoc::END_CURSOR,
+    ))]
     List {
         /// Filter by project ID or name
         #[arg(long)]
@@ -153,31 +177,50 @@ enum DeploymentCmd {
         cursor: Cursor,
     },
     /// Get a deployment by ID or URL
+    #[command(after_long_help = outdoc::rest_obj(
+        "raw Vercel deployment object",
+        "id; the deployment URL also works as an identifier",
+    ))]
     Get {
         id: Option<String>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Cancel a deployment
+    #[command(after_long_help = outdoc::rest_obj("raw Vercel deployment object", "id"))]
     Cancel { id: String },
     /// Delete a deployment
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"uid": "...", "state": "DELETED"}: unmodified provider data, no foac envelope"#,
+        "Primary identifier: uid",
+    ]))]
     Delete { id: String },
 }
 
 #[derive(Subcommand)]
 enum DomainCmd {
     /// List domains owned by the account
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Vercel domain objects",
+        &["name"],
+        &outdoc::END_CURSOR,
+    ))]
     List {
         #[command(flatten)]
         cursor: Cursor,
     },
     /// Get a domain by name
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"domain": {...}}: the raw Vercel response, unmodified"#,
+        "Primary identifier: domain.name",
+    ]))]
     Get {
         name: Option<String>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Get the DNS configuration Vercel expects for a domain
+    #[command(after_long_help = outdoc::rest_obj("raw Vercel domain configuration object", ""))]
     Config {
         name: String,
         /// Use project-specific configuration
@@ -188,6 +231,10 @@ enum DomainCmd {
         strict: bool,
     },
     /// Add an existing domain to the account
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"domain": {...}}: the raw Vercel response, unmodified"#,
+        "Primary identifier: domain.name",
+    ]))]
     Create {
         name: String,
         /// Whether to create a Vercel DNS zone
@@ -198,6 +245,10 @@ enum DomainCmd {
         cdn_enabled: Option<bool>,
     },
     /// Remove a domain from the account
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"uid": "..."}: the raw Vercel response, unmodified"#,
+        "uid identifies the deleted domain record",
+    ]))]
     Delete { name: String },
 }
 
@@ -217,6 +268,11 @@ struct ProjectDomainOpts {
 #[derive(Subcommand)]
 enum ProjectDomainCmd {
     /// List a project's domains
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Vercel project domain objects",
+        &["name"],
+        &outdoc::END_CURSOR,
+    ))]
     List {
         /// Project ID or name
         #[arg(long)]
@@ -225,6 +281,7 @@ enum ProjectDomainCmd {
         cursor: Cursor,
     },
     /// Get a project domain
+    #[command(after_long_help = outdoc::rest_obj("raw Vercel project domain object", "name"))]
     Get {
         #[arg(long)]
         project: String,
@@ -233,6 +290,7 @@ enum ProjectDomainCmd {
         from: FromFlag,
     },
     /// Add a domain to a project
+    #[command(after_long_help = outdoc::rest_obj("raw Vercel project domain object", "name"))]
     Create {
         #[arg(long)]
         project: String,
@@ -241,6 +299,7 @@ enum ProjectDomainCmd {
         opts: ProjectDomainOpts,
     },
     /// Update a project domain; only supplied fields are changed
+    #[command(after_long_help = outdoc::rest_obj("raw Vercel project domain object", "name"))]
     Update {
         #[arg(long)]
         project: String,
@@ -249,6 +308,7 @@ enum ProjectDomainCmd {
         opts: ProjectDomainOpts,
     },
     /// Remove a domain from a project
+    #[command(after_long_help = outdoc::rest_delete())]
     Delete {
         #[arg(long)]
         project: String,
@@ -258,6 +318,7 @@ enum ProjectDomainCmd {
         remove_redirects: bool,
     },
     /// Ask Vercel to verify a project domain's ownership challenge
+    #[command(after_long_help = outdoc::rest_obj("raw Vercel project domain object", "name"))]
     Verify {
         #[arg(long)]
         project: String,

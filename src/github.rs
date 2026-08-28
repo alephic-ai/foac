@@ -4,6 +4,7 @@ use clap::{Args, Subcommand, ValueEnum};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
+use crate::outdoc;
 use crate::pipe::{self, FromFlag};
 use crate::rest::{self, Api, Auth, BodyInput, insert_opt, push_query};
 
@@ -100,6 +101,7 @@ struct Page {
 #[derive(Subcommand)]
 enum RepoCmd {
     /// List repositories accessible to the authenticated user
+    #[command(after_long_help = outdoc::rest_list("raw GitHub repository objects", &[], &outdoc::GITHUB_PAGES))]
     List {
         #[arg(long)]
         visibility: Option<String>,
@@ -113,12 +115,14 @@ enum RepoCmd {
         page: Page,
     },
     /// Get the selected repository
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub repository object", "full_name (OWNER/NAME); id is numeric"))]
     Get,
 }
 
 #[derive(Subcommand)]
 enum IssueCmd {
     /// List issues
+    #[command(after_long_help = outdoc::rest_list("raw GitHub issue objects (pull requests are filtered out)", &["number"], &outdoc::GITHUB_PAGES))]
     List {
         #[arg(long)]
         state: Option<String>,
@@ -143,12 +147,14 @@ enum IssueCmd {
         page: Page,
     },
     /// Get an issue by number
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub issue object", "number"))]
     Get {
         number: Option<u64>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Create an issue
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub issue object", "number"))]
     Create {
         #[arg(long)]
         title: String,
@@ -162,6 +168,7 @@ enum IssueCmd {
         milestone: Option<u64>,
     },
     /// Update an issue; only supplied fields are changed
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub issue object", "number"))]
     Update {
         number: u64,
         #[arg(long)]
@@ -193,6 +200,7 @@ enum IssueCmd {
 #[derive(Subcommand)]
 enum CommentCmd {
     /// List conversation comments
+    #[command(after_long_help = outdoc::rest_list("raw GitHub issue comment objects", &[], &outdoc::GITHUB_PAGES))]
     List {
         #[arg(long)]
         issue: u64,
@@ -200,6 +208,7 @@ enum CommentCmd {
         page: Page,
     },
     /// Add a conversation comment
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub issue comment object", "id"))]
     Create {
         #[arg(long)]
         issue: u64,
@@ -207,18 +216,21 @@ enum CommentCmd {
         body: BodyInput,
     },
     /// Update a conversation comment
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub issue comment object", "id"))]
     Update {
         id: u64,
         #[command(flatten)]
         body: BodyInput,
     },
     /// Delete a conversation comment
+    #[command(after_long_help = outdoc::rest_delete())]
     Delete { id: u64 },
 }
 
 #[derive(Subcommand)]
 enum PullCmd {
     /// List pull requests
+    #[command(after_long_help = outdoc::rest_list("raw GitHub pull request objects", &["number"], &outdoc::GITHUB_PAGES))]
     List {
         #[arg(long)]
         state: Option<String>,
@@ -234,12 +246,14 @@ enum PullCmd {
         page: Page,
     },
     /// Get a pull request
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub pull request object", "number"))]
     Get {
         number: Option<u64>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Create a pull request
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub pull request object", "number"))]
     Create {
         #[arg(long)]
         title: String,
@@ -255,6 +269,7 @@ enum PullCmd {
         maintainer_can_modify: bool,
     },
     /// Update a pull request; only supplied fields are changed
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub pull request object", "number"))]
     Update {
         number: u64,
         #[arg(long)]
@@ -269,12 +284,14 @@ enum PullCmd {
         maintainer_can_modify: Option<bool>,
     },
     /// List files changed by a pull request
+    #[command(after_long_help = outdoc::rest_list("raw GitHub pull request file objects", &[], &outdoc::GITHUB_PAGES))]
     Files {
         number: u64,
         #[command(flatten)]
         page: Page,
     },
     /// Merge a pull request
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub merge result object", ""))]
     Merge {
         number: u64,
         #[arg(long)]
@@ -309,6 +326,7 @@ impl ReviewEvent {
 #[derive(Subcommand)]
 enum ReviewCmd {
     /// List reviews on a pull request
+    #[command(after_long_help = outdoc::rest_list("raw GitHub review objects", &[], &outdoc::GITHUB_PAGES))]
     List {
         #[arg(long)]
         pull: u64,
@@ -316,6 +334,7 @@ enum ReviewCmd {
         page: Page,
     },
     /// Create a submitted or pending review
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub review object", "id"))]
     Create {
         #[arg(long)]
         pull: u64,
@@ -330,6 +349,7 @@ enum ReviewCmd {
         comments_json: Option<String>,
     },
     /// Submit a pending review
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub review object", "id"))]
     Submit {
         #[arg(long)]
         pull: u64,
@@ -340,6 +360,7 @@ enum ReviewCmd {
         body: BodyInput,
     },
     /// Delete a pending review
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub review object", "id"))]
     Delete {
         #[arg(long)]
         pull: u64,
@@ -350,17 +371,20 @@ enum ReviewCmd {
 #[derive(Subcommand)]
 enum WorkflowCmd {
     /// List workflows
+    #[command(after_long_help = outdoc::rest_list("raw GitHub workflow objects", &["id"], &outdoc::GITHUB_PAGES))]
     List {
         #[command(flatten)]
         page: Page,
     },
     /// Get a workflow by numeric ID or file name
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub workflow object", "id (numeric); the workflow file name also selects one"))]
     Get {
         id: Option<String>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Dispatch a workflow
+    #[command(after_long_help = outdoc::rest_delete())]
     Dispatch {
         id: String,
         #[arg(long)]
@@ -370,14 +394,17 @@ enum WorkflowCmd {
         inputs_json: Option<String>,
     },
     /// Enable a workflow
+    #[command(after_long_help = outdoc::rest_delete())]
     Enable { id: String },
     /// Disable a workflow
+    #[command(after_long_help = outdoc::rest_delete())]
     Disable { id: String },
 }
 
 #[derive(Subcommand)]
 enum RunCmd {
     /// List workflow runs
+    #[command(after_long_help = outdoc::rest_list("raw GitHub workflow run objects", &["id"], &outdoc::GITHUB_PAGES))]
     List {
         /// Limit results to one workflow ID or file name
         #[arg(long)]
@@ -394,12 +421,14 @@ enum RunCmd {
         page: Page,
     },
     /// Get a workflow run
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub workflow run object", "id"))]
     Get {
         id: Option<u64>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// List jobs in a workflow run
+    #[command(after_long_help = outdoc::rest_list("raw GitHub workflow job objects", &[], &outdoc::GITHUB_PAGES))]
     Jobs {
         id: u64,
         #[arg(long)]
@@ -408,6 +437,7 @@ enum RunCmd {
         page: Page,
     },
     /// Re-run a workflow run
+    #[command(after_long_help = outdoc::rest_delete())]
     Rerun {
         id: u64,
         /// Re-run only failed jobs and their dependents
@@ -418,6 +448,7 @@ enum RunCmd {
         debug: bool,
     },
     /// Cancel a workflow run
+    #[command(after_long_help = outdoc::rest_delete())]
     Cancel {
         id: u64,
         /// Bypass conditions that would otherwise keep the run active
@@ -429,6 +460,7 @@ enum RunCmd {
 #[derive(Subcommand)]
 enum BranchCmd {
     /// List branches
+    #[command(after_long_help = outdoc::rest_list("raw GitHub branch objects", &["name"], &outdoc::GITHUB_PAGES))]
     List {
         #[arg(long)]
         protected: Option<bool>,
@@ -436,6 +468,7 @@ enum BranchCmd {
         page: Page,
     },
     /// Get a branch
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub branch object", "name"))]
     Get {
         name: Option<String>,
         #[command(flatten)]
@@ -446,6 +479,7 @@ enum BranchCmd {
 #[derive(Subcommand)]
 enum RefCmd {
     /// Create a git reference; bare names are created under refs/heads
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub git reference object", "ref"))]
     Create {
         #[arg(long)]
         name: String,
@@ -453,30 +487,35 @@ enum RefCmd {
         sha: String,
     },
     /// Delete a git reference; bare names are resolved under heads
+    #[command(after_long_help = outdoc::rest_delete())]
     Delete { name: String },
 }
 
 #[derive(Subcommand)]
 enum BranchProtectionCmd {
     /// Get branch protection
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub branch protection object", ""))]
     Get {
         branch: Option<String>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Replace branch protection using a native GitHub JSON object
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub branch protection object", ""))]
     Update {
         branch: String,
         #[arg(long)]
         rules_json: String,
     },
     /// Remove branch protection
+    #[command(after_long_help = outdoc::rest_delete())]
     Delete { branch: String },
 }
 
 #[derive(Subcommand)]
 enum CommitCmd {
     /// List commits
+    #[command(after_long_help = outdoc::rest_list("raw GitHub commit objects", &["sha"], &outdoc::GITHUB_PAGES))]
     List {
         #[arg(long)]
         sha: Option<String>,
@@ -492,6 +531,7 @@ enum CommitCmd {
         page: Page,
     },
     /// Get a commit by ref or SHA
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub commit object", "sha"))]
     Get {
         r#ref: Option<String>,
         #[command(flatten)]
@@ -502,6 +542,7 @@ enum CommitCmd {
 #[derive(Subcommand)]
 enum CommitCommentCmd {
     /// List commit comments, optionally for one commit
+    #[command(after_long_help = outdoc::rest_list("raw GitHub commit comment objects", &["id"], &outdoc::GITHUB_PAGES))]
     List {
         #[arg(long)]
         commit: Option<String>,
@@ -509,12 +550,14 @@ enum CommitCommentCmd {
         page: Page,
     },
     /// Get a commit comment
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub commit comment object", "id"))]
     Get {
         id: Option<u64>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Create a commit comment
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub commit comment object", "id"))]
     Create {
         #[arg(long)]
         commit: String,
@@ -528,24 +571,28 @@ enum CommitCommentCmd {
         position: Option<u64>,
     },
     /// Update a commit comment
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub commit comment object", "id"))]
     Update {
         id: u64,
         #[command(flatten)]
         body: BodyInput,
     },
     /// Delete a commit comment
+    #[command(after_long_help = outdoc::rest_delete())]
     Delete { id: u64 },
 }
 
 #[derive(Subcommand)]
 enum StatusCmd {
     /// List statuses for a commit
+    #[command(after_long_help = outdoc::rest_list("raw GitHub commit status objects", &[], &outdoc::GITHUB_PAGES))]
     List {
         r#ref: String,
         #[command(flatten)]
         page: Page,
     },
     /// Create a commit status
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub commit status object", "id"))]
     Create {
         r#ref: String,
         #[arg(long)]
@@ -562,6 +609,7 @@ enum StatusCmd {
 #[derive(Subcommand)]
 enum CheckRunCmd {
     /// List check runs for a git ref
+    #[command(after_long_help = outdoc::rest_list("raw GitHub check run objects", &["id"], &outdoc::GITHUB_PAGES))]
     List {
         r#ref: String,
         #[arg(long)]
@@ -574,46 +622,54 @@ enum CheckRunCmd {
         page: Page,
     },
     /// Get a check run
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub check run object", "id"))]
     Get {
         id: Option<u64>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Request that a check run execute again
+    #[command(after_long_help = outdoc::rest_delete())]
     Rerequest { id: u64 },
 }
 
 #[derive(Subcommand)]
 enum CheckSuiteCmd {
     /// List check suites for a git ref
+    #[command(after_long_help = outdoc::rest_list("raw GitHub check suite objects", &["id"], &outdoc::GITHUB_PAGES))]
     List {
         r#ref: String,
         #[command(flatten)]
         page: Page,
     },
     /// Get a check suite
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub check suite object", "id"))]
     Get {
         id: Option<u64>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Request that a check suite execute again
+    #[command(after_long_help = outdoc::rest_delete())]
     Rerequest { id: u64 },
 }
 
 #[derive(Subcommand)]
 enum ReleaseCmd {
     /// List releases
+    #[command(after_long_help = outdoc::rest_list("raw GitHub release objects", &[], &outdoc::GITHUB_PAGES))]
     List {
         #[command(flatten)]
         page: Page,
     },
     /// Get a release by numeric ID or exact tag
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub release object", "id (database ID); tag_name also selects a release"))]
     Get {
         #[command(flatten)]
         selector: ReleaseSelector,
     },
     /// Create a release
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub release object", "id"))]
     Create {
         #[arg(long)]
         tag: String,
@@ -631,6 +687,7 @@ enum ReleaseCmd {
         generate_notes: bool,
     },
     /// Update a release; only supplied fields are changed
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub release object", "id"))]
     Update {
         id: u64,
         #[arg(long)]
@@ -647,6 +704,7 @@ enum ReleaseCmd {
         prerelease: Option<bool>,
     },
     /// Delete a release
+    #[command(after_long_help = outdoc::rest_delete())]
     Delete { id: u64 },
 }
 
@@ -662,6 +720,7 @@ struct ReleaseSelector {
 #[derive(Subcommand)]
 enum ReleaseAssetCmd {
     /// List release assets
+    #[command(after_long_help = outdoc::rest_list("raw GitHub release asset objects", &["id"], &outdoc::GITHUB_PAGES))]
     List {
         #[arg(long)]
         release: u64,
@@ -669,18 +728,21 @@ enum ReleaseAssetCmd {
         page: Page,
     },
     /// Get release asset metadata
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub release asset object", "id"))]
     Get {
         id: Option<u64>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Delete a release asset
+    #[command(after_long_help = outdoc::rest_delete())]
     Delete { id: u64 },
 }
 
 #[derive(Subcommand)]
 enum ArtifactCmd {
     /// List repository artifacts
+    #[command(after_long_help = outdoc::rest_list("raw GitHub artifact objects", &["id"], &outdoc::GITHUB_PAGES))]
     List {
         #[arg(long)]
         name: Option<String>,
@@ -688,29 +750,34 @@ enum ArtifactCmd {
         page: Page,
     },
     /// Get artifact metadata
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub artifact object", "id"))]
     Get {
         id: Option<u64>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Delete an artifact
+    #[command(after_long_help = outdoc::rest_delete())]
     Delete { id: u64 },
 }
 
 #[derive(Subcommand)]
 enum LabelCmd {
     /// List labels
+    #[command(after_long_help = outdoc::rest_list("raw GitHub label objects", &["name"], &outdoc::GITHUB_PAGES))]
     List {
         #[command(flatten)]
         page: Page,
     },
     /// Get a label
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub label object", "name"))]
     Get {
         name: Option<String>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Create a label
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub label object", "name"))]
     Create {
         #[arg(long)]
         name: String,
@@ -721,6 +788,7 @@ enum LabelCmd {
         description: Option<String>,
     },
     /// Update a label
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub label object", "name"))]
     Update {
         name: String,
         #[arg(long)]
@@ -731,12 +799,14 @@ enum LabelCmd {
         description: Option<String>,
     },
     /// Delete a label
+    #[command(after_long_help = outdoc::rest_delete())]
     Delete { name: String },
 }
 
 #[derive(Subcommand)]
 enum CollaboratorCmd {
     /// List collaborators
+    #[command(after_long_help = outdoc::rest_list("raw GitHub collaborator objects", &["login"], &outdoc::GITHUB_PAGES))]
     List {
         #[arg(long)]
         affiliation: Option<String>,
@@ -746,18 +816,23 @@ enum CollaboratorCmd {
         page: Page,
     },
     /// Get a collaborator's repository permissions
+    #[command(after_long_help = outdoc::rest_obj("raw GitHub collaborator permission object", "user.login"))]
     Get {
         username: Option<String>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Add a collaborator or change their permission
+    #[command(after_long_help = outdoc::lines(&[
+        "A raw GitHub repository invitation object when an invitation is created; {} when the user is already a collaborator (GitHub returns no response body)",
+    ]))]
     Add {
         username: String,
         #[arg(long)]
         permission: Option<String>,
     },
     /// Remove a collaborator
+    #[command(after_long_help = outdoc::rest_delete())]
     Remove { username: String },
 }
 

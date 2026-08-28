@@ -8,6 +8,7 @@ pub mod github;
 pub mod jira;
 pub mod linear;
 pub mod neon;
+pub mod outdoc;
 pub mod output;
 pub mod pipe;
 pub mod provider;

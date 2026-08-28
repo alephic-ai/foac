@@ -1,3 +1,4 @@
+use crate::outdoc;
 use graphql_client::GraphQLQuery;
 
 const API_URL: &str = "https://api.linear.app/graphql";
@@ -202,6 +203,7 @@ pub struct IssueOpts {
 #[derive(clap::Subcommand)]
 pub enum IssueCmd {
     /// List issues, optionally filtered; values may be a UUID or a human name/key
+    #[command(after_long_help = outdoc::linear_list("issues", &["id", "identifier"]))]
     List {
         /// Team (UUID or key like ENG)
         #[arg(long)]
@@ -225,12 +227,14 @@ pub enum IssueCmd {
         page: Page,
     },
     /// Get one issue by UUID or identifier like ENG-123
+    #[command(after_long_help = outdoc::linear_get("issue", "issue.id (UUID); issue.identifier is the human key like ENG-123"))]
     Get {
         id: Option<String>,
         #[command(flatten)]
         from: crate::pipe::FromFlag,
     },
     /// Create an issue
+    #[command(after_long_help = outdoc::linear_mutation("issueCreate", "issue"))]
     Create {
         /// Team UUID
         #[arg(long)]
@@ -241,6 +245,7 @@ pub enum IssueCmd {
         opts: IssueOpts,
     },
     /// Update an issue; only the flags you pass are changed
+    #[command(after_long_help = outdoc::linear_mutation("issueUpdate", "issue"))]
     Update {
         /// Issue UUID or identifier like ENG-123
         id: String,
@@ -254,6 +259,7 @@ pub enum IssueCmd {
 #[derive(clap::Subcommand)]
 pub enum CommentCmd {
     /// List comments on an issue
+    #[command(after_long_help = outdoc::linear_nested_list("issue", "comments", &["id"]))]
     List {
         /// Issue UUID or identifier like ENG-123
         #[arg(long)]
@@ -262,6 +268,7 @@ pub enum CommentCmd {
         page: Page,
     },
     /// Add a comment to an issue
+    #[command(after_long_help = outdoc::linear_mutation("commentCreate", "comment"))]
     Create {
         /// Issue UUID or identifier like ENG-123
         #[arg(long)]
@@ -274,6 +281,7 @@ pub enum CommentCmd {
         parent: Option<String>,
     },
     /// Edit a comment
+    #[command(after_long_help = outdoc::linear_mutation("commentUpdate", "comment"))]
     Update {
         /// Comment UUID
         id: String,
@@ -282,12 +290,14 @@ pub enum CommentCmd {
         body: String,
     },
     /// Delete a comment
+    #[command(after_long_help = outdoc::linear_delete("commentDelete"))]
     Delete { id: String },
 }
 
 #[derive(clap::Subcommand)]
 pub enum ProjectCmd {
     /// List projects
+    #[command(after_long_help = outdoc::linear_list("projects", &["id", "name"]))]
     List {
         /// Team (UUID or key)
         #[arg(long)]
@@ -299,12 +309,14 @@ pub enum ProjectCmd {
         page: Page,
     },
     /// Get one project by UUID
+    #[command(after_long_help = outdoc::linear_get("project", "project.id (UUID)"))]
     Get {
         id: Option<String>,
         #[command(flatten)]
         from: crate::pipe::FromFlag,
     },
     /// Create a project
+    #[command(after_long_help = outdoc::linear_mutation("projectCreate", "project"))]
     Create {
         #[arg(long)]
         name: String,
@@ -327,6 +339,7 @@ pub enum ProjectCmd {
         target_date: Option<String>,
     },
     /// Update a project; only the flags you pass are changed
+    #[command(after_long_help = outdoc::linear_mutation("projectUpdate", "project"))]
     Update {
         /// Project UUID
         id: String,
@@ -352,11 +365,13 @@ pub enum ProjectCmd {
 #[derive(clap::Subcommand)]
 pub enum TeamCmd {
     /// List teams
+    #[command(after_long_help = outdoc::linear_list("teams", &["id", "key"]))]
     List {
         #[command(flatten)]
         page: Page,
     },
     /// Get one team by UUID
+    #[command(after_long_help = outdoc::linear_get("team", "team.id (UUID); team.key is the human key like ENG"))]
     Get {
         id: Option<String>,
         #[command(flatten)]
@@ -367,11 +382,13 @@ pub enum TeamCmd {
 #[derive(clap::Subcommand)]
 pub enum UserCmd {
     /// List users
+    #[command(after_long_help = outdoc::linear_list("users", &["id", "name", "email"]))]
     List {
         #[command(flatten)]
         page: Page,
     },
     /// Get one user by UUID
+    #[command(after_long_help = outdoc::linear_get("user", "user.id (UUID)"))]
     Get {
         id: Option<String>,
         #[command(flatten)]
@@ -382,12 +399,18 @@ pub enum UserCmd {
 #[derive(clap::Subcommand)]
 pub enum WorkspaceCmd {
     /// Get the workspace and the authenticated user
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"organization": {...}, "viewer": {...}}"#,
+        "organization is the workspace; viewer is the authenticated user",
+        "Raw Linear GraphQL data; foac adds no envelope",
+    ]))]
     Get,
 }
 
 #[derive(clap::Subcommand)]
 pub enum CycleCmd {
     /// List cycles of a team
+    #[command(after_long_help = outdoc::linear_nested_list("team", "cycles", &["id", "number"]))]
     List {
         /// Team UUID
         #[arg(long)]
@@ -400,6 +423,7 @@ pub enum CycleCmd {
 #[derive(clap::Subcommand)]
 pub enum LabelCmd {
     /// List issue labels
+    #[command(after_long_help = outdoc::linear_list("issueLabels", &["id", "name"]))]
     List {
         /// Team (UUID or key)
         #[arg(long)]
@@ -408,6 +432,7 @@ pub enum LabelCmd {
         page: Page,
     },
     /// Create an issue label
+    #[command(after_long_help = outdoc::linear_mutation("issueLabelCreate", "issueLabel"))]
     Create {
         #[arg(long)]
         name: String,
@@ -425,6 +450,7 @@ pub enum LabelCmd {
 #[derive(clap::Subcommand)]
 pub enum StatusCmd {
     /// List workflow states
+    #[command(after_long_help = outdoc::linear_list("workflowStates", &["id", "name"]))]
     List {
         /// Team (UUID or key)
         #[arg(long)]
@@ -433,6 +459,7 @@ pub enum StatusCmd {
         page: Page,
     },
     /// Get one workflow state by UUID
+    #[command(after_long_help = outdoc::linear_get("workflowState", "workflowState.id (UUID)"))]
     Get {
         id: Option<String>,
         #[command(flatten)]
@@ -443,6 +470,7 @@ pub enum StatusCmd {
 #[derive(clap::Subcommand)]
 pub enum DocumentCmd {
     /// List documents
+    #[command(after_long_help = outdoc::linear_list("documents", &["id", "title"]))]
     List {
         /// Project (UUID or exact name)
         #[arg(long)]
@@ -454,12 +482,14 @@ pub enum DocumentCmd {
         page: Page,
     },
     /// Get one document by UUID or slug, including its content
+    #[command(after_long_help = outdoc::linear_get("document", "document.id (UUID); the URL slug also works as an id"))]
     Get {
         id: Option<String>,
         #[command(flatten)]
         from: crate::pipe::FromFlag,
     },
     /// Create a document
+    #[command(after_long_help = outdoc::linear_mutation("documentCreate", "document"))]
     Create {
         #[arg(long)]
         title: String,
@@ -474,6 +504,7 @@ pub enum DocumentCmd {
         initiative: Option<String>,
     },
     /// Update a document; only the flags you pass are changed
+    #[command(after_long_help = outdoc::linear_mutation("documentUpdate", "document"))]
     Update {
         /// Document UUID
         id: String,
@@ -488,17 +519,20 @@ pub enum DocumentCmd {
 #[derive(clap::Subcommand)]
 pub enum InitiativeCmd {
     /// List initiatives
+    #[command(after_long_help = outdoc::linear_list("initiatives", &["id", "name"]))]
     List {
         #[command(flatten)]
         page: Page,
     },
     /// Get one initiative by UUID
+    #[command(after_long_help = outdoc::linear_get("initiative", "initiative.id (UUID)"))]
     Get {
         id: Option<String>,
         #[command(flatten)]
         from: crate::pipe::FromFlag,
     },
     /// Create an initiative
+    #[command(after_long_help = outdoc::linear_mutation("initiativeCreate", "initiative"))]
     Create {
         #[arg(long)]
         name: String,
@@ -509,6 +543,7 @@ pub enum InitiativeCmd {
         target_date: Option<String>,
     },
     /// Update an initiative; only the flags you pass are changed
+    #[command(after_long_help = outdoc::linear_mutation("initiativeUpdate", "initiative"))]
     Update {
         /// Initiative UUID
         id: String,
@@ -525,6 +560,7 @@ pub enum InitiativeCmd {
 #[derive(clap::Subcommand)]
 pub enum MilestoneCmd {
     /// List project milestones
+    #[command(after_long_help = outdoc::linear_list("projectMilestones", &["id", "name"]))]
     List {
         /// Project (UUID or exact name)
         #[arg(long)]
@@ -533,12 +569,14 @@ pub enum MilestoneCmd {
         page: Page,
     },
     /// Get one milestone by UUID
+    #[command(after_long_help = outdoc::linear_get("projectMilestone", "projectMilestone.id (UUID)"))]
     Get {
         id: Option<String>,
         #[command(flatten)]
         from: crate::pipe::FromFlag,
     },
     /// Create a milestone
+    #[command(after_long_help = outdoc::linear_mutation("projectMilestoneCreate", "projectMilestone"))]
     Create {
         /// Project UUID
         #[arg(long)]
@@ -552,6 +590,7 @@ pub enum MilestoneCmd {
         target_date: Option<String>,
     },
     /// Update a milestone; only the flags you pass are changed
+    #[command(after_long_help = outdoc::linear_mutation("projectMilestoneUpdate", "projectMilestone"))]
     Update {
         /// Milestone UUID
         id: String,
@@ -568,6 +607,7 @@ pub enum MilestoneCmd {
 #[derive(clap::Subcommand)]
 pub enum ProjectLabelCmd {
     /// List project labels
+    #[command(after_long_help = outdoc::linear_list("projectLabels", &["id", "name"]))]
     List {
         #[command(flatten)]
         page: Page,
@@ -577,6 +617,11 @@ pub enum ProjectLabelCmd {
 #[derive(clap::Subcommand)]
 pub enum StatusUpdateCmd {
     /// Get a status update by UUID
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"projectUpdate": {...}}, or {"initiativeUpdate": {...}} with --initiative"#,
+        "Primary identifier: projectUpdate.id / initiativeUpdate.id (UUID)",
+        "Raw Linear GraphQL data; foac adds no envelope",
+    ]))]
     Get {
         id: Option<String>,
         /// The id is an initiative status update, not a project one
@@ -586,6 +631,12 @@ pub enum StatusUpdateCmd {
         from: crate::pipe::FromFlag,
     },
     /// Post a status update on a project or an initiative
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"projectUpdateCreate": {"success": true, "projectUpdate": {...}}}"#,
+        r#"With --initiative: {"initiativeUpdateCreate": {"success": true, "initiativeUpdate": {...}}}"#,
+        "Primary identifier: projectUpdateCreate.projectUpdate.id",
+        "Raw Linear GraphQL data; foac adds no envelope",
+    ]))]
     Create {
         /// Project UUID
         #[arg(
@@ -605,6 +656,12 @@ pub enum StatusUpdateCmd {
         health: Option<String>,
     },
     /// Edit a status update
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"projectUpdateUpdate": {"success": true, "projectUpdate": {...}}}"#,
+        r#"With --initiative: {"initiativeUpdateUpdate": {"success": true, "initiativeUpdate": {...}}}"#,
+        "Primary identifier: projectUpdateUpdate.projectUpdate.id",
+        "Raw Linear GraphQL data; foac adds no envelope",
+    ]))]
     Update {
         /// Status update UUID
         id: String,
@@ -619,6 +676,10 @@ pub enum StatusUpdateCmd {
         health: Option<String>,
     },
     /// Archive (delete) a status update
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"projectUpdateArchive": {"success": true}}, or initiativeUpdateArchive with --initiative"#,
+        "Raw Linear GraphQL data; foac adds no envelope",
+    ]))]
     Delete {
         /// Status update UUID
         id: String,
@@ -631,12 +692,14 @@ pub enum StatusUpdateCmd {
 #[derive(clap::Subcommand)]
 pub enum AttachmentCmd {
     /// Get one attachment by UUID
+    #[command(after_long_help = outdoc::linear_get("attachment", "attachment.id (UUID)"))]
     Get {
         id: Option<String>,
         #[command(flatten)]
         from: crate::pipe::FromFlag,
     },
     /// Attach a URL to an issue
+    #[command(after_long_help = outdoc::linear_mutation("attachmentCreate", "attachment"))]
     Create {
         /// Issue UUID or identifier like ENG-123
         #[arg(long)]
@@ -649,6 +712,7 @@ pub enum AttachmentCmd {
         subtitle: Option<String>,
     },
     /// Delete an attachment
+    #[command(after_long_help = outdoc::linear_delete("attachmentDelete"))]
     Delete { id: String },
 }
 

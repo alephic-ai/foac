@@ -16,6 +16,14 @@ New resources or verbs on an existing provider. A whole new provider follows
    makes it `Option<_>`, flattens `pipe::FromFlag`, and dispatches through
    `pipe::run_get` with a fetch-one closure, so piped `list` output joins
    into it.
-3. Update `assets/SKILL.md` in the same change if the CLI surface or conventions
+3. Attach the command's output contract:
+   `#[command(after_long_help = outdoc::...)]` on the verb variant, using the
+   matching family helper from `src/outdoc.rs` (Linear connection/mutation
+   shapes, the REST `{items, pageInfo}` wrapper with the provider's
+   `Pagination` const, `rest_obj`, `rest_delete`, `slack_ok`, or
+   `outdoc::lines` for a true one-off). The
+   `every_provider_command_documents_its_output` test in `src/main.rs` fails
+   any JSON-emitting leaf command without one.
+4. Update `assets/SKILL.md` in the same change if the CLI surface or conventions
    changed. It is compiled into the binary and installed into agents' skill
    folders, so it must always match the CLI.

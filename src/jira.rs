@@ -7,6 +7,7 @@ use clap::{Args, Subcommand};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
+use crate::outdoc;
 use crate::pipe::{self, FromFlag};
 use crate::rest::{self, Api, Auth, BodyInput, id_string, insert_opt, is_numeric_id, push_query};
 
@@ -57,6 +58,11 @@ struct Page {
 #[derive(Subcommand)]
 enum IssueCmd {
     /// List issues matching a JQL query
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Jira issue objects (fields nested under \"fields\")",
+        &["key", "id"],
+        &outdoc::NEXT_PAGE_TOKEN,
+    ))]
     List {
         /// JQL query, e.g. "project = ENG AND statusCategory != Done";
         /// Jira rejects unbounded queries, so the default restricts to
@@ -74,12 +80,20 @@ enum IssueCmd {
         after: Option<String>,
     },
     /// Get an issue by key like ENG-123
+    #[command(after_long_help = outdoc::rest_obj(
+        "raw Jira issue object (fields nested under \"fields\")",
+        "key (like ENG-123); id is numeric",
+    ))]
     Get {
         key: Option<String>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Create an issue
+    #[command(after_long_help = outdoc::rest_obj(
+        "raw Jira created-issue reference (only id, key, and self; run issue get for the fields)",
+        "key (like ENG-123); id is numeric",
+    ))]
     Create {
         /// Project key or numeric ID
         #[arg(long)]
@@ -105,6 +119,7 @@ enum IssueCmd {
         parent: Option<String>,
     },
     /// Update an issue; only supplied fields are changed
+    #[command(after_long_help = outdoc::rest_delete())]
     Update {
         key: String,
         #[arg(long)]
@@ -123,6 +138,7 @@ enum IssueCmd {
         priority: Option<String>,
     },
     /// Move an issue through a workflow transition
+    #[command(after_long_help = outdoc::rest_delete())]
     Transition {
         key: String,
         /// Transition ID, transition name, or destination status name
@@ -134,6 +150,11 @@ enum IssueCmd {
 #[derive(Subcommand)]
 enum CommentCmd {
     /// List an issue's comments
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Jira comment objects",
+        &[],
+        &outdoc::NEXT_START_AT,
+    ))]
     List {
         /// Issue key like ENG-123
         #[arg(long)]
@@ -142,6 +163,7 @@ enum CommentCmd {
         page: Page,
     },
     /// Add a comment to an issue
+    #[command(after_long_help = outdoc::rest_obj("raw Jira comment object", "id (numeric)"))]
     Create {
         /// Issue key like ENG-123
         #[arg(long)]
@@ -150,6 +172,7 @@ enum CommentCmd {
         body: BodyInput,
     },
     /// Update a comment
+    #[command(after_long_help = outdoc::rest_obj("raw Jira comment object", "id (numeric)"))]
     Update {
         id: String,
         /// Issue key like ENG-123
@@ -159,6 +182,7 @@ enum CommentCmd {
         body: BodyInput,
     },
     /// Delete a comment
+    #[command(after_long_help = outdoc::rest_delete())]
     Delete {
         id: String,
         /// Issue key like ENG-123
@@ -170,6 +194,11 @@ enum CommentCmd {
 #[derive(Subcommand)]
 enum ProjectCmd {
     /// List projects visible to the account
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Jira project objects",
+        &["key", "id"],
+        &outdoc::NEXT_START_AT,
+    ))]
     List {
         /// Match project names and keys
         #[arg(long)]
@@ -178,6 +207,7 @@ enum ProjectCmd {
         page: Page,
     },
     /// Get a project by key or numeric ID
+    #[command(after_long_help = outdoc::rest_obj("raw Jira project object", "key; id is numeric"))]
     Get {
         key: Option<String>,
         #[command(flatten)]
@@ -188,6 +218,11 @@ enum ProjectCmd {
 #[derive(Subcommand)]
 enum SprintCmd {
     /// List a board's sprints
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Jira sprint objects",
+        &["id"],
+        &outdoc::NEXT_START_AT,
+    ))]
     List {
         /// Board numeric ID or exact board name
         #[arg(long)]
@@ -199,6 +234,7 @@ enum SprintCmd {
         page: Page,
     },
     /// Get a sprint by numeric ID
+    #[command(after_long_help = outdoc::rest_obj("raw Jira sprint object", "id (numeric)"))]
     Get {
         id: Option<u64>,
         #[command(flatten)]
@@ -209,6 +245,11 @@ enum SprintCmd {
 #[derive(Subcommand)]
 enum UserCmd {
     /// List users, or search them with --query
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Jira user objects",
+        &["accountId"],
+        &outdoc::NEXT_START_AT,
+    ))]
     List {
         /// Match display names and email addresses
         #[arg(long)]
@@ -217,6 +258,7 @@ enum UserCmd {
         page: Page,
     },
     /// Get a user by account ID
+    #[command(after_long_help = outdoc::rest_obj("raw Jira user object", "accountId"))]
     Get {
         account_id: Option<String>,
         #[command(flatten)]
@@ -227,6 +269,11 @@ enum UserCmd {
 #[derive(Subcommand)]
 enum TransitionCmd {
     /// List the transitions available to an issue
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Jira transition objects",
+        &[],
+        &outdoc::SINGLE_PAGE,
+    ))]
     List {
         /// Issue key like ENG-123
         #[arg(long)]

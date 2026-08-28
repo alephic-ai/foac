@@ -6,6 +6,7 @@ use clap::{Args, Subcommand};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
+use crate::outdoc;
 use crate::pipe::{self, FromFlag};
 use crate::rest::{self, Api, Auth, insert_opt, push_query};
 
@@ -44,6 +45,10 @@ enum Resource {
     #[command(subcommand)]
     Operation(OperationCmd),
     /// Get a connection URI for a database
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"uri": "postgres://..."}"#,
+        "Raw Neon data; foac adds no envelope",
+    ]))]
     ConnectionUri {
         /// Database name
         #[arg(long)]
@@ -76,12 +81,14 @@ struct Cursor {
 #[derive(Subcommand)]
 enum OrgCmd {
     /// List the current user's organizations
+    #[command(after_long_help = outdoc::rest_list("raw Neon organization objects", &[], &outdoc::NEON_SINGLE_PAGE))]
     List,
 }
 
 #[derive(Subcommand)]
 enum ProjectCmd {
     /// List projects accessible to the API key
+    #[command(after_long_help = outdoc::rest_list("raw Neon project objects", &[], &outdoc::END_CURSOR))]
     List {
         /// Organization ID like org-...; defaults to NEON_ORG_ID. Neon
         /// requires it when the account belongs to an organization; find IDs
@@ -95,12 +102,18 @@ enum ProjectCmd {
         cursor: Cursor,
     },
     /// Get the selected project
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"project": {...}}"#,
+        "Primary identifier: project.id",
+        "Raw Neon data; foac adds no envelope",
+    ]))]
     Get,
 }
 
 #[derive(Subcommand)]
 enum BranchCmd {
     /// List the project's branches
+    #[command(after_long_help = outdoc::rest_list("raw Neon branch objects", &["id"], &outdoc::END_CURSOR))]
     List {
         /// Filter by branch name substring
         #[arg(long)]
@@ -109,12 +122,22 @@ enum BranchCmd {
         cursor: Cursor,
     },
     /// Get a branch by ID like br-...
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"branch": {...}}"#,
+        "Primary identifier: branch.id",
+        "Raw Neon data; foac adds no envelope",
+    ]))]
     Get {
         id: Option<String>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Create a branch
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"branch": {...}, "operations": [<operation>, ...]}"#,
+        "Primary identifier: branch.id",
+        "Raw Neon data; foac adds no envelope",
+    ]))]
     Create {
         /// Branch name; Neon generates one when omitted
         #[arg(long)]
@@ -124,12 +147,18 @@ enum BranchCmd {
         parent: Option<String>,
     },
     /// Delete a branch
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"branch": {...}, "operations": [<operation>, ...]}"#,
+        "Primary identifier: branch.id",
+        "Raw Neon data; foac adds no envelope",
+    ]))]
     Delete { id: String },
 }
 
 #[derive(Subcommand)]
 enum DatabaseCmd {
     /// List a branch's databases
+    #[command(after_long_help = outdoc::rest_list("raw Neon database objects", &[], &outdoc::NEON_SINGLE_PAGE))]
     List {
         /// Branch ID
         #[arg(long)]
@@ -140,6 +169,7 @@ enum DatabaseCmd {
 #[derive(Subcommand)]
 enum RoleCmd {
     /// List a branch's Postgres roles
+    #[command(after_long_help = outdoc::rest_list("raw Neon role objects", &[], &outdoc::NEON_SINGLE_PAGE))]
     List {
         /// Branch ID
         #[arg(long)]
@@ -150,29 +180,56 @@ enum RoleCmd {
 #[derive(Subcommand)]
 enum EndpointCmd {
     /// List the project's compute endpoints
+    #[command(after_long_help = outdoc::rest_list("raw Neon compute endpoint objects", &["id"], &outdoc::NEON_SINGLE_PAGE))]
     List,
     /// Get an endpoint by ID like ep-...
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"endpoint": {...}}"#,
+        "Primary identifier: endpoint.id",
+        "Raw Neon data; foac adds no envelope",
+    ]))]
     Get {
         id: Option<String>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Start an endpoint
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"endpoint": {...}, "operations": [<operation>, ...]}"#,
+        "Primary identifier: endpoint.id",
+        "Raw Neon data; foac adds no envelope",
+    ]))]
     Start { id: String },
     /// Suspend an endpoint
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"endpoint": {...}, "operations": [<operation>, ...]}"#,
+        "Primary identifier: endpoint.id",
+        "Raw Neon data; foac adds no envelope",
+    ]))]
     Suspend { id: String },
     /// Restart an endpoint
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"endpoint": {...}, "operations": [<operation>, ...]}"#,
+        "Primary identifier: endpoint.id",
+        "Raw Neon data; foac adds no envelope",
+    ]))]
     Restart { id: String },
 }
 
 #[derive(Subcommand)]
 enum OperationCmd {
     /// List the project's operations, most recent first
+    #[command(after_long_help = outdoc::rest_list("raw Neon operation objects", &["id"], &outdoc::END_CURSOR))]
     List {
         #[command(flatten)]
         cursor: Cursor,
     },
     /// Get an operation by ID
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"operation": {...}}"#,
+        "Primary identifier: operation.id",
+        "Raw Neon data; foac adds no envelope",
+    ]))]
     Get {
         id: Option<String>,
         #[command(flatten)]
