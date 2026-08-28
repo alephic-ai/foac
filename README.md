@@ -7,11 +7,11 @@
 # foac
 
 foac, the Father Of All CLIs: one CLI for all your SaaS providers (Linear,
-GitHub, Jira, Confluence, Neon, Sentry, Slack, Vercel, and more on the way), built for the coding agents on
-your machine rather than for you. Install it once, log in once, and every
-harness (Claude Code, Cursor, Codex, Gemini CLI, Grok Build, ...) can use all your
-providers without any setup of its own. Humans at a TTY
-get readable tables from the same commands.
+GitHub, Jira, Confluence, Neon, Sentry, Slack, Vercel, and more on the way),
+built for the coding agents on your machine rather than for you. Install it
+once, log in once, and every harness (Claude Code, Cursor, Codex, Gemini CLI,
+Grok Build, ...) can use all your providers without any setup of its own. Humans
+at a TTY get readable tables from the same commands.
 
 If your agents spend their context loading MCP tool catalogs and fetching API
 docs, foac replaces all of that with a single binary that already knows the
@@ -92,10 +92,9 @@ graph LR
   per project without touching auth: each project can run with a different
   set of providers, and re-enabling one never asks you to log in again.
 - **Composable.** Compact JSON on stdout, errors as JSON on stderr with exit
-  code 1, so foac commands chain like any Unix tool. Better: pipe one
-  provider's `list` straight into another's `get` and foac does the join
-  itself — `--from` names the field to match on, no `jq` or `xargs` glue
-  needed:
+  code 1, so foac commands chain like any Unix tool. Better: pipe one provider's
+  `list` straight into another's `get` and foac does the join itself — `--from`
+  names the field to match on, no `jq` or `xargs` glue needed:
 
   ```sh
   # Look up the Slack profile of every Linear user, matching on email
@@ -147,8 +146,8 @@ mise use -g github:alephic-ai/foac
 ```
 
 This installs the `foac` binary from
-[GitHub Releases](https://github.com/alephic-ai/foac/releases) and puts it on your
-`PATH`; `foac update` keeps it current after that.
+[GitHub Releases](https://github.com/alephic-ai/foac/releases) and puts it on
+your `PATH`; `foac update` keeps it current after that.
 
 ## Quick start
 
@@ -190,7 +189,9 @@ different tenants, like two Slack workspaces (`foac auth slack login
 unnamed login is the `default` instance, used when no instance is selected;
 see [doc/auth.md](doc/auth.md).
 
-Other commands check GitHub for a newer release at most once a day, and print a notice on stderr while one exists. They never auto-install. Set `FOAC_NO_UPDATE_CHECK` (or `CI`) to skip the check.
+Other commands check GitHub for a newer release at most once a day, and print a
+notice on stderr while one exists. They never auto-install. Set
+`FOAC_NO_UPDATE_CHECK` (or `CI`) to skip the check.
 
 Humans get auto-rendered tables at an interactive terminal instead of JSON;
 see [doc/output.md](doc/output.md).

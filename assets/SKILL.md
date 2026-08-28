@@ -99,7 +99,8 @@ foac <provider> <resource> <verb> [flags]
 - `sentry`: organizations, projects, issues, error events, and releases.
 <!-- /foac-provider:sentry -->
 <!-- foac-provider:slack -->
-- `slack`: conversations, messages, threads, users, message search, and reactions.
+- `slack`: conversations, messages, threads, users, message search, and
+  reactions.
 <!-- /foac-provider:slack -->
 <!-- foac-provider:vercel -->
 - `vercel`: teams, projects, deployments, account domains, and project domains.
@@ -246,10 +247,10 @@ foac <provider> <resource> <verb> [flags]
 - **Linear filters accept names**: filter flags on `list` verbs take a UUID or a
   human value: a team key (`ENG`), a state name (`In Progress`), a user
   email or display name, a project or label name.
-- **Linear mutations need UUIDs**: flags on `create`/`update` verbs (`--assignee`,
-  `--state`, `--project`, ...) require UUIDs. Look them up first with the
-  matching `list` command. Issues are the exception: `get`, `update`, and
-  `--issue` flags accept an identifier like `ENG-123` as well.
+- **Linear mutations need UUIDs**: flags on `create`/`update` verbs
+  (`--assignee`, `--state`, `--project`, ...) require UUIDs. Look them up first
+  with the matching `list` command. Issues are the exception: `get`, `update`,
+  and `--issue` flags accept an identifier like `ENG-123` as well.
 - **Updates are partial**: `update` verbs only change the flags you pass;
   omitted flags keep their value. Fields cannot be cleared to null.
 <!-- /foac-provider:linear -->
@@ -274,14 +275,14 @@ foac <provider> <resource> <verb> [flags]
   follow `pageInfo.nextPageToken` while `hasNextPage` is true. Other list
   verbs take `--limit N` and `--start-at N`; follow `pageInfo.nextStartAt`.
   Output is `{"items":[...],"pageInfo":{...}}`.
-- **Jira identifiers**: issues use keys like `ENG-123`. Projects accept a key
-  or numeric ID; issue types and priorities accept a name or numeric ID;
-  assignees are account IDs (find them with `user list --query`); `--board`
-  accepts a numeric ID or an exact board name. `issue list --jql` takes raw
-  JQL; Jira rejects unbounded queries, so without `--jql` it defaults to
-  `created >= -30d ORDER BY created DESC`. To change status, list options with `transition list --issue ENG-123`,
-  then `issue transition ENG-123 --to <transition id, transition name, or
-  destination status name>`.
+- **Jira identifiers**: issues use keys like `ENG-123`. Projects accept a key or
+  numeric ID; issue types and priorities accept a name or numeric ID; assignees
+  are account IDs (find them with `user list --query`); `--board` accepts a
+  numeric ID or an exact board name. `issue list --jql` takes raw JQL; Jira
+  rejects unbounded queries, so without `--jql` it defaults to
+  `created >= -30d ORDER BY created DESC`. To change status, list options with
+  `transition list --issue ENG-123`, then
+  `issue transition ENG-123 --to <transition id, transition name, or destination status name>`.
 - **Jira text**: issue descriptions and comments accept mutually exclusive
   `--body` and `--body-file` (plain text or Jira wiki markup).
 <!-- /foac-provider:jira -->
