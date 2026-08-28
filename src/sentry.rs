@@ -2,6 +2,7 @@ use clap::{Args, Subcommand};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
+use crate::outdoc;
 use crate::pipe::{self, FromFlag};
 use crate::rest::{self, Api, Auth, insert_opt, push_query};
 
@@ -46,22 +47,26 @@ struct Page {
 #[derive(Subcommand)]
 enum OrgCmd {
     /// List organizations accessible to the token
+    #[command(after_long_help = outdoc::rest_list("raw Sentry organization objects", &[], &outdoc::SENTRY_CURSOR))]
     List {
         #[command(flatten)]
         page: Page,
     },
     /// Get the selected organization
+    #[command(after_long_help = outdoc::rest_obj("raw Sentry organization object", "slug"))]
     Get,
 }
 
 #[derive(Subcommand)]
 enum ProjectCmd {
     /// List the organization's projects
+    #[command(after_long_help = outdoc::rest_list("raw Sentry project objects", &["slug"], &outdoc::SENTRY_CURSOR))]
     List {
         #[command(flatten)]
         page: Page,
     },
     /// Get a project by slug
+    #[command(after_long_help = outdoc::rest_obj("raw Sentry project object", "slug"))]
     Get {
         slug: Option<String>,
         #[command(flatten)]
@@ -72,6 +77,7 @@ enum ProjectCmd {
 #[derive(Subcommand)]
 enum IssueCmd {
     /// List issues across the organization or one project
+    #[command(after_long_help = outdoc::rest_list("raw Sentry issue objects", &["id", "shortId"], &outdoc::SENTRY_CURSOR))]
     List {
         /// Project slug
         #[arg(long)]
@@ -86,12 +92,14 @@ enum IssueCmd {
         page: Page,
     },
     /// Get an issue by numeric ID or short ID like PROJ-123
+    #[command(after_long_help = outdoc::rest_obj("raw Sentry issue object", "id (numeric); shortId is the human key like PROJ-123"))]
     Get {
         id: Option<String>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Update an issue; only supplied fields are changed
+    #[command(after_long_help = outdoc::rest_obj("raw Sentry issue object with the update applied", "id (numeric)"))]
     Update {
         id: String,
         /// resolved, unresolved, or ignored
@@ -105,6 +113,7 @@ enum IssueCmd {
         assigned_to: Option<String>,
     },
     /// Get the most recent event in an issue
+    #[command(after_long_help = outdoc::rest_obj("raw Sentry event object", "eventID"))]
     LatestEvent { id: String },
 }
 
@@ -122,6 +131,7 @@ struct EventScope {
 #[derive(Subcommand)]
 enum EventCmd {
     /// List events in an issue or a project
+    #[command(after_long_help = outdoc::rest_list("raw Sentry event objects", &["eventID"], &outdoc::SENTRY_CURSOR))]
     List {
         #[command(flatten)]
         scope: EventScope,
@@ -129,6 +139,7 @@ enum EventCmd {
         page: Page,
     },
     /// Get an event by ID
+    #[command(after_long_help = outdoc::rest_obj("raw Sentry event object", "eventID"))]
     Get {
         id: Option<String>,
         /// Project slug
@@ -142,6 +153,7 @@ enum EventCmd {
 #[derive(Subcommand)]
 enum ReleaseCmd {
     /// List the organization's releases
+    #[command(after_long_help = outdoc::rest_list("raw Sentry release objects", &["version"], &outdoc::SENTRY_CURSOR))]
     List {
         /// Filter versions by substring
         #[arg(long)]
@@ -150,6 +162,7 @@ enum ReleaseCmd {
         page: Page,
     },
     /// Get a release by version
+    #[command(after_long_help = outdoc::rest_obj("raw Sentry release object", "version"))]
     Get {
         version: Option<String>,
         #[command(flatten)]

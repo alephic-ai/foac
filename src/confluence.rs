@@ -8,6 +8,7 @@ use clap::{Args, Subcommand};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
 
+use crate::outdoc;
 use crate::pipe::{self, FromFlag};
 use crate::rest::{self, Api, Auth, BodyInput, id_string, insert_opt, is_numeric_id, push_query};
 
@@ -35,6 +36,11 @@ enum Resource {
     #[command(subcommand)]
     Comment(CommentCmd),
     /// Search content with CQL
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Confluence search result objects (the page or other entity is nested under \"content\")",
+        &["content.id"],
+        &outdoc::NEXT_START_AT,
+    ))]
     Search {
         /// CQL query, e.g. 'type = page AND text ~ "login"'
         #[arg(long)]
@@ -61,6 +67,11 @@ struct Cursor {
 #[derive(Subcommand)]
 enum SpaceCmd {
     /// List spaces
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Confluence space objects",
+        &["id", "key"],
+        &outdoc::END_CURSOR,
+    ))]
     List {
         /// Filter by space key; repeat for multiple
         #[arg(long = "key")]
@@ -69,6 +80,10 @@ enum SpaceCmd {
         cursor: Cursor,
     },
     /// Get a space by key or numeric ID
+    #[command(after_long_help = outdoc::rest_obj(
+        "raw Confluence space object",
+        "id (numeric); key is the human key",
+    ))]
     Get {
         space: Option<String>,
         #[command(flatten)]
@@ -79,6 +94,11 @@ enum SpaceCmd {
 #[derive(Subcommand)]
 enum PageCmd {
     /// List pages
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Confluence page objects",
+        &["id"],
+        &outdoc::END_CURSOR,
+    ))]
     List {
         /// Space key or numeric ID
         #[arg(long)]
@@ -90,12 +110,17 @@ enum PageCmd {
         cursor: Cursor,
     },
     /// Get a page by numeric ID, body in storage representation
+    #[command(after_long_help = outdoc::rest_obj(
+        "raw Confluence page object (body in the storage representation)",
+        "id (numeric)",
+    ))]
     Get {
         id: Option<String>,
         #[command(flatten)]
         from: FromFlag,
     },
     /// Create a page
+    #[command(after_long_help = outdoc::rest_obj("raw Confluence page object", "id (numeric)"))]
     Create {
         /// Space key or numeric ID
         #[arg(long)]
@@ -110,6 +135,7 @@ enum PageCmd {
         body: BodyInput,
     },
     /// Update a page; fetches the current version and keeps omitted fields
+    #[command(after_long_help = outdoc::rest_obj("raw Confluence page object", "id (numeric)"))]
     Update {
         id: String,
         #[arg(long)]
@@ -119,12 +145,18 @@ enum PageCmd {
         body: BodyInput,
     },
     /// Delete a page
+    #[command(after_long_help = outdoc::rest_delete())]
     Delete { id: String },
 }
 
 #[derive(Subcommand)]
 enum CommentCmd {
     /// List a page's footer comments
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Confluence footer-comment objects",
+        &[],
+        &outdoc::END_CURSOR,
+    ))]
     List {
         /// Page numeric ID
         #[arg(long)]
@@ -133,6 +165,10 @@ enum CommentCmd {
         cursor: Cursor,
     },
     /// Add a footer comment to a page
+    #[command(after_long_help = outdoc::rest_obj(
+        "raw Confluence footer-comment object",
+        "id (numeric)",
+    ))]
     Create {
         /// Page numeric ID
         #[arg(long)]
@@ -142,6 +178,10 @@ enum CommentCmd {
         body: BodyInput,
     },
     /// Update a footer comment; fetches the current version internally
+    #[command(after_long_help = outdoc::rest_obj(
+        "raw Confluence footer-comment object",
+        "id (numeric)",
+    ))]
     Update {
         id: String,
         /// Content in Confluence wiki markup via --body or --body-file
@@ -149,6 +189,7 @@ enum CommentCmd {
         body: BodyInput,
     },
     /// Delete a footer comment
+    #[command(after_long_help = outdoc::rest_delete())]
     Delete { id: String },
 }
 

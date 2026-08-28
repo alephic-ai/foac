@@ -61,6 +61,7 @@ src/
 ├── rest.rs      # Shared REST core: Api/send, list wrapping, payload helpers, auth-identity HTTP
 ├── auth.rs      # Credential resolution (env > credentials file > gh CLI), validation, auth commands
 ├── provider.rs  # Comment-preserving TOML settings + private JSON credentials
+├── outdoc.rs    # Rendered Output sections for --help: one template per response-shape family
 ├── output.rs    # The one success printer: compact JSON, or shape-heuristic tables on a TTY
 ├── pipe.rs      # get pipe mode: piped list output joins into one get per extracted value
 ├── update.rs    # Self-update from GitHub Releases + once-a-day version check
@@ -90,7 +91,9 @@ not duplication.
   what exists, generated from clap definitions checked at compile time (and,
   for Linear, queries validated against the vendored schema). Discovery must
   stay offline and deterministic. Never make what a command accepts depend on
-  runtime state.
+  runtime state. Output is discoverable the same way: every provider command's
+  `--help` ends with an Output section rendered from `outdoc.rs`, and a test
+  fails any JSON-emitting leaf command that lacks one.
 - Uniform grammar across providers: provider/resource/verb, `--limit` plus
   cursor-or-page flags, `{items, pageInfo}` lists, JSON errors on stderr with
   exit 1. Shaping one provider differently from the others breaks

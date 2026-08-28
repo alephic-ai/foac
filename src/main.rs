@@ -446,6 +446,86 @@ mod tests {
         Cli::command().debug_assert();
     }
 
+    /// Every JSON-emitting provider leaf command must document its output
+    /// contract (`#[command(after_long_help = outdoc::...)]`), and only leaf
+    /// commands may carry one.
+    #[test]
+    fn every_provider_command_documents_its_output() {
+        fn walk(command: &clap::Command, path: &str) {
+            let subcommands: Vec<&clap::Command> = command
+                .get_subcommands()
+                .filter(|sub| sub.get_name() != "help")
+                .collect();
+            let help = command.get_after_long_help().map(ToString::to_string);
+            if subcommands.is_empty() {
+                // The header carries clap's section styling, so match the
+                // text anywhere rather than at byte zero.
+                let help = help.unwrap_or_default();
+                assert!(
+                    help.contains("Output:"),
+                    "`foac {path}` emits JSON but its --help has no Output section; \
+                     attach #[command(after_long_help = outdoc::...)] to the verb"
+                );
+            } else {
+                assert!(
+                    help.is_none(),
+                    "`foac {path}`: Output sections belong on leaf verbs only"
+                );
+                for sub in subcommands {
+                    walk(sub, &format!("{path} {}", sub.get_name()));
+                }
+            }
+        }
+        let mut command = Cli::command();
+        command.build();
+        for provider in provider::PROVIDERS {
+            walk(command.find_subcommand(provider).unwrap(), provider);
+        }
+    }
+
+    fn long_help(args: &[&str]) -> String {
+        let error = match Cli::try_parse_from(args) {
+            Ok(_) => panic!("--help should stop parsing"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), ErrorKind::DisplayHelp);
+        error.to_string()
+    }
+
+    #[test]
+    fn list_help_documents_records_and_pagination() {
+        // The motivating case: linear lists are GraphQL connections, not the
+        // REST items/pageInfo wrapper.
+        let help = long_help(&["foac", "linear", "user", "list", "--help"]);
+        assert!(help.contains("users.nodes"));
+        assert!(help.contains("users.pageInfo.endCursor"));
+        assert!(help.contains("--after while hasNextPage is true"));
+        let help = long_help(&["foac", "github", "issue", "list", "--help"]);
+        assert!(help.contains("\"items\": [<record>, ...]"));
+        assert!(help.contains("pageInfo.nextPage to --page"));
+        assert!(help.contains("pull requests are filtered out"));
+    }
+
+    #[test]
+    fn get_and_mutation_help_document_the_envelope() {
+        let help = long_help(&["foac", "linear", "issue", "get", "--help"]);
+        assert!(help.contains("{\"issue\": {...}}"));
+        assert!(help.contains("issue.identifier"));
+        let help = long_help(&["foac", "linear", "issue", "create", "--help"]);
+        assert!(help.contains("{\"issueCreate\": {\"success\": true, \"issue\": {...}}}"));
+        let help = long_help(&["foac", "github", "comment", "delete", "--help"]);
+        assert!(help.contains("{} on success"));
+    }
+
+    #[test]
+    fn short_help_stays_compact() {
+        let error = match Cli::try_parse_from(["foac", "linear", "user", "list", "-h"]) {
+            Ok(_) => panic!("-h should stop parsing"),
+            Err(error) => error,
+        };
+        assert!(!error.to_string().contains("Output:"));
+    }
+
     #[test]
     fn help_only_lists_authenticated_providers() {
         for expected in [

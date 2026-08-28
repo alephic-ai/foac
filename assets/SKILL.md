@@ -222,6 +222,9 @@ foac <provider> <resource> <verb> [flags]
   parsing stdout must pass
   `--format json` or set `FOAC_FORMAT=json`; pipes and CI always get JSON.
   `version`, `update`, and `skill` ignore `--format`.
+  Every provider command's `--help` ends with an Output section naming its
+  envelope, record path, `--from` join fields, and pagination paths — check
+  it before parsing a response you have not seen.
   Failures print
   the API's error JSON on stderr and exit non-zero.
 - **Piped joins**: pipe one command's `list` output into a `get` verb that

@@ -22,6 +22,14 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   identity string. Version, update, and skill output bypass the printer.
 - For Linear, `list` filter flags accept a UUID or a human name (see
   `eq_filter`), while `create`/`update` flags require UUIDs.
+- Every provider verb carries
+  `#[command(after_long_help = outdoc::...)]`, rendering an Output section in
+  `--help` (`-h` stays compact) from the shape-family templates in
+  `src/outdoc.rs`: Linear connections and mutation payloads, the REST
+  `{items, pageInfo}` wrapper with a per-provider `Pagination` const, raw
+  objects, empty-body successes, and the Slack `ok` envelope.
+  `every_provider_command_documents_its_output` in `src/main.rs` walks the
+  clap tree and fails any JSON-emitting leaf without a contract.
 - REST providers build on `src/rest.rs`: the shared `Api`/`send` (bearer or
   Basic auth, static provider headers, optional trailing slash), the
   `{items, pageInfo}` wrapper, payload helpers, and the auth-identity HTTP.
