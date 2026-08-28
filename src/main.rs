@@ -458,9 +458,11 @@ mod tests {
                 .collect();
             let help = command.get_after_long_help().map(ToString::to_string);
             if subcommands.is_empty() {
+                // The header carries clap's section styling, so match the
+                // text anywhere rather than at byte zero.
                 let help = help.unwrap_or_default();
                 assert!(
-                    help.starts_with("Output:"),
+                    help.contains("Output:"),
                     "`foac {path}` emits JSON but its --help has no Output section; \
                      attach #[command(after_long_help = outdoc::...)] to the verb"
                 );

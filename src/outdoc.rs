@@ -6,8 +6,17 @@
 //! so help stays uniform across providers. These sections document existing
 //! behavior only; they never change what a command prints.
 
+/// The section header, in the same style clap gives "Usage:" and "Options:".
+/// anstream strips the styling wherever clap itself prints unstyled (pipes,
+/// NO_COLOR), so agents always read a plain `Output:`.
+fn header() -> String {
+    let styles = clap::builder::Styles::default();
+    let style = styles.get_header();
+    format!("{}Output:{}", style.render(), style.render_reset())
+}
+
 fn section(lines: &[&str]) -> String {
-    let mut out = String::from("Output:");
+    let mut out = header();
     for line in lines {
         out.push_str("\n  ");
         out.push_str(line);
@@ -166,10 +175,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn header_matches_claps_section_style() {
+        let styles = clap::builder::Styles::default();
+        let style = styles.get_header();
+        assert_eq!(
+            header(),
+            format!("{}Output:{}", style.render(), style.render_reset())
+        );
+    }
+
+    #[test]
     fn linear_list_names_records_and_pagination_paths() {
         assert_eq!(
             linear_list("users", &["id", "name", "email"]),
-            "Output:\n  \
+            header()
+                + "\n  \
              {\"users\": {\"nodes\": [<record>, ...], \"pageInfo\": {\"hasNextPage\": true, \"endCursor\": \"...\"}}}\n  \
              Records: users.nodes[]; --from join fields: id, name, email\n  \
              Next page: pass users.pageInfo.endCursor to --after while hasNextPage is true\n  \
@@ -188,7 +208,8 @@ mod tests {
     fn linear_get_and_mutations_name_the_envelope() {
         assert_eq!(
             linear_get("issue", "issue.id (UUID)"),
-            "Output:\n  {\"issue\": {...}}\n  Primary identifier: issue.id (UUID)\n  \
+            header()
+                + "\n  {\"issue\": {...}}\n  Primary identifier: issue.id (UUID)\n  \
              Raw Linear GraphQL data; foac adds no envelope"
         );
         let create = linear_mutation("issueCreate", "issue");
@@ -196,7 +217,8 @@ mod tests {
         assert!(create.contains("Primary identifier: issueCreate.issue.id"));
         assert_eq!(
             linear_delete("commentDelete"),
-            "Output:\n  {\"commentDelete\": {\"success\": true}}\n  \
+            header()
+                + "\n  {\"commentDelete\": {\"success\": true}}\n  \
              Raw Linear GraphQL data; foac adds no envelope"
         );
     }
@@ -205,7 +227,8 @@ mod tests {
     fn rest_list_names_the_wrapper_and_the_next_page_flag() {
         assert_eq!(
             rest_list("raw GitHub issue objects", &["number"], &GITHUB_PAGES),
-            "Output:\n  \
+            header()
+                + "\n  \
              {\"items\": [<record>, ...], \"pageInfo\": {\"hasNextPage\": true, \"nextPage\": 2, \"hasPreviousPage\": false, \"previousPage\": null}}\n  \
              Records: items[], raw GitHub issue objects; --from join fields: number\n  \
              Next page: pass pageInfo.nextPage to --page while hasNextPage is true\n  \
@@ -217,7 +240,8 @@ mod tests {
     fn rest_obj_omits_the_identifier_line_when_empty() {
         assert_eq!(
             rest_obj("raw Vercel domain configuration object", ""),
-            "Output:\n  A single raw Vercel domain configuration object: \
+            header()
+                + "\n  A single raw Vercel domain configuration object: \
              unmodified provider data, no foac envelope"
         );
         assert!(rest_obj("raw GitHub release object", "id").contains("Primary identifier: id"));
@@ -232,7 +256,8 @@ mod tests {
     fn slack_ok_shows_the_envelope() {
         assert_eq!(
             slack_ok("user", "user.id; email at user.profile.email"),
-            "Output:\n  {\"ok\": true, \"user\": {...}}, the raw Slack envelope, unmodified\n  \
+            header()
+                + "\n  {\"ok\": true, \"user\": {...}}, the raw Slack envelope, unmodified\n  \
              Primary identifier: user.id; email at user.profile.email"
         );
     }
