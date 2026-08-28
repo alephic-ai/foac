@@ -558,6 +558,8 @@ mod tests {
             for (other, other_example) in examples {
                 assert_eq!(skill.contains(other_example), other == name);
             }
+            // The cross-provider join example is shared: every skill gets it.
+            assert!(skill.contains("foac linear user list | foac slack user get --from email"));
             assert!(!skill.contains("<!-- foac-provider:"));
             assert!(!skill.contains("rumdl"));
             assert!(
