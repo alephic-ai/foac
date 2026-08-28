@@ -230,7 +230,9 @@ foac <provider> <resource> <verb> [flags]
   `--from`:
   `foac <provider> <resource> list | foac <provider> <resource> get --from
   <field>` (the two commands may target different providers; dots in the
-  field reach into nested objects, e.g. `--from profile.email`). Piped input that
+  field reach into nested objects, e.g. `--from profile.email`). Overlap,
+  membership, or "who is on both" questions are this join — not two lists
+  plus a script. Piped input that
   is not JSON is one value per line, so `grep` output composes too. Successes
   stream as one JSON document per get on stdout (a TTY renders them as one
   combined table, one row per result); values the API reports as missing are
@@ -439,6 +441,9 @@ domain, while `project-domain` assigns a domain to a project.
 
 ```sh
 foac auth status
+# cross-provider join (works for any list | any get pair):
+foac linear user list | foac slack user get --from email
+foac github repo list | foac vercel project get --from name
 ```
 
 <!-- foac-provider:linear -->
