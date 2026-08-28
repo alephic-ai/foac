@@ -1,10 +1,11 @@
 # Confluence
 
-`foac confluence` talks to [Confluence Cloud's REST API v2](https://developer.atlassian.com/cloud/confluence/rest/v2/)
-for spaces, pages, and footer comments, and to the v1 root for CQL search
-(the one endpoint Atlassian never ported to v2). It shares the vendor-level
-`atlassian` credential with [Jira](jira.md), each value resolved
-independently as flag, then environment, then stored value:
+`foac confluence` talks to
+[Confluence Cloud's REST API v2](https://developer.atlassian.com/cloud/confluence/rest/v2/)
+for spaces, pages, and footer comments, and to the v1 root for CQL search (the
+one endpoint Atlassian never ported to v2). It shares the vendor-level
+`atlassian` credential with [Jira](jira.md), each value resolved independently
+as flag, then environment, then stored value:
 
 - host: `--host`, `ATLASSIAN_HOST` (like `acme.atlassian.net`), stored
 - email: `--email`, `ATLASSIAN_EMAIL`, stored

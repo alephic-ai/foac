@@ -1,10 +1,10 @@
 # foac
 
 foac, the Father Of All CLIs, wraps external SaaS APIs (Linear, GitHub, Jira,
-Confluence, Neon, Sentry, Slack, Vercel, more to come) behind one command grammar:
-`foac <provider> <resource> <verb>`. The primary consumer is an LLM agent
-working in a shell. Humans at a TTY get a rendering layer on top of the same
-output. foac makes any provider's API discoverable, uniform, and already
+Confluence, Neon, Sentry, Slack, Vercel, more to come) behind one command
+grammar: `foac <provider> <resource> <verb>`. The primary consumer is an LLM
+agent working in a shell. Humans at a TTY get a rendering layer on top of the
+same output. foac makes any provider's API discoverable, uniform, and already
 authenticated. It does not abstract those APIs or try to improve them.
 
 ## How the system maps to the world
@@ -190,12 +190,11 @@ not duplication.
 ## Where this system is meant to grow
 
 - More providers. Candidates are tracked in
-  [GitHub issues](https://github.com/alephic-ai/foac/issues). A new REST provider
-  follows `sentry.rs`'s shape on top of the shared core in `rest.rs`; a new
-  GraphQL provider copies Linear's setup: vendored schema,
+  [GitHub issues](https://github.com/alephic-ai/foac/issues). A new REST
+  provider follows `sentry.rs`'s shape on top of the shared core in `rest.rs`; a
+  new GraphQL provider copies Linear's setup: vendored schema,
   `queries.graphql`, codegen macro. The full recipe, including every
-  registration and documentation touch point, is
-  `doc/adding-a-provider.md`.
+  registration and documentation touch point, is `doc/adding-a-provider.md`.
 - Structural change is provider-driven. When adding a provider raises a
   question the current structure can't answer, restructure then. Don't add
   speculative abstraction beforehand, and don't work around the gap. The

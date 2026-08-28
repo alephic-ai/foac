@@ -1,6 +1,8 @@
 # foac brand assets
 
-The identity is built from the **Merge** mark: three input rails resolve into one dependable output. It follows the Convergence territory from the identity brief.
+The identity is built from the **Merge** mark: three input rails resolve into
+one dependable output. It follows the Convergence territory from the identity
+brief.
 
 ## Palette
 
@@ -10,7 +12,8 @@ The identity is built from the **Merge** mark: three input rails resolve into on
 - Amber on dark: `#f0883e`
 - GitHub dark background: `#0d1117`
 
-Every asset remains readable as a single-color silhouette. The two oranges are theme-specific contrast adjustments, not gradients.
+Every asset remains readable as a single-color silhouette. The two oranges are
+theme-specific contrast adjustments, not gradients.
 
 ## Icon / avatar
 
@@ -21,7 +24,8 @@ Every asset remains readable as a single-color silhouette. The two oranges are t
 | <img src="icon/foac-icon-on-light.svg" width="128" alt="On-light icon"> | <img src="icon/foac-icon-on-dark.svg" width="128" alt="On-dark icon"> | <img src="icon/foac-icon-one-color.svg" width="128" alt="One-color icon"> |
 | [SVG](icon/foac-icon-on-light.svg) · [PNG 512](icon/foac-icon-on-light-512.png) | [SVG](icon/foac-icon-on-dark.svg) · [PNG 512](icon/foac-icon-on-dark-512.png) | [SVG](icon/foac-icon-one-color.svg) · [PNG 512](icon/foac-icon-one-color-512.png) |
 
-Favicon: [SVG master](icon/foac-favicon.svg) · [16 px](icon/favicon-16.png) · [32 px](icon/favicon-32.png)
+Favicon: [SVG master](icon/foac-favicon.svg) · [16 px](icon/favicon-16.png) ·
+[32 px](icon/favicon-32.png)
 
 <img src="icon/favicon-16.png" width="16" alt="16 px favicon"> <img src="icon/favicon-32.png" width="32" alt="32 px favicon"> <img src="icon/foac-favicon.svg" width="64" alt="64 px favicon">
 
@@ -54,7 +58,8 @@ Custom lowercase vector lettering.
 
 <img src="social/foac-social-card.png" width="640" alt="foac social card">
 
-[SVG master](social/foac-social-card.svg) · [PNG 1280 × 640](social/foac-social-card.png)
+[SVG master](social/foac-social-card.svg) ·
+[PNG 1280 × 640](social/foac-social-card.png)
 
 ## README usage
 
@@ -71,6 +76,8 @@ Custom lowercase vector lettering.
 - Keep the wordmark lowercase: `foac`.
 - Use the on-light assets on white or very pale backgrounds.
 - Use the on-dark assets on `#0d1117` or similarly dark backgrounds.
-- The favicon has an opaque dark background so it remains visible in both light and dark browser chrome.
+- The favicon has an opaque dark background so it remains visible in both light
+  and dark browser chrome.
 - SVG files are the masters; PNG files are exports from those masters.
-- No gradients, sparkles, provider logos, robots, or boxed terminal prompts. The identity remains a single-color geometric system.
+- No gradients, sparkles, provider logos, robots, or boxed terminal prompts. The
+  identity remains a single-color geometric system.

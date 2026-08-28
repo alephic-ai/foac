@@ -1,9 +1,10 @@
 # Jira
 
-`foac jira` talks to [Jira Cloud's REST API v2](https://developer.atlassian.com/cloud/jira/platform/rest/v2/)
-(plain-text bodies instead of v3's Atlassian Document Format) and the Agile
-1.0 API for sprints. Every command needs three Atlassian credentials, each
-resolved independently as flag, then environment, then stored value:
+`foac jira` talks to
+[Jira Cloud's REST API v2](https://developer.atlassian.com/cloud/jira/platform/rest/v2/)
+(plain-text bodies instead of v3's Atlassian Document Format) and the Agile 1.0
+API for sprints. Every command needs three Atlassian credentials, each resolved
+independently as flag, then environment, then stored value:
 
 - host: `--host`, `ATLASSIAN_HOST` (like `acme.atlassian.net`), stored
 - email: `--email`, `ATLASSIAN_EMAIL`, stored

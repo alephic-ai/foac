@@ -1,7 +1,7 @@
 # GitHub
 
-`foac github` talks to GitHub.com's REST API. It uses `GITHUB_TOKEN`, a credential
-saved by `foac auth github login`, or `gh auth token`, in that order.
+`foac github` talks to GitHub.com's REST API. It uses `GITHUB_TOKEN`, a
+credential saved by `foac auth github login`, or `gh auth token`, in that order.
 Repository-scoped commands accept `--repo OWNER/NAME`; without it, foac uses the
 current checkout's GitHub remote.
 
