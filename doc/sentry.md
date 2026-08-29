@@ -10,7 +10,8 @@ saves it alongside the token; piped logins read only the token, so pass
 The host is stored with the instance's credentials, so a SaaS and a
 self-hosted Sentry can coexist as named instances (see
 [auth.md](auth.md)). `SENTRY_URL` overrides the saved host for the default
-instance only. Issue commands accept numeric IDs or short IDs like
+instance only and is normalized to HTTPS before authenticated requests. Issue
+commands accept numeric IDs or short IDs like
 `PROJ-123`.
 
 ```sh

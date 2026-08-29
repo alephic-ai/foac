@@ -402,7 +402,7 @@ fn resolve_base_url(environment: Option<String>, stored: Option<String>) -> Stri
     environment
         .filter(|url| !url.is_empty())
         .or(stored)
-        .map(|url| url.trim_end_matches('/').to_owned())
+        .map(|url| normalize_host(&url))
         .unwrap_or_else(|| DEFAULT_URL.to_owned())
 }
 
@@ -522,9 +522,13 @@ mod tests {
             "https://env.example.com"
         );
         assert_eq!(
+            resolve_base_url(Some("http://env.example.com/".into()), None),
+            "https://env.example.com"
+        );
+        assert_eq!(
             resolve_base_url(
                 Some(String::new()),
-                Some("https://stored.example.com".into())
+                Some("http://stored.example.com".into())
             ),
             "https://stored.example.com"
         );

@@ -328,7 +328,8 @@ foac <provider> <resource> <verb> [flags]
   `sentry.io`, always https) and saves it; with redirected stdin it reads only
   the token, so pass `--host HOSTNAME` to save a self-hosted host
   non-interactively. The host is saved with the instance's credentials;
-  `SENTRY_URL` overrides it for the default instance only.
+  `SENTRY_URL` overrides it for the default instance only and is also
+  normalized to https.
 - **Sentry pagination**: `list` verbs take `--cursor CURSOR`; output is
   `{"items":[...],"pageInfo":{...}}`. Follow `nextCursor` while `hasNextPage`
   is true.
