@@ -73,9 +73,10 @@ assets/
 
 `rest.rs` owns the REST boilerplate: the `Api` struct and `send` (bearer or
 Basic auth, static provider headers, optional trailing slash), the
-`{items, pageInfo}` list wrapper, payload helpers, and the auth-identity
-HTTP. Providers keep only what is genuinely theirs (pagination parsing, list
-shapes, ID resolution). Slack's `send` stays provider-local on purpose: its
+`{items, pageInfo}` list wrapper, `offset_page_info` for `startAt`-paged
+lists, payload helpers, and the auth-identity HTTP. Providers keep only what
+is genuinely theirs (their own pagination parsing, list shapes, ID
+resolution). Slack's `send` stays provider-local on purpose: its
 HTTP-200 `ok`/error envelope and method-string URLs are a different protocol,
 not duplication.
 

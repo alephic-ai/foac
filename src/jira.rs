@@ -585,7 +585,13 @@ fn print_offset_list(
     query.push(("maxResults", page.limit.to_string()));
     let response = api.send(Method::GET, &segments, &query, None)?;
     let items = list_items(&response.body, key)?;
-    let page_info = offset_page_info(page.start_at, page.limit, items.len(), &response.body);
+    let page_info = rest::offset_page_info(
+        page.start_at,
+        page.limit,
+        items.len(),
+        response.body.get("total").and_then(Value::as_u64),
+        response.body.get("isLast").and_then(Value::as_bool),
+    );
     crate::output::print(&rest::wrap_list(items, page_info), api.format);
     Ok(())
 }
@@ -605,24 +611,6 @@ fn token_page_info(body: &Value) -> Value {
     json!({
         "hasNextPage": next.is_some(),
         "nextPageToken": next,
-    })
-}
-
-/// Jira's offset-paged endpoints report `total` and/or `isLast`; the user
-/// search endpoints report neither, so a full page means there may be more.
-fn offset_page_info(start_at: u64, limit: u32, count: usize, body: &Value) -> Value {
-    let next = start_at + count as u64;
-    let has_next = match (
-        body.get("total").and_then(Value::as_u64),
-        body.get("isLast").and_then(Value::as_bool),
-    ) {
-        (Some(total), _) => next < total,
-        (None, Some(is_last)) => !is_last,
-        (None, None) => count > 0 && count as u64 == u64::from(limit),
-    };
-    json!({
-        "hasNextPage": has_next,
-        "nextStartAt": if has_next { json!(next) } else { Value::Null },
     })
 }
 
@@ -748,28 +736,6 @@ mod tests {
         let info = token_page_info(&json!({ "issues": [] }));
         assert_eq!(info["hasNextPage"], false);
         assert_eq!(info["nextPageToken"], Value::Null);
-    }
-
-    #[test]
-    fn offset_page_info_uses_total_then_is_last_then_a_full_page_heuristic() {
-        let total = offset_page_info(0, 2, 2, &json!({ "total": 5 }));
-        assert_eq!(total["hasNextPage"], true);
-        assert_eq!(total["nextStartAt"], 2);
-        let done = offset_page_info(3, 2, 2, &json!({ "total": 5 }));
-        assert_eq!(done["hasNextPage"], false);
-        assert_eq!(done["nextStartAt"], Value::Null);
-
-        let is_last = offset_page_info(0, 2, 2, &json!({ "isLast": false }));
-        assert_eq!(is_last["hasNextPage"], true);
-        assert_eq!(
-            offset_page_info(0, 2, 2, &json!({ "isLast": true }))["hasNextPage"],
-            false
-        );
-
-        let bare_full = offset_page_info(0, 2, 2, &json!({}));
-        assert_eq!(bare_full["hasNextPage"], true);
-        assert_eq!(offset_page_info(0, 2, 1, &json!({}))["hasNextPage"], false);
-        assert_eq!(offset_page_info(0, 0, 0, &json!({}))["hasNextPage"], false);
     }
 
     #[test]
