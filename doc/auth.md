@@ -51,9 +51,8 @@ use.
 Every provider can hold several *instances*: independent, named logins to
 different tenants of the same product (two Slack workspaces, two Atlassian
 sites, a SaaS and a self-hosted Sentry or Firecrawl). An unnamed `login`
-creates the
-instance named `default`, which is what unqualified commands use — a
-single-tenant setup never has to think about instances.
+creates the instance named `default`, which is what unqualified commands
+use — a single-tenant setup never has to think about instances.
 
 ```sh
 foac auth slack login --instance workb   # log the "workb" workspace in
@@ -83,10 +82,11 @@ A provider command picks its instance in this order:
 
 **Environment tokens belong to the default instance only.** When a named
 instance is selected, `SLACK_BOT_TOKEN`, `GITHUB_TOKEN`, the `gh` CLI
-fallback, `SENTRY_URL`, `FIRECRAWL_API_URL`, and the rest never apply: a named instance reads
-exactly its stored credentials, so an ambient token from workspace A can
-never leak into commands aimed at workspace B. Auth commands use the flag
-only — never folder defaults — so a `login` is never silently redirected.
+fallback, `SENTRY_URL`, `FIRECRAWL_API_URL`, and the rest never apply: a
+named instance reads exactly its stored credentials, so an ambient token from
+workspace A can never leak into commands aimed at workspace B. Auth commands
+use the flag only — never folder defaults — so a `login` is never silently
+redirected.
 
 Instances can be enabled or disabled like providers, globally or per folder:
 `foac provider disable slack --instance workb [--local]` writes the qualified

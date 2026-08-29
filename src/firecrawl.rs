@@ -188,10 +188,11 @@ struct Wait {
     #[arg(long)]
     wait: bool,
     /// Seconds between polls with --wait
-    #[arg(long, default_value_t = 5)]
+    #[arg(long, default_value_t = 5, requires = "wait")]
     poll_interval: u64,
-    /// Give up after this many seconds with --wait (default: no limit)
-    #[arg(long)]
+    /// Give up after this many seconds with --wait (default: no limit); the
+    /// error names the job ID so it can still be fetched or cancelled
+    #[arg(long, requires = "wait")]
     wait_timeout: Option<u64>,
 }
 
@@ -441,16 +442,7 @@ pub fn run(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let api = api(crate::auth::firecrawl_token(instance)?, format, instance)?;
     match cmd.command {
-        Resource::Scrape { url, from, options } => {
-            let payload = scrape_options(options)?;
-            pipe::run_get(url, from, api.format, |url| {
-                let mut payload = payload.clone();
-                payload.insert("url".into(), json!(url));
-                Ok(api
-                    .send(Method::POST, &path!["scrape"], &[], Some(payload.into()))?
-                    .body)
-            })
-        }
+        Resource::Scrape { url, from, options } => run_scrape(&api, url, from, options),
         Resource::Map {
             url,
             search,
@@ -542,6 +534,22 @@ pub(crate) fn auth_identity(
         &[],
         &[reqwest::StatusCode::UNAUTHORIZED],
     )
+}
+
+fn run_scrape(
+    api: &Api,
+    url: Option<String>,
+    from: FromFlag,
+    options: ScrapeOptions,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let payload = scrape_options(options)?;
+    pipe::run_get(url, from, api.format, |url| {
+        let mut payload = payload.clone();
+        payload.insert("url".into(), json!(url));
+        Ok(api
+            .send(Method::POST, &path!["scrape"], &[], Some(payload.into()))?
+            .body)
+    })
 }
 
 fn run_crawl(api: &Api, cmd: CrawlCmd) -> Result<(), Box<dyn std::error::Error>> {
@@ -717,19 +725,39 @@ fn create_job(
         .to_owned();
     let mut job = segments;
     job.push(id.clone());
-    let mut body = poll(
-        || api.get_body(job.clone(), Vec::new()),
+    // Every failure past this point names the job, so a timed-out or
+    // interrupted wait never loses the only handle on a paid job.
+    let named = |error: Box<dyn std::error::Error>| format!("job {id}: {error}");
+    // Status checks ask for one page: a long crawl's status body otherwise
+    // carries every page scraped so far, re-downloaded on every poll.
+    poll(
+        || api.get_body(job.clone(), vec![("limit", "1".to_owned())]),
         Duration::from_secs(wait.poll_interval),
         wait.wait_timeout.map(Duration::from_secs),
-    )?;
-    if let Some(object) = body.as_object_mut() {
-        object.entry("id").or_insert_with(|| json!(id));
-    }
-    crate::output::print(&body, api.format);
+    )
+    .map_err(named)?;
+    let body = api.get_body(job, Vec::new()).map_err(named)?;
+    crate::output::print(&finish_job(&created, body), api.format);
     Ok(())
 }
 
-/// Fetch a job's status until it is completed, failed, or cancelled.
+/// The final `--wait` body: the job status plus the creation response's
+/// `id` (status bodies omit it) and `invalidURLs` (batch scrape reports the
+/// rejected URLs only at creation).
+fn finish_job(created: &Value, mut status: Value) -> Value {
+    if let Some(object) = status.as_object_mut() {
+        for key in ["id", "invalidURLs"] {
+            if let Some(value) = created.get(key) {
+                object.entry(key).or_insert_with(|| value.clone());
+            }
+        }
+    }
+    status
+}
+
+/// Fetch a job's status while it is in flight. Anything but a known
+/// in-flight status is returned as-is, so an unexpected status prints
+/// rather than polling forever.
 fn poll(
     mut fetch: impl FnMut() -> Result<Value, Box<dyn std::error::Error>>,
     interval: Duration,
@@ -739,12 +767,15 @@ fn poll(
     loop {
         let body = fetch()?;
         let status = body["status"].as_str().unwrap_or("unknown");
-        if matches!(status, "completed" | "failed" | "cancelled") {
+        if !matches!(
+            status,
+            "scraping" | "processing" | "queued" | "waiting" | "pending"
+        ) {
             return Ok(body);
         }
         if timeout.is_some_and(|timeout| started.elapsed() >= timeout) {
             return Err(format!(
-                "job is still {status} after {}s; check on it later with `get`",
+                "still {status} after {}s; `get` it later",
                 started.elapsed().as_secs()
             )
             .into());
@@ -826,11 +857,15 @@ fn read_json(
     file: Option<PathBuf>,
     flag: &str,
 ) -> Result<Option<Value>, Box<dyn std::error::Error>> {
-    let text = match file {
-        Some(path) => Some(std::fs::read_to_string(path)?),
-        None => inline,
-    };
-    parse_json(text, flag)
+    match file {
+        Some(path) => {
+            let flag = format!("{flag}-file");
+            let text = std::fs::read_to_string(&path)
+                .map_err(|error| format!("{flag} {}: {error}", path.display()))?;
+            parse_json(Some(text), &flag)
+        }
+        None => parse_json(inline, flag),
+    }
 }
 
 fn insert_flag(object: &mut Map<String, Value>, name: &str, flag: bool) {
@@ -860,9 +895,6 @@ fn array_at(body: &Value, key: &str) -> Vec<Value> {
 /// Search results are grouped by source under `data`; flatten them into one
 /// list, web first, so the output is a foac list like any other.
 fn search_items(body: &Value) -> Vec<Value> {
-    if let Some(items) = body["data"].as_array() {
-        return items.clone();
-    }
     ["web", "news", "images"]
         .iter()
         .flat_map(|source| array_at(&body["data"], source))
@@ -987,16 +1019,12 @@ mod tests {
                 json!({ "url": "n" })
             ]
         );
-        assert_eq!(
-            search_items(&json!({ "data": [{ "url": "a" }] })),
-            vec![json!({ "url": "a" })]
-        );
         assert!(search_items(&json!({})).is_empty());
     }
 
     #[test]
     fn poll_stops_on_a_final_status_or_the_timeout() {
-        let statuses = std::cell::RefCell::new(vec!["completed", "scraping", "scraping"]);
+        let statuses = std::cell::RefCell::new(vec!["completed", "scraping", "processing"]);
         let body = poll(
             || Ok(json!({ "status": statuses.borrow_mut().pop().unwrap() })),
             Duration::ZERO,
@@ -1005,6 +1033,14 @@ mod tests {
         .unwrap();
         assert_eq!(body["status"], "completed");
         assert!(statuses.borrow().is_empty());
+
+        // An unrecognized status is returned rather than polled forever.
+        let body = poll(|| Ok(json!({ "status": "paused" })), Duration::ZERO, None).unwrap();
+        assert_eq!(body["status"], "paused");
+        assert_eq!(
+            poll(|| Ok(json!({})), Duration::ZERO, None).unwrap(),
+            json!({})
+        );
 
         let error = poll(
             || Ok(json!({ "status": "processing" })),
@@ -1015,6 +1051,85 @@ mod tests {
         assert!(error.to_string().contains("still processing"));
 
         assert!(poll(|| Err("boom".into()), Duration::ZERO, None).is_err());
+    }
+
+    #[test]
+    fn finished_jobs_carry_the_creation_id_and_invalid_urls() {
+        let created = json!({ "success": true, "id": "j1", "url": "...", "invalidURLs": ["x"] });
+        assert_eq!(
+            finish_job(&created, json!({ "status": "completed", "data": [] })),
+            json!({ "status": "completed", "data": [], "id": "j1", "invalidURLs": ["x"] })
+        );
+        // Fields the status body already has win; agents have no invalidURLs.
+        assert_eq!(
+            finish_job(
+                &json!({ "id": "j1" }),
+                json!({ "status": "failed", "id": "other" })
+            ),
+            json!({ "status": "failed", "id": "other" })
+        );
+        assert_eq!(
+            finish_job(&created, json!("not an object")),
+            json!("not an object")
+        );
+    }
+
+    #[test]
+    fn read_json_names_the_file_flag_and_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("schema.json");
+        let error = read_json(None, Some(missing.clone()), "--schema").unwrap_err();
+        assert!(error.to_string().starts_with("--schema-file "));
+        assert!(error.to_string().contains(&missing.display().to_string()));
+
+        std::fs::write(&missing, "{not json").unwrap();
+        let error = read_json(None, Some(missing.clone()), "--schema").unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .starts_with("--schema-file is not valid JSON")
+        );
+
+        std::fs::write(&missing, r#"{"type":"object"}"#).unwrap();
+        assert_eq!(
+            read_json(None, Some(missing), "--schema").unwrap(),
+            Some(json!({ "type": "object" }))
+        );
+        assert!(
+            read_json(Some("nope".into()), None, "--schema")
+                .unwrap_err()
+                .to_string()
+                .starts_with("--schema is not valid JSON")
+        );
+    }
+
+    #[test]
+    fn scrape_posts_the_url_with_the_scrape_options() {
+        let (api, request_rx, server) = test_api("200 OK", r#"{"success":true,"data":{}}"#);
+        run_scrape(
+            &api,
+            Some("https://example.com".into()),
+            FromFlag::default(),
+            ScrapeOptions {
+                formats: vec!["markdown".into(), "links".into()],
+                only_main_content: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        server.join().unwrap();
+
+        let request = request_rx.recv().unwrap();
+        assert!(request.starts_with("POST /v2/scrape "));
+        let (_, body) = request.split_once("\r\n\r\n").unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(body).unwrap(),
+            json!({
+                "url": "https://example.com",
+                "formats": ["markdown", "links"],
+                "onlyMainContent": false,
+            })
+        );
     }
 
     #[test]

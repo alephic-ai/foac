@@ -12,8 +12,11 @@ coexist as named instances (see [auth.md](auth.md)); a self-hosted deployment
 with authentication disabled accepts any non-empty token. `FIRECRAWL_API_URL`
 overrides the saved host for the default instance only. `scrape`, `map`, and
 `search` answer synchronously. `crawl`, `batch-scrape`, and `agent` are
-jobs: `create` returns an ID, `get` reads the status and scraped pages,
-`cancel` stops it, and `create --wait` polls until the job settles.
+jobs: `create` returns an ID, `get` reads the status and result (scraped
+pages for crawl and batch-scrape, the agent's answer for agent), `cancel`
+stops it, `errors` lists the pages a crawl or batch scrape failed on, and
+`create --wait` polls until the job settles; a wait that times out names the
+job ID so it can still be fetched or cancelled.
 
 ```sh
 export FIRECRAWL_API_KEY=fc-...

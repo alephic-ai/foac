@@ -54,9 +54,9 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   `--host`; default `https://api.firecrawl.dev`, an explicit `http://` is
   kept for local deployments). Sentry and Firecrawl share the hosted login
   path in `auth.rs` (`Provider::hosted`). `scrape`, `map`, and `search` are
-  synchronous POSTs;
-  `crawl`, `batch/scrape`, and `agent` are jobs created by POST and read by
-  GET on their ID, so `create --wait` polls until the status is terminal.
+  synchronous POSTs; `crawl`, `batch/scrape`, and `agent` are jobs created
+  by POST and read by GET on their ID, so `create --wait` polls (one page per
+  poll) until the status is terminal, then fetches the full status.
   Nothing paginates with cursors: `map`, `search`, and `crawl list` print
   single-page lists, and a job status carries a `next` URL whose `skip`
   value feeds `get --skip`.

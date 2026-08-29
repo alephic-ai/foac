@@ -850,7 +850,7 @@ fn login(
     let hosted = provider.hosted();
     let url = match (&hosted, host) {
         (Some(hosted), Some(host)) => Some((hosted.normalize)(&host)),
-        (Some(hosted), None) => read_host(hosted)?,
+        (Some(hosted), None) => read_host(provider, hosted)?,
         (None, _) => None,
     };
     if let Some(hosted) = &hosted {
@@ -1931,11 +1931,18 @@ fn github_cli_token() -> Result<Option<String>, String> {
 /// Ask which host to log in to, defaulting to the provider's cloud host.
 /// Skipped when stdin is redirected: piped input stays token-only, and the
 /// host falls back to the environment, then the stored URL, then the default.
-fn read_host(hosted: &Hosted) -> Result<Option<String>, Box<dyn std::error::Error>> {
+fn read_host(
+    provider: Provider,
+    hosted: &Hosted,
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
     if !std::io::stdin().is_terminal() {
         return Ok(None);
     }
-    eprint!("Host [{}]: ", hosted.default_host);
+    eprint!(
+        "{} host [{}]: ",
+        provider.display_name(),
+        hosted.default_host
+    );
     let mut line = String::new();
     std::io::stdin().read_line(&mut line)?;
     Ok(Some((hosted.normalize)(&line)))

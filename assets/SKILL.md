@@ -346,12 +346,15 @@ foac <provider> <resource> <verb> [flags]
   result. The same per-page flags apply to `crawl create` and
   `batch-scrape create`.
 - **Firecrawl jobs**: `crawl`, `batch-scrape`, and `agent` are asynchronous.
-  `create` returns `{"id": ...}` at once; `get ID` reads the job's status and
-  pages (`data`); `cancel ID` stops it; `errors ID` lists failed pages. Add
+  `create` returns `{"id": ...}` at once; `get ID` reads the job's status
+  and result (scraped pages in `data` for crawl and batch-scrape, the
+  agent's answer in `data` for agent); `cancel ID` stops it. Crawl and
+  batch-scrape also have `errors ID` (failed pages) and `get --skip N`: a
+  status with a `next` URL has more pages, pass its `skip` value. Add
   `--wait [--poll-interval S] [--wait-timeout S]` to `create` to block until
   the job is `completed`, `failed`, or `cancelled` and print that final
-  status with `id` added. A status with a `next` URL has more pages: pass
-  its `skip` value to `get --skip N`.
+  status with `id` added; a timed-out or failed wait reports the job ID on
+  stderr so the job can still be fetched or cancelled.
 - **Firecrawl agents**: `agent create "PROMPT" [--url URL]... [--schema JSON]
   [--max-credits N]` runs a browsing agent; results land in `data` once
   `completed`. Agents spend tokens (`team token-usage`) on top of credits.

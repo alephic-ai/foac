@@ -1,11 +1,11 @@
 # foac
 
 foac, the Father Of All CLIs, wraps external SaaS APIs (Linear, GitHub, Jira,
-Confluence, Neon, Sentry, Slack, Vercel, Firecrawl, more to come) behind one command
-grammar: `foac <provider> <resource> <verb>`. The primary consumer is an LLM
-agent working in a shell. Humans at a TTY get a rendering layer on top of the
-same output. foac makes any provider's API discoverable, uniform, and already
-authenticated. It does not abstract those APIs or try to improve them.
+Confluence, Neon, Sentry, Slack, Vercel, Firecrawl, more to come) behind one
+command grammar: `foac <provider> <resource> <verb>`. The primary consumer is
+an LLM agent working in a shell. Humans at a TTY get a rendering layer on top
+of the same output. foac makes any provider's API discoverable, uniform, and
+already authenticated. It does not abstract those APIs or try to improve them.
 
 ## How the system maps to the world
 
@@ -29,12 +29,12 @@ and output (JSON for machines, tables for humans, decided per invocation).
 ```text
                  main.rs  (parse, dispatch, provider hiding, skill render)
                     │
-   ┌────────────┬────────────┬───────────────┬───────────────┬────────────┬──────────────┬─────────────┐
-   │ linear.rs  │ github.rs  │ jira.rs       │ neon.rs       │ slack.rs   │ vercel.rs    │ auth.rs     │
-   │ (GraphQL,  │ (REST,     │ confluence.rs │ sentry.rs     │ (REST,     │ firecrawl.rs │ provider.rs │
+   ┌────────────┬────────────┬───────────────┬───────────────┬────────────┬───────────────┬─────────────┐
+   │ linear.rs  │ github.rs  │ jira.rs       │ neon.rs       │ slack.rs   │ vercel.rs     │ auth.rs     │
+   │ (GraphQL,  │ (REST,     │ confluence.rs │ sentry.rs     │ (REST,     │ firecrawl.rs  │ provider.rs │
    │  codegen)  │  untyped)  │ (REST,untyped)│ (REST,untyped)│  untyped)  │ (REST,untyped)│ update.rs   │
-   └─────┬──────┴─────┬──────┴───────┬───────┴───────┬───────┴─────┬──────┴──────┬───────┴─────────────┘
-         └────────────┴──────────────┴───────────────┴────────────┴─────────────┬───┘
+   └─────┬──────┴─────┬──────┴───────┬───────┴───────┬───────┴─────┬──────┴───────┬───────┴─────────────┘
+         └────────────┴──────────────┴───────────────┴─────────────┴────────┬─────┘
                                                                             ▼
                         output.rs  (single shared printer: JSON | table)
 ```
