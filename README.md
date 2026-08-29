@@ -25,9 +25,6 @@ With [Homebrew](https://brew.sh), on macOS or Linux:
 brew install alephic-ai/tap/foac
 ```
 
-Homebrew owns the binary it installs, so keep it current with `brew upgrade
-foac` rather than `foac update`.
-
 With [mise](https://mise.jdx.dev), on macOS, Linux, or Windows:
 
 ```sh
