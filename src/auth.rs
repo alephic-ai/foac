@@ -34,6 +34,8 @@ enum AuthCmd {
     Sentry(SentryCmd),
     /// Configure Vercel authentication
     Vercel(ProviderCmd),
+    /// Configure Firecrawl authentication
+    Firecrawl(ProviderCmd),
 }
 
 #[derive(Args)]
@@ -136,6 +138,7 @@ pub enum Provider {
     Slack,
     Sentry,
     Vercel,
+    Firecrawl,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -266,7 +269,21 @@ pub fn run(
         AuthCmd::Vercel(cmd) => {
             run_provider(Provider::Vercel, cmd.command, &store, format, instance)
         }
+        AuthCmd::Firecrawl(cmd) => {
+            run_provider(Provider::Firecrawl, cmd.command, &store, format, instance)
+        }
     }
+}
+
+pub(crate) fn firecrawl_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
+    resolve_stored(
+        Provider::Firecrawl,
+        environment_token(Provider::Firecrawl),
+        &crate::provider::CredentialStore,
+        instance,
+    )
+    .map(|credential| credential.token)
+    .map_err(Into::into)
 }
 
 pub(crate) fn linear_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -601,6 +618,7 @@ impl Provider {
             Self::Slack => "slack",
             Self::Sentry => "sentry",
             Self::Vercel => "vercel",
+            Self::Firecrawl => "firecrawl",
         }
     }
 
@@ -614,6 +632,7 @@ impl Provider {
             Self::Slack => "Slack",
             Self::Sentry => "Sentry",
             Self::Vercel => "Vercel",
+            Self::Firecrawl => "Firecrawl",
         }
     }
 
@@ -626,6 +645,7 @@ impl Provider {
             Self::Slack => "SLACK_BOT_TOKEN",
             Self::Sentry => "SENTRY_AUTH_TOKEN",
             Self::Vercel => "VERCEL_TOKEN",
+            Self::Firecrawl => "FIRECRAWL_API_KEY",
         }
     }
 
@@ -638,6 +658,7 @@ impl Provider {
             Self::Slack => crate::provider::Credential::SlackBot,
             Self::Sentry => crate::provider::Credential::Sentry,
             Self::Vercel => crate::provider::Credential::Vercel,
+            Self::Firecrawl => crate::provider::Credential::Firecrawl,
         }
     }
 }
@@ -1135,6 +1156,7 @@ fn provider_from_status_key(key: &str) -> Option<Provider> {
         "slack" => Some(Provider::Slack),
         "sentry" => Some(Provider::Sentry),
         "vercel" => Some(Provider::Vercel),
+        "firecrawl" => Some(Provider::Firecrawl),
         _ => None,
     }
 }
@@ -1220,6 +1242,18 @@ fn account_identity(provider: Provider, account: &Value) -> String {
         Provider::Slack => slack_identity(account),
         Provider::Sentry => sentry_identity(account),
         Provider::Vercel => vercel_identity(account),
+        Provider::Firecrawl => firecrawl_identity(account),
+    }
+}
+
+fn firecrawl_identity(account: &Value) -> String {
+    match (
+        account["remainingCredits"].as_u64(),
+        account["planCredits"].as_u64(),
+    ) {
+        (Some(remaining), Some(plan)) => format!("{remaining} of {plan} credits left"),
+        (Some(remaining), None) => format!("{remaining} credits left"),
+        _ => String::new(),
     }
 }
 
@@ -1347,7 +1381,11 @@ fn provider_status(provider: Provider, store: &dyn SecretStore, instance: &str) 
         };
     }
     let resolved = match provider {
-        Provider::Linear | Provider::Neon | Provider::Sentry | Provider::Vercel => {
+        Provider::Linear
+        | Provider::Neon
+        | Provider::Sentry
+        | Provider::Vercel
+        | Provider::Firecrawl => {
             resolve_stored(provider, environment_token(provider), store, instance)
         }
         Provider::Github => resolve_github(
@@ -1377,6 +1415,7 @@ fn all_provider_statuses(store: &dyn SecretStore) -> Value {
         Provider::Slack,
         Provider::Sentry,
         Provider::Vercel,
+        Provider::Firecrawl,
     ];
     let mut statuses = serde_json::Map::new();
     for provider in providers {
@@ -1685,7 +1724,21 @@ fn validate(
             crate::sentry::auth_identity(token, sentry_url, instance).map(sentry_account)
         }
         Provider::Vercel => crate::vercel::auth_identity(token).map(vercel_account),
+        Provider::Firecrawl => {
+            crate::firecrawl::auth_identity(token, instance).map(firecrawl_account)
+        }
     }
+}
+
+/// Firecrawl has no whoami; the credit-usage endpoint is the identity check,
+/// and its balance is the safe account detail.
+fn firecrawl_account(identity: Value) -> Value {
+    let usage = &identity["data"];
+    json!({
+        "remainingCredits": usage["remainingCredits"],
+        "planCredits": usage["planCredits"],
+        "billingPeriodEnd": usage["billingPeriodEnd"],
+    })
 }
 
 fn jira_account(host: &str, identity: &Value) -> Value {
@@ -1871,6 +1924,9 @@ fn print_login_help(
         Provider::Vercel => eprintln!(
             "Create an access token at https://vercel.com/account/settings/tokens and grant the scope needed by your foac commands."
         ),
+        Provider::Firecrawl => {
+            eprintln!("Create an API key at https://www.firecrawl.dev/app/api-keys.")
+        }
     }
     Ok(())
 }
@@ -2679,6 +2735,32 @@ mod tests {
         assert_eq!(account_identity(Provider::Sentry, &sentry), "acme, globex");
         assert_eq!(
             account_identity(Provider::Sentry, &sentry_account(json!([]))),
+            ""
+        );
+
+        let firecrawl = firecrawl_account(json!({
+            "success": true,
+            "data": {
+                "remainingCredits": 489590,
+                "planCredits": 500000,
+                "billingPeriodStart": "2026-08-26T22:00:10.000Z",
+                "billingPeriodEnd": "2026-09-26T22:00:10.000Z",
+            },
+        }));
+        assert_eq!(
+            firecrawl,
+            json!({
+                "remainingCredits": 489590,
+                "planCredits": 500000,
+                "billingPeriodEnd": "2026-09-26T22:00:10.000Z",
+            })
+        );
+        assert_eq!(
+            account_identity(Provider::Firecrawl, &firecrawl),
+            "489590 of 500000 credits left"
+        );
+        assert_eq!(
+            account_identity(Provider::Firecrawl, &firecrawl_account(json!({}))),
             ""
         );
     }

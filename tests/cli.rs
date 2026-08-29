@@ -65,6 +65,7 @@ fn provider_list_defaults_to_all_enabled_json() {
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     for name in [
         "confluence",
+        "firecrawl",
         "github",
         "jira",
         "linear",

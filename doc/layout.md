@@ -48,6 +48,14 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   `operations`) read the next cursor from the response body's
   `pagination.cursor`; Neon returns that cursor even on the last page, so
   `hasNextPage` uses a full-page heuristic instead.
+- Firecrawl uses REST API v2 with a bearer API key against
+  `https://api.firecrawl.dev` (`FIRECRAWL_API_URL` overrides it for the
+  default instance). `scrape`, `map`, and `search` are synchronous POSTs;
+  `crawl`, `batch/scrape`, and `agent` are jobs created by POST and read by
+  GET on their ID, so `create --wait` polls until the status is terminal.
+  Nothing paginates with cursors: `map`, `search`, and `crawl list` print
+  single-page lists, and a job status carries a `next` URL whose `skip`
+  value feeds `get --skip`.
 - Vercel uses bearer-authenticated REST endpoints against
   `https://api.vercel.com`; API versions vary by endpoint. Team-owned
   resources add `teamId`, and list responses use `pagination.next` as the

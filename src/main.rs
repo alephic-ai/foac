@@ -1,7 +1,8 @@
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
 use foac::{
-    auth, confluence, github, jira, linear, neon, output, provider, sentry, slack, update, vercel,
+    auth, confluence, firecrawl, github, jira, linear, neon, output, provider, sentry, slack,
+    update, vercel,
 };
 
 #[derive(Parser)]
@@ -41,6 +42,8 @@ enum Command {
     Auth(auth::Cmd),
     /// Interact with Confluence
     Confluence(confluence::Cmd),
+    /// Interact with Firecrawl
+    Firecrawl(firecrawl::Cmd),
     /// Interact with GitHub
     Github(github::Cmd),
     /// Interact with Jira
@@ -115,6 +118,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let result = match command {
         Command::Auth(cmd) => auth::run(cmd, format, instance_flag.clone()),
         Command::Confluence(cmd) => confluence::run(cmd, format, &provider_instance("confluence")?),
+        Command::Firecrawl(cmd) => firecrawl::run(cmd, format, &provider_instance("firecrawl")?),
         Command::Github(cmd) => github::run(cmd, format, &provider_instance("github")?),
         Command::Jira(cmd) => jira::run(cmd, format, &provider_instance("jira")?),
         Command::Linear(cmd) => linear::run(cmd, format, &provider_instance("linear")?),
@@ -202,17 +206,21 @@ enum SkillCmd {
     Install,
 }
 
-fn providers() -> Result<[Provider; 8], Box<dyn std::error::Error>> {
+fn providers() -> Result<[Provider; 9], Box<dyn std::error::Error>> {
     let settings = provider::SettingsStore.load()?;
     Ok(providers_where(|name| settings.enabled(name)))
 }
 
-fn providers_where(enabled: impl Fn(&str) -> bool) -> [Provider; 8] {
+fn providers_where(enabled: impl Fn(&str) -> bool) -> [Provider; 9] {
     // Settings first: short-circuit skips the keychain/`gh` probe when disabled.
     [
         Provider::new(
             "confluence",
             enabled("confluence") && confluence::authenticated(),
+        ),
+        Provider::new(
+            "firecrawl",
+            enabled("firecrawl") && firecrawl::authenticated(),
         ),
         Provider::new("github", enabled("github") && github::authenticated()),
         Provider::new("jira", enabled("jira") && jira::authenticated()),
@@ -542,6 +550,7 @@ mod tests {
             vec!["slack"],
             vec!["jira"],
             vec!["confluence"],
+            vec!["firecrawl"],
             vec!["neon"],
             vec!["vercel"],
             provider::PROVIDERS.to_vec(),
@@ -551,6 +560,7 @@ mod tests {
                 let help = parse_error(&providers, args).to_string();
                 for name in [
                     "confluence",
+                    "firecrawl",
                     "github",
                     "jira",
                     "linear",
@@ -581,6 +591,7 @@ mod tests {
         let providers = test_providers(&[]);
         for args in [
             vec!["foac", "confluence", "page", "list"],
+            vec!["foac", "firecrawl", "scrape", "https://example.com"],
             vec!["foac", "github", "issue", "list", "--repo", "owner/repo"],
             vec!["foac", "jira", "issue", "list", "--jql", "project = ENG"],
             vec!["foac", "linear", "team", "list"],
@@ -601,6 +612,7 @@ mod tests {
                 vec!["foac", "confluence", "--help"],
                 "Usage: foac confluence",
             ),
+            (vec!["foac", "firecrawl", "--help"], "Usage: foac firecrawl"),
             (vec!["foac", "github", "--help"], "Usage: foac github"),
             (vec!["foac", "jira", "--help"], "Usage: foac jira"),
             (vec!["foac", "linear", "--help"], "Usage: foac linear"),
@@ -628,6 +640,7 @@ mod tests {
     fn skill_documents_one_provider() {
         let examples = [
             ("confluence", "foac confluence page list"),
+            ("firecrawl", "foac firecrawl scrape"),
             ("github", "foac github issue list"),
             ("jira", "foac jira issue list"),
             ("linear", "foac linear issue list"),
@@ -663,6 +676,7 @@ mod tests {
             vec!["foac", "auth", "neon"],
             vec!["foac", "auth", "jira"],
             vec!["foac", "auth", "confluence"],
+            vec!["foac", "auth", "firecrawl"],
             vec!["foac", "auth", "sentry"],
             vec!["foac", "auth", "slack"],
             vec!["foac", "auth", "vercel"],
@@ -734,13 +748,16 @@ mod tests {
             vec!["foac", "auth", "vercel", "status"],
             vec!["foac", "auth", "vercel", "login"],
             vec!["foac", "auth", "vercel", "logout"],
+            vec!["foac", "auth", "firecrawl", "status"],
+            vec!["foac", "auth", "firecrawl", "login"],
+            vec!["foac", "auth", "firecrawl", "logout"],
             vec!["foac", "auth", "slack", "login", "--instance", "workb"],
             vec!["foac", "auth", "slack", "logout", "-i", "workb"],
         ] {
             Cli::try_parse_from(args).unwrap();
         }
         // --host is a Sentry and Jira login flag; clap rejects it elsewhere.
-        for provider in ["linear", "github", "neon", "slack", "vercel"] {
+        for provider in ["linear", "github", "neon", "slack", "vercel", "firecrawl"] {
             let parsed =
                 Cli::try_parse_from(["foac", "auth", provider, "login", "--host", "example.com"]);
             assert!(parsed.is_err());
@@ -907,6 +924,8 @@ mod tests {
             vec!["foac", "github", "issue", "get", "--from", "number"],
             vec!["foac", "jira", "issue", "get", "--from", "key"],
             vec!["foac", "confluence", "page", "get", "--from", "id"],
+            vec!["foac", "firecrawl", "scrape", "--from", "url"],
+            vec!["foac", "firecrawl", "crawl", "get", "--from", "id"],
             vec!["foac", "neon", "branch", "get", "--from", "id"],
             vec![
                 "foac", "sentry", "issue", "get", "--org", "acme", "--from", "shortId",
@@ -940,10 +959,9 @@ mod tests {
             .unwrap()
             .to_string();
         assert!(missing_provider.contains("<PROVIDER>"));
-        assert!(
-            missing_provider
-                .contains("possible values: confluence, github, jira, linear, neon, sentry, slack")
-        );
+        assert!(missing_provider.contains(
+            "possible values: confluence, firecrawl, github, jira, linear, neon, sentry, slack"
+        ));
         assert!(Cli::try_parse_from(["foac", "skill", "print", "nope"]).is_err());
         assert!(matches!(
             Cli::try_parse_from(["foac", "skill", "print", "linear"])
@@ -1025,9 +1043,10 @@ mod tests {
         );
     }
 
-    fn test_providers(active: &[&str]) -> [Provider; 8] {
+    fn test_providers(active: &[&str]) -> [Provider; 9] {
         [
             Provider::new("confluence", active.contains(&"confluence")),
+            Provider::new("firecrawl", active.contains(&"firecrawl")),
             Provider::new("github", active.contains(&"github")),
             Provider::new("jira", active.contains(&"jira")),
             Provider::new("linear", active.contains(&"linear")),

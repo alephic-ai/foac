@@ -33,6 +33,9 @@ foac auth slack logout
 foac auth vercel status
 foac auth vercel login
 foac auth vercel logout
+foac auth firecrawl status
+foac auth firecrawl login
+foac auth firecrawl logout
 ```
 
 `login` prints a link and permission guidance, securely prompts for a personal
