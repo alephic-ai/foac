@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// `npx foac` and `npm install -g foac` land here. npm installed the one
-// @alephic/foac-<platform> package that matches this machine — the others
-// are optionalDependencies its os/cpu fields ruled out — and this shim runs
-// the binary inside it. Per-platform packages are what keeps an install from
-// downloading all six binaries.
+// `npx @alephic/foac` and `npm install -g @alephic/foac` land here. npm
+// installed the one @alephic/foac-<platform> package that matches this machine
+// — the others are optionalDependencies its os/cpu fields ruled out — and this
+// shim runs the binary inside it. Per-platform packages are what keeps an
+// install from downloading all six binaries.
 "use strict";
 
 const { spawnSync } = require("node:child_process");

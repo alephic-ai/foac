@@ -21,14 +21,17 @@ agent harnesses already have on hand:
   the musllinux tag, since a binary linking no libc honours either promise.
   Trusted Publishing again, and PyPI accepts a pending publisher for a project
   that does not exist yet, so the first release needs no setup.
-- **npm**, for `npx foac`. Six `@alephic/foac-<os>-<cpu>` packages, one
-  binary each, plus a `foac` package whose `optionalDependencies` list all six
-  and whose `bin` is `npm/foac.js`, the shim that runs whichever one npm's
-  `os`/`cpu` filtering installed. This is the one registry with a secret:
-  npm cannot configure a trusted publisher for a package name that does not
-  exist yet, so publishing uses `NPM_TOKEN`, a granular token with write access
-  to the `@alephic` scope and to `foac`. Migrating a package to OIDC later
-  means configuring it on npmjs.com and dropping the secret.
+- **npm**, for `npx @alephic/foac`. Six `@alephic/foac-<os>-<cpu>` packages,
+  one binary each, plus an `@alephic/foac` package whose
+  `optionalDependencies` list all six and whose `bin` is `npm/foac.js`, the
+  shim that runs whichever one npm's `os`/`cpu` filtering installed. The
+  wrapper is scoped because npm rejects the bare name: its similarity filter
+  reads `foac` as too close to `cac`, `flat`, `solc`, `koa` and `soap`, and
+  scoped names skip that check. This is also the one registry with a secret —
+  npm cannot configure a trusted publisher for a package that does not exist
+  yet, so publishing uses `NPM_TOKEN`, a granular token with write access to
+  the `@alephic` scope. Migrating a package to OIDC later means configuring it
+  on npmjs.com and dropping the secret.
 
 Both jobs check before they publish — the wheel into a venv, the shim against a
 linked platform package — because a broken installer is only visible on install.

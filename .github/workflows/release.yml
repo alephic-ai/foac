@@ -309,7 +309,7 @@ jobs:
           cp npm/foac.js staging/foac/foac.js
           cat > staging/foac/package.json <<JSON
           {
-            "name": "foac",
+            "name": "@alephic/foac",
             "version": "${version}",
             "description": "foac, the Father Of All CLIs",
             "license": "GPL-3.0-or-later",

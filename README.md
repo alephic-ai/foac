@@ -39,12 +39,13 @@ installing anything:
 
 ```sh
 uvx foac --help
-npx foac --help
+npx @alephic/foac --help
 ```
 
 Those two ship the same release binary as a wheel and as an npm package, so
-`uv tool install foac` and `npm install -g foac` keep it around. Whichever
-installed foac is the one that upgrades it, and `foac update` says so.
+`uv tool install foac` and `npm install -g @alephic/foac` keep it around.
+Whichever installed foac is the one that upgrades it, and `foac update` says
+so.
 
 With [cargo](https://doc.rust-lang.org/cargo/), from source:
 

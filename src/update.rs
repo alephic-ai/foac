@@ -243,7 +243,7 @@ fn package_manager(executable: &Path) -> Option<(&'static str, &'static str)> {
         return Some(("Homebrew", "brew upgrade foac"));
     }
     if parts.iter().any(|part| *part == "node_modules") {
-        return Some(("npm", "npm install -g foac@latest"));
+        return Some(("npm", "npm install -g @alephic/foac@latest"));
     }
     if executable.parent()?.parent()?.join("pyvenv.cfg").is_file() {
         return Some(("uv", "uv tool upgrade foac"));
@@ -554,11 +554,11 @@ mod tests {
             ),
             (
                 "/usr/lib/node_modules/foac/node_modules/@alephic/foac-linux-x64/bin/foac",
-                "npm install -g foac@latest",
+                "npm install -g @alephic/foac@latest",
             ),
             (
                 "/home/u/.npm/_npx/0e1/node_modules/@alephic/foac-linux-x64/bin/foac",
-                "npm install -g foac@latest",
+                "npm install -g @alephic/foac@latest",
             ),
         ] {
             assert_eq!(
