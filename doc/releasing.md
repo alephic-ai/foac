@@ -21,13 +21,13 @@ agent harnesses already have on hand:
   the musllinux tag, since a binary linking no libc honours either promise.
   Trusted Publishing again, and PyPI accepts a pending publisher for a project
   that does not exist yet, so the first release needs no setup.
-- **npm**, for `npx foac`. Six `@alephic-ai/foac-<os>-<cpu>` packages, one
+- **npm**, for `npx foac`. Six `@alephic/foac-<os>-<cpu>` packages, one
   binary each, plus a `foac` package whose `optionalDependencies` list all six
   and whose `bin` is `npm/foac.js`, the shim that runs whichever one npm's
   `os`/`cpu` filtering installed. This is the one registry with a secret:
   npm cannot configure a trusted publisher for a package name that does not
   exist yet, so publishing uses `NPM_TOKEN`, a granular token with write access
-  to the `@alephic-ai` scope and to `foac`. Migrating a package to OIDC later
+  to the `@alephic` scope and to `foac`. Migrating a package to OIDC later
   means configuring it on npmjs.com and dropping the secret.
 
 Both jobs check before they publish — the wheel into a venv, the shim against a

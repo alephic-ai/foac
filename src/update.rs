@@ -553,11 +553,11 @@ mod tests {
                 "brew upgrade foac",
             ),
             (
-                "/usr/lib/node_modules/foac/node_modules/@alephic-ai/foac-linux-x64/bin/foac",
+                "/usr/lib/node_modules/foac/node_modules/@alephic/foac-linux-x64/bin/foac",
                 "npm install -g foac@latest",
             ),
             (
-                "/home/u/.npm/_npx/0e1/node_modules/@alephic-ai/foac-linux-x64/bin/foac",
+                "/home/u/.npm/_npx/0e1/node_modules/@alephic/foac-linux-x64/bin/foac",
                 "npm install -g foac@latest",
             ),
         ] {

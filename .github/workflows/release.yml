@@ -293,7 +293,7 @@ jobs:
             fi
             cat > "$dir/package.json" <<JSON
           {
-            "name": "@alephic-ai/foac-${os}-${cpu}",
+            "name": "@alephic/foac-${os}-${cpu}",
             "version": "${version}",
             "description": "foac binary for ${os} ${cpu}",
             "license": "GPL-3.0-or-later",
@@ -303,7 +303,7 @@ jobs:
             "files": ["bin"]
           }
           JSON
-            deps="${deps}${deps:+, }\"@alephic-ai/foac-${os}-${cpu}\": \"${version}\""
+            deps="${deps}${deps:+, }\"@alephic/foac-${os}-${cpu}\": \"${version}\""
           done
           mkdir -p staging/foac
           cp npm/foac.js staging/foac/foac.js
@@ -322,8 +322,8 @@ jobs:
       - name: Check the shim finds and runs its binary
         run: |
           set -euo pipefail
-          mkdir -p staging/foac/node_modules/@alephic-ai
-          ln -s ../../../foac-linux-x64 staging/foac/node_modules/@alephic-ai/foac-linux-x64
+          mkdir -p staging/foac/node_modules/@alephic
+          ln -s ../../../foac-linux-x64 staging/foac/node_modules/@alephic/foac-linux-x64
           node staging/foac/foac.js version
           rm -rf staging/foac/node_modules
       - name: Publish
