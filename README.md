@@ -17,6 +17,24 @@ If your agents spend their context loading MCP tool catalogs and fetching API
 docs, foac replaces all of that with a single binary that already knows the
 APIs.
 
+## Install
+
+With [Homebrew](https://brew.sh), on macOS or Linux:
+
+```sh
+brew install alephic-ai/tap/foac
+```
+
+With [mise](https://mise.jdx.dev), on macOS, Linux, or Windows:
+
+```sh
+mise use -g github:alephic-ai/foac
+```
+
+That installs the `foac` binary from
+[GitHub Releases](https://github.com/alephic-ai/foac/releases) and puts it on
+your `PATH`; `foac update` keeps it current after that.
+
 ## The picture
 
 Without foac, every harness wires up its own adapters — a mix of MCP servers
@@ -136,18 +154,6 @@ graph LR
 
 Candidates for more providers are tracked in
 [GitHub issues](https://github.com/alephic-ai/foac/issues).
-
-## Install
-
-With [mise](https://mise.jdx.dev), on macOS, Linux, or Windows:
-
-```sh
-mise use -g github:alephic-ai/foac
-```
-
-This installs the `foac` binary from
-[GitHub Releases](https://github.com/alephic-ai/foac/releases) and puts it on
-your `PATH`; `foac update` keeps it current after that.
 
 ## Quick start
 

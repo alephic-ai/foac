@@ -187,3 +187,85 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.prepare.outputs.tag }}
         run: gh release edit "$TAG" --draft=false
+
+  homebrew:
+    name: Update Homebrew tap
+    needs: [prepare, publish-release]
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      # The bot is a bypass actor on the org rulesets that gate every default
+      # branch; github.token would be rejected pushing to the tap's main.
+      - name: Generate Alephic Bot token
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ vars.ALEPHIC_BOT_APP_ID }}
+          private-key: ${{ secrets.ALEPHIC_BOT_SECRET }}
+          repositories: homebrew-tap
+          permission-contents: write
+      - uses: actions/checkout@v7
+        with:
+          repository: alephic-ai/homebrew-tap
+          token: ${{ steps.app-token.outputs.token }}
+      # The formula is generated, never hand-edited: the release tarballs and
+      # their .sha256 sidecars are all a binary formula needs. Fix a bad one
+      # here, not in the tap.
+      - env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          base="https://github.com/alephic-ai/foac/releases/download/${TAG}"
+          sha() { curl -fsSL "${base}/foac-$1.sha256" | cut -d' ' -f1; }
+          mkdir -p Formula
+          # `brew style` rejects a desc opening with an article or with the
+          # formula name, so this is not the repo's own description.
+          cat > Formula/foac.rb <<EOF
+          class Foac < Formula
+            desc "Father Of All CLIs, one CLI for every service your agents touch"
+            homepage "https://github.com/alephic-ai/foac"
+            version "${TAG#v}"
+            license "GPL-3.0-or-later"
+
+            on_macos do
+              on_arm do
+                url "${base}/foac-aarch64-apple-darwin.tar.gz"
+                sha256 "$(sha aarch64-apple-darwin)"
+              end
+              on_intel do
+                url "${base}/foac-x86_64-apple-darwin.tar.gz"
+                sha256 "$(sha x86_64-apple-darwin)"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "${base}/foac-aarch64-unknown-linux-gnu.tar.gz"
+                sha256 "$(sha aarch64-unknown-linux-gnu)"
+              end
+              on_intel do
+                url "${base}/foac-x86_64-unknown-linux-gnu.tar.gz"
+                sha256 "$(sha x86_64-unknown-linux-gnu)"
+              end
+            end
+
+            def install
+              bin.install "foac"
+            end
+
+            def caveats
+              "Use 'brew upgrade foac', not 'foac update': the next brew upgrade overwrites a self-replaced binary."
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/foac version")
+            end
+          end
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/foac.rb
+          git diff --quiet --cached || git commit -m "foac ${TAG#v}"
+          # Another tool releasing at once pushes here too; concurrency groups
+          # are per-repo, so the loser rebases instead of failing the release.
+          git push || { git pull --rebase && git push; }
