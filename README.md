@@ -47,27 +47,26 @@ and one-off CLIs, each with its own config and its own copy of your tokens:
 
 ```mermaid
 graph LR
-    CC([Claude Code]) --> LMCP & GHCLI & AMCP & SLMCPA & SLMCPB & VCLI & FMCP
-    GRK([Grok Build]) --> LMCP & GHCLI & AMCP & SLMCPA & SLMCPB & VCLI & FMCP
-    CX([Codex]) --> LMCP & GHCLI & AMCP & SLMCPA & SLMCPB & VCLI & FMCP
+    CC([Claude Code]) --> LMCP & GHCLI & AMCP & SLMCPA & SLMCPB & VCLI
+    GRK([Grok Build]) --> LMCP & GHCLI & AMCP & SLMCPA & SLMCPB & VCLI
+    CX([Codex]) --> LMCP & GHCLI & AMCP & SLMCPA & SLMCPB & VCLI
     LMCP{{Linear MCP server}} --> Linear[(Linear)]
     GHCLI[[gh CLI]] --> GitHub[(GitHub)]
     AMCP{{Atlassian MCP server}} --> Jira[(Jira)] & Confluence[(Confluence)]
     SLMCPA{{Slack MCP server A}} --> SlackA[(Slack workspace A)]
     SLMCPB{{Slack MCP server B}} --> SlackB[(Slack workspace B)]
     VCLI[[Vercel CLI]] --> Vercel[(Vercel)]
-    FMCP{{Firecrawl MCP server}} --> Firecrawl[(Firecrawl)]
     classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
     classDef mcp fill:#ffe0b2,stroke:#e65100,color:#000
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
     class CC,GRK,CX harness
-    class LMCP,AMCP,SLMCPA,SLMCPB,FMCP mcp
+    class LMCP,AMCP,SLMCPA,SLMCPB mcp
     class GHCLI,VCLI cli
-    class Linear,GitHub,Jira,Confluence,SlackA,SlackB,Vercel,Firecrawl provider
+    class Linear,GitHub,Jira,Confluence,SlackA,SlackB,Vercel provider
 ```
 
-Three harnesses and seven adapters is already twenty-one integrations to
+Three harnesses and six adapters is already eighteen integrations to
 configure and keep authenticated — a second Slack workspace alone means its
 own MCP server configured in every harness — and that's before counting the
 rest of your harnesses and providers. Every harness or adapter you add
@@ -82,13 +81,13 @@ graph LR
     CC([Claude Code]) --> F
     GRK([Grok Build]) --> F
     CX([Codex]) --> F[[foac CLI]]
-    F --> Linear[(Linear)] & GitHub[(GitHub)] & Jira[(Jira)] & Confluence[(Confluence)] & SlackA[(Slack workspace A)] & SlackB[(Slack workspace B)] & Vercel[(Vercel)] & Firecrawl[(Firecrawl)]
+    F --> Linear[(Linear)] & GitHub[(GitHub)] & Jira[(Jira)] & Confluence[(Confluence)] & SlackA[(Slack workspace A)] & SlackB[(Slack workspace B)] & Vercel[(Vercel)]
     classDef harness fill:#bbdefb,stroke:#1565c0,color:#000
     classDef cli fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef provider fill:#e1bee7,stroke:#6a1b9a,color:#000
     class CC,GRK,CX harness
     class F cli
-    class Linear,GitHub,Jira,Confluence,SlackA,SlackB,Vercel,Firecrawl provider
+    class Linear,GitHub,Jira,Confluence,SlackA,SlackB,Vercel provider
 ```
 
 ## Why harnesses like foac
