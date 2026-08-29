@@ -386,7 +386,13 @@ fn run_search(
     ];
     let response = api.send(Method::GET, &v1_path!["search"], &query, None)?;
     let items = list_items(&response.body)?;
-    let page_info = search_page_info(start_at, limit, items.len(), &response.body);
+    let page_info = rest::offset_page_info(
+        start_at,
+        limit,
+        items.len(),
+        response.body.get("totalSize").and_then(Value::as_u64),
+        None,
+    );
     crate::output::print(&rest::wrap_list(items, page_info), api.format);
     Ok(())
 }
@@ -522,20 +528,6 @@ fn next_cursor(next: &str) -> Option<String> {
         .map(|(_, value)| value.into_owned())
 }
 
-/// The v1 search root is offset-paged and reports `totalSize`; without it a
-/// full page means there may be more.
-fn search_page_info(start_at: u64, limit: u32, count: usize, body: &Value) -> Value {
-    let next = start_at + count as u64;
-    let has_next = match body.get("totalSize").and_then(Value::as_u64) {
-        Some(total) => next < total,
-        None => count > 0 && count as u64 == u64::from(limit),
-    };
-    json!({
-        "hasNextPage": has_next,
-        "nextStartAt": if has_next { json!(next) } else { Value::Null },
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::mpsc;
@@ -559,20 +551,6 @@ mod tests {
         let done = cursor_page_info(&json!({ "results": [], "_links": {} }));
         assert_eq!(done["hasNextPage"], false);
         assert_eq!(done["endCursor"], Value::Null);
-    }
-
-    #[test]
-    fn search_page_info_uses_total_size_then_a_full_page_heuristic() {
-        let more = search_page_info(0, 2, 2, &json!({ "totalSize": 5 }));
-        assert_eq!(more["hasNextPage"], true);
-        assert_eq!(more["nextStartAt"], 2);
-        let done = search_page_info(3, 2, 2, &json!({ "totalSize": 5 }));
-        assert_eq!(done["hasNextPage"], false);
-        assert_eq!(done["nextStartAt"], Value::Null);
-
-        assert_eq!(search_page_info(0, 2, 2, &json!({}))["hasNextPage"], true);
-        assert_eq!(search_page_info(0, 2, 1, &json!({}))["hasNextPage"], false);
-        assert_eq!(search_page_info(0, 0, 0, &json!({}))["hasNextPage"], false);
     }
 
     #[test]

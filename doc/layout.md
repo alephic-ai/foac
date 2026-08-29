@@ -32,9 +32,11 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   clap tree and fails any JSON-emitting leaf without a contract.
 - REST providers build on `src/rest.rs`: the shared `Api`/`send` (bearer or
   Basic auth, static provider headers, optional trailing slash), the
-  `{items, pageInfo}` wrapper, payload helpers, and the auth-identity HTTP.
-  Each provider keeps its own pagination parsing and list shapes, and prints
-  lists through a provider-local `print_list`.
+  `{items, pageInfo}` wrapper, `offset_page_info` (a reported total, then
+  `is_last`, then a full-page heuristic — Jira and Confluence both use it),
+  payload helpers, and the auth-identity HTTP. Each provider keeps its own
+  remaining pagination parsing and list shapes, and prints lists through a
+  provider-local `print_list`.
 - GitHub uses its versioned REST API; list responses derive `pageInfo` from
   the Link header. Sentry follows the same REST pattern with cursor pagination
   from its Link header; its base URL comes from `SENTRY_URL` (default
