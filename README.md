@@ -149,6 +149,15 @@ This installs the `foac` binary from
 [GitHub Releases](https://github.com/alephic-ai/foac/releases) and puts it on
 your `PATH`; `foac update` keeps it current after that.
 
+With [Homebrew](https://brew.sh), on macOS or Linux:
+
+```sh
+brew install alephic-ai/tap/foac
+```
+
+Homebrew owns the binary it installs, so keep it current with `brew upgrade
+foac` rather than `foac update`.
+
 ## Quick start
 
 ```sh
