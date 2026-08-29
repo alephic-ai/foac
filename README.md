@@ -34,6 +34,12 @@ ubi --project alephic-ai/foac --in ~/.local/bin
 Both install the binary from
 [GitHub Releases](https://github.com/alephic-ai/foac/releases).
 
+With [cargo](https://doc.rust-lang.org/cargo/), from source:
+
+```sh
+cargo install foac
+```
+
 ## The picture
 
 Without foac, every harness wires up its own adapters — a mix of MCP servers

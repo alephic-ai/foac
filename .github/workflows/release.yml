@@ -188,6 +188,30 @@ jobs:
           TAG: ${{ needs.prepare.outputs.tag }}
         run: gh release edit "$TAG" --draft=false
 
+  crates-io:
+    name: Publish to crates.io
+    needs: [prepare, publish-release]
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      # Trusted Publishing: crates.io trades this workflow's OIDC identity for
+      # a short-lived token, so there is no registry secret to store or rotate.
+      id-token: write
+      # A job-level block replaces the top-level grant, so checkout needs this.
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The version bump only exists on the tag when Prepare made it.
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      # crates.io versions are immutable, so a re-run of an already-published
+      # version is expected to fail here; nothing downstream depends on it.
+      - env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish --locked
+
   homebrew:
     name: Update Homebrew tap
     needs: [prepare, publish-release]
