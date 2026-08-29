@@ -750,14 +750,23 @@ mod tests {
             vec!["foac", "auth", "vercel", "logout"],
             vec!["foac", "auth", "firecrawl", "status"],
             vec!["foac", "auth", "firecrawl", "login"],
+            vec![
+                "foac",
+                "auth",
+                "firecrawl",
+                "login",
+                "--host",
+                "http://localhost:3002",
+            ],
             vec!["foac", "auth", "firecrawl", "logout"],
             vec!["foac", "auth", "slack", "login", "--instance", "workb"],
             vec!["foac", "auth", "slack", "logout", "-i", "workb"],
         ] {
             Cli::try_parse_from(args).unwrap();
         }
-        // --host is a Sentry and Jira login flag; clap rejects it elsewhere.
-        for provider in ["linear", "github", "neon", "slack", "vercel", "firecrawl"] {
+        // --host is a Sentry, Firecrawl, and Atlassian login flag; clap
+        // rejects it elsewhere.
+        for provider in ["linear", "github", "neon", "slack", "vercel"] {
             let parsed =
                 Cli::try_parse_from(["foac", "auth", provider, "login", "--host", "example.com"]);
             assert!(parsed.is_err());

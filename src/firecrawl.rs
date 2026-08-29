@@ -14,6 +14,7 @@ use crate::outdoc;
 use crate::pipe::{self, FromFlag};
 use crate::rest::{self, Api, Auth, insert_opt, push_query};
 
+pub(crate) const DEFAULT_HOST: &str = "api.firecrawl.dev";
 const DEFAULT_URL: &str = "https://api.firecrawl.dev";
 
 #[derive(Args)]
@@ -526,9 +527,14 @@ pub fn authenticated() -> bool {
 
 pub(crate) fn auth_identity(
     token: &str,
+    url_override: Option<&str>,
     instance: &str,
 ) -> Result<Value, crate::auth::ValidationError> {
-    let url = reqwest::Url::parse(&format!("{}/v2/team/credit-usage", base_url(instance)))
+    let base = match url_override {
+        Some(url) => normalize_host(url),
+        None => base_url(instance),
+    };
+    let url = reqwest::Url::parse(&format!("{base}/v2/team/credit-usage"))
         .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
     rest::identity(
         url,
@@ -878,19 +884,39 @@ fn api(
     })
 }
 
-/// `FIRECRAWL_API_URL` for a self-hosted Firecrawl (default instance only),
-/// else the cloud API.
-// ponytail: no per-instance stored URL like Sentry's; add one when a
-// self-hosted named instance is needed.
+/// The instance's base URL: `FIRECRAWL_API_URL` (default instance only),
+/// then the URL stored with the instance's credentials, then the cloud API.
 pub(crate) fn base_url(instance: &str) -> String {
     let environment = if instance == crate::provider::DEFAULT_INSTANCE {
         std::env::var("FIRECRAWL_API_URL").ok()
     } else {
         None
     };
+    resolve_base_url(
+        environment,
+        crate::auth::stored_url(crate::provider::Credential::FirecrawlUrl, instance),
+    )
+}
+
+/// Turn the host the user gave at login into a base URL: empty means the
+/// cloud API, a bare host gets https, and an explicit scheme is kept so a
+/// local Docker deployment can stay on http.
+pub(crate) fn normalize_host(input: &str) -> String {
+    let host = input.trim().trim_end_matches('/');
+    if host.is_empty() {
+        DEFAULT_URL.to_owned()
+    } else if host.contains("://") {
+        host.to_owned()
+    } else {
+        format!("https://{host}")
+    }
+}
+
+fn resolve_base_url(environment: Option<String>, stored: Option<String>) -> String {
     environment
-        .map(|url| url.trim().trim_end_matches('/').to_owned())
-        .filter(|url| !url.is_empty())
+        .filter(|url| !url.trim().is_empty())
+        .or(stored)
+        .map(|url| normalize_host(&url))
         .unwrap_or_else(|| DEFAULT_URL.to_owned())
 }
 
@@ -992,10 +1018,29 @@ mod tests {
     }
 
     #[test]
-    fn base_url_reads_the_environment_for_the_default_instance_only() {
-        // Only the default-instance fallback is testable without touching the
-        // process environment.
-        assert_eq!(base_url("workb"), DEFAULT_URL);
+    fn normalizes_login_hosts_keeping_an_explicit_scheme() {
+        assert_eq!(normalize_host("\n"), DEFAULT_URL);
+        assert_eq!(
+            normalize_host(" firecrawl.example.com/ \n"),
+            "https://firecrawl.example.com"
+        );
+        assert_eq!(
+            normalize_host("http://localhost:3002/"),
+            "http://localhost:3002"
+        );
+    }
+
+    #[test]
+    fn base_url_prefers_environment_then_stored_then_default() {
+        assert_eq!(
+            resolve_base_url(Some("http://env:3002/".into()), Some("x".into())),
+            "http://env:3002"
+        );
+        assert_eq!(
+            resolve_base_url(Some(" ".into()), Some("stored.example.com".into())),
+            "https://stored.example.com"
+        );
+        assert_eq!(resolve_base_url(None, None), DEFAULT_URL);
     }
 
     #[test]

@@ -48,9 +48,13 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   `operations`) read the next cursor from the response body's
   `pagination.cursor`; Neon returns that cursor even on the last page, so
   `hasNextPage` uses a full-page heuristic instead.
-- Firecrawl uses REST API v2 with a bearer API key against
-  `https://api.firecrawl.dev` (`FIRECRAWL_API_URL` overrides it for the
-  default instance). `scrape`, `map`, and `search` are synchronous POSTs;
+- Firecrawl uses REST API v2 with a bearer API key; its base URL comes from
+  `FIRECRAWL_API_URL` (default instance only), then the host saved with the
+  instance's credentials by `foac auth firecrawl login` (its prompt or
+  `--host`; default `https://api.firecrawl.dev`, an explicit `http://` is
+  kept for local deployments). Sentry and Firecrawl share the hosted login
+  path in `auth.rs` (`Provider::hosted`). `scrape`, `map`, and `search` are
+  synchronous POSTs;
   `crawl`, `batch/scrape`, and `agent` are jobs created by POST and read by
   GET on their ID, so `create --wait` polls until the status is terminal.
   Nothing paginates with cursors: `map`, `search`, and `crawl list` print

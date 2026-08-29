@@ -140,6 +140,8 @@ pub fn resolve_instance(
 pub(crate) enum Credential {
     Linear,
     Firecrawl,
+    /// The base URL of a self-hosted Firecrawl, stored with the instance's token.
+    FirecrawlUrl,
     Github,
     Neon,
     Sentry,
@@ -161,7 +163,7 @@ impl Credential {
     pub(crate) fn vendor(self) -> &'static str {
         match self {
             Self::Linear => "linear",
-            Self::Firecrawl => "firecrawl",
+            Self::Firecrawl | Self::FirecrawlUrl => "firecrawl",
             Self::Github => "github",
             Self::Neon => "neon",
             Self::Sentry | Self::SentryUrl => "sentry",
@@ -180,7 +182,7 @@ impl Credential {
             | Self::Neon
             | Self::Sentry
             | Self::Vercel => "token",
-            Self::SentryUrl => "url",
+            Self::SentryUrl | Self::FirecrawlUrl => "url",
             Self::SlackBot => "bot_token",
             Self::SlackUser => "user_token",
             Self::AtlassianHost => "host",

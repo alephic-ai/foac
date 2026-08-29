@@ -2,8 +2,15 @@
 
 `foac firecrawl` talks to [Firecrawl's v2 API](https://docs.firecrawl.dev/api-reference/introduction).
 It uses `FIRECRAWL_API_KEY` or a credential saved by `foac auth firecrawl
-login`; `FIRECRAWL_API_URL` points the default instance at a self-hosted
-Firecrawl instead of `https://api.firecrawl.dev`. `scrape`, `map`, and
+login`. At an interactive terminal, login first asks for the host (default
+`api.firecrawl.dev`; enter your own for a self-hosted deployment, keeping an
+explicit `http://` for a local Docker instance) and saves it alongside the
+token; piped logins read only the token, so pass `--host http://localhost:3002`
+to save a self-hosted host non-interactively. The host is stored with the
+instance's credentials, so the cloud API and a self-hosted Firecrawl can
+coexist as named instances (see [auth.md](auth.md)); a self-hosted deployment
+with authentication disabled accepts any non-empty token. `FIRECRAWL_API_URL`
+overrides the saved host for the default instance only. `scrape`, `map`, and
 `search` answer synchronously. `crawl`, `batch-scrape`, and `agent` are
 jobs: `create` returns an ID, `get` reads the status and scraped pages,
 `cancel` stops it, and `create --wait` polls until the job settles.

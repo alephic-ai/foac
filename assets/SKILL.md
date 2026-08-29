@@ -189,8 +189,14 @@ foac <provider> <resource> <verb> [flags]
 <!-- /foac-provider:confluence -->
 <!-- foac-provider:firecrawl -->
 - **Firecrawl auth precedence**: `FIRECRAWL_API_KEY`, then the credentials
-  file. `FIRECRAWL_API_URL` points the default instance at a self-hosted
-  Firecrawl (default `https://api.firecrawl.dev`).
+  file. On a TTY, `foac auth firecrawl login` first asks for the host
+  (default `api.firecrawl.dev`; an explicit `http://` scheme is kept, so a
+  local Docker deployment works) and saves it with the instance's
+  credentials; with redirected stdin it reads only the token, so pass
+  `--host URL` to save a self-hosted host non-interactively. A self-hosted
+  Firecrawl with authentication disabled accepts any non-empty token.
+  `FIRECRAWL_API_URL` overrides the saved host for the default instance
+  only.
 <!-- /foac-provider:firecrawl -->
 <!-- foac-provider:neon -->
 - **Neon auth precedence**: `NEON_API_KEY`, then the credentials file.
