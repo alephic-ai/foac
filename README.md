@@ -25,10 +25,10 @@ With [Homebrew](https://brew.sh), on macOS or Linux:
 brew install alephic-ai/tap/foac
 ```
 
-With [mise](https://mise.jdx.dev), on macOS, Linux, or Windows:
+With [ubi](https://github.com/houseabsolute/ubi), on macOS, Linux, or Windows:
 
 ```sh
-mise use -g github:alephic-ai/foac
+ubi --project alephic-ai/foac --in ~/.local/bin
 ```
 
 That installs the `foac` binary from

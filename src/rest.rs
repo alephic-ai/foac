@@ -123,6 +123,27 @@ pub(crate) fn wrap_list(items: Vec<Value>, page_info: Value) -> Value {
     })
 }
 
+/// Offset pagination: a reported total wins, then `is_last`, then a full page
+/// means there may be more.
+pub(crate) fn offset_page_info(
+    start_at: u64,
+    limit: u32,
+    count: usize,
+    total: Option<u64>,
+    is_last: Option<bool>,
+) -> Value {
+    let next = start_at + count as u64;
+    let has_next = match (total, is_last) {
+        (Some(total), _) => next < total,
+        (None, Some(is_last)) => !is_last,
+        (None, None) => count > 0 && count as u64 == u64::from(limit),
+    };
+    json!({
+        "hasNextPage": has_next,
+        "nextStartAt": if has_next { json!(next) } else { Value::Null },
+    })
+}
+
 pub(crate) fn parse_response(status: reqwest::StatusCode, text: String) -> Value {
     if text.is_empty() {
         json!({})
@@ -384,6 +405,29 @@ mod tests {
             .unwrap();
         server.join().unwrap();
         assert_eq!(response.body, json!({}));
+    }
+
+    #[test]
+    fn offset_page_info_uses_total_then_is_last_then_a_full_page_heuristic() {
+        let total = offset_page_info(0, 2, 2, Some(5), None);
+        assert_eq!(total["hasNextPage"], true);
+        assert_eq!(total["nextStartAt"], 2);
+        let done = offset_page_info(3, 2, 2, Some(5), None);
+        assert_eq!(done["hasNextPage"], false);
+        assert_eq!(done["nextStartAt"], Value::Null);
+
+        assert_eq!(
+            offset_page_info(0, 2, 2, None, Some(false))["hasNextPage"],
+            true
+        );
+        assert_eq!(
+            offset_page_info(0, 2, 2, None, Some(true))["hasNextPage"],
+            false
+        );
+
+        assert_eq!(offset_page_info(0, 2, 2, None, None)["hasNextPage"], true);
+        assert_eq!(offset_page_info(0, 2, 1, None, None)["hasNextPage"], false);
+        assert_eq!(offset_page_info(0, 0, 0, None, None)["hasNextPage"], false);
     }
 
     #[test]
