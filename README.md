@@ -33,7 +33,8 @@ mise use -g github:alephic-ai/foac
 
 That installs the `foac` binary from
 [GitHub Releases](https://github.com/alephic-ai/foac/releases) and puts it on
-your `PATH`; `foac update` keeps it current after that.
+your `PATH`; `foac update` keeps it current after that — or `brew upgrade foac`
+for a Homebrew install, which owns the binary it put there.
 
 ## The picture
 
@@ -167,6 +168,8 @@ foac update
 
 `foac update` downloads the latest GitHub release for this platform, replaces
 the running binary, and refreshes any foac provider skills already installed.
+On a Homebrew install it stops and points at `brew upgrade foac` instead: a
+self-replaced binary would be overwritten by the next `brew upgrade`.
 
 foac stores editable provider settings in
 `~/.config/foac/config.toml` and machine-managed credentials in

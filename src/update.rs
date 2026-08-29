@@ -13,6 +13,13 @@ const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/alephic-ai/foac/r
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let installed_skills = installed_skills(std::env::home_dir().as_deref());
     let executable = std::env::current_exe()?;
+    if is_homebrew_managed(&executable) {
+        return Err(
+            "Homebrew manages this foac; run `brew upgrade foac` instead \
+             (then `foac skill install` to refresh installed skills)"
+                .into(),
+        );
+    }
     let token = std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.is_empty());
     // Ask /releases/latest for the tag to install: that endpoint never returns
     // draft or prerelease releases, unlike the /releases listing self_update
@@ -159,11 +166,31 @@ fn notify_if_outdated_inner() -> Result<(), Box<dyn std::error::Error>> {
         let _ = write_cache(&path, &new_cache);
     }
     if let CheckOutcome::Outdated { current, latest } = outcome {
+        let upgrade = upgrade_command(std::env::current_exe().ok().as_deref());
         eprintln!(
-            "A new release of foac is available: {current} → {latest}\nTo upgrade, run: foac update"
+            "A new release of foac is available: {current} → {latest}\nTo upgrade, run: {upgrade}"
         );
     }
     Ok(())
+}
+
+fn upgrade_command(executable: Option<&Path>) -> &'static str {
+    if executable.is_some_and(is_homebrew_managed) {
+        "brew upgrade foac"
+    } else {
+        "foac update"
+    }
+}
+
+/// Homebrew owns the binary it installed, so `foac update` self-replacing it
+/// would be undone by the next `brew upgrade`. `Cellar/foac` is the marker
+/// under every prefix (/opt/homebrew, /usr/local, linuxbrew).
+fn is_homebrew_managed(executable: &Path) -> bool {
+    executable
+        .iter()
+        .collect::<Vec<_>>()
+        .windows(2)
+        .any(|pair| pair[0] == "Cellar" && pair[1] == "foac")
 }
 
 fn latest_release_tag(
@@ -434,6 +461,30 @@ mod tests {
         let (outcome, new_cache) = check(100, "0.6.1", None, fetch_err());
         assert_eq!(outcome, CheckOutcome::Skip);
         assert_eq!(new_cache, None);
+    }
+
+    #[test]
+    fn homebrew_binaries_are_upgraded_with_brew() {
+        for brewed in [
+            "/opt/homebrew/Cellar/foac/2.20.0/bin/foac",
+            "/usr/local/Cellar/foac/2.20.0/bin/foac",
+            "/home/linuxbrew/.linuxbrew/Cellar/foac/2.20.0/bin/foac",
+        ] {
+            assert!(is_homebrew_managed(Path::new(brewed)), "{brewed}");
+            assert_eq!(
+                upgrade_command(Some(Path::new(brewed))),
+                "brew upgrade foac"
+            );
+        }
+        for owned in [
+            "/Users/u/.local/bin/foac",
+            "/opt/homebrew/Cellar/ripgrep/14.1.1/bin/rg",
+            "/Users/u/Cellar/bin/foac",
+        ] {
+            assert!(!is_homebrew_managed(Path::new(owned)), "{owned}");
+            assert_eq!(upgrade_command(Some(Path::new(owned))), "foac update");
+        }
+        assert_eq!(upgrade_command(None), "foac update");
     }
 
     #[test]
