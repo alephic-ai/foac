@@ -31,10 +31,8 @@ With [ubi](https://github.com/houseabsolute/ubi), on macOS, Linux, or Windows:
 ubi --project alephic-ai/foac --in ~/.local/bin
 ```
 
-That installs the `foac` binary from
-[GitHub Releases](https://github.com/alephic-ai/foac/releases) and puts it on
-your `PATH`; `foac update` keeps it current after that — or `brew upgrade foac`
-for a Homebrew install, which owns the binary it put there.
+Both install the binary from
+[GitHub Releases](https://github.com/alephic-ai/foac/releases).
 
 ## The picture
 
@@ -137,10 +135,8 @@ graph LR
   active provider for Claude Code and every agent reading
   `~/.agents/skills/`, and removes the skills of inactive providers. See
   [doc/agent-skills.md](doc/agent-skills.md).
-- **Self-updating.** `foac update` pulls the latest release for your platform
-  and refreshes any installed foac skills. However you upgrade —
-  `brew upgrade foac` included — the new binary refreshes those skills itself
-  on its first run, so they never describe the version you just replaced.
+- **Self-updating.** `foac update` pulls the latest release for your platform,
+  and installed skills refresh themselves after any upgrade.
 
 ## Providers
 
@@ -168,12 +164,10 @@ foac provider disable slack                           # auth stays; re-enable an
 foac update
 ```
 
-`foac update` downloads the latest GitHub release for this platform, replaces
-the running binary, and refreshes any foac provider skills already installed.
-On a Homebrew install it stops and points at `brew upgrade foac` instead: a
-self-replaced binary would be overwritten by the next `brew upgrade`. Either
-way the skills follow the binary — the upgraded foac refreshes the installed
-ones on its first run.
+`foac update` downloads the latest GitHub release for this platform and
+replaces the running binary; on a Homebrew install it points at
+`brew upgrade foac` instead. Either way, the installed foac provider skills
+refresh themselves on the next run.
 
 foac stores editable provider settings in
 `~/.config/foac/config.toml` and machine-managed credentials in
