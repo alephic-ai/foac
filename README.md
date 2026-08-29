@@ -34,6 +34,18 @@ ubi --project alephic-ai/foac --in ~/.local/bin
 Both install the binary from
 [GitHub Releases](https://github.com/alephic-ai/foac/releases).
 
+With [uv](https://docs.astral.sh/uv/) or [npm](https://www.npmjs.com/), without
+installing anything:
+
+```sh
+uvx foac --help
+npx foac --help
+```
+
+Those two ship the same release binary as a wheel and as an npm package, so
+`uv tool install foac` and `npm install -g foac` keep it around. Whichever
+installed foac is the one that upgrades it, and `foac update` says so.
+
 With [cargo](https://doc.rust-lang.org/cargo/), from source:
 
 ```sh

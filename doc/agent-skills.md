@@ -17,7 +17,8 @@ skills, and reports byte-identical skills as `Unchanged` without rewriting them.
 Upgrades that bypass `foac update` refresh them too. `brew upgrade foac` cannot
 run `foac skill install` itself — Homebrew's post-install hook is sandboxed with
 `deny_read_home`, so it can reach neither the config nor the skill folders — and
-`ubi` and `cargo install` have no hook at all. So the new binary does it: the
+`ubi`, `cargo install`, `uv` and `npm` have no hook at all. So the new binary
+does it: the
 first command after a version change re-renders the installed skills, then
 stamps the version in `~/.cache/foac/skills-version` (or `XDG_CACHE_HOME`).
 Every later run is one small read of that stamp. The refresh preserves the

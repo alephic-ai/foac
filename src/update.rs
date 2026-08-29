@@ -13,8 +13,8 @@ const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/alephic-ai/foac/r
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let installed_skills = installed_skills(std::env::home_dir().as_deref());
     let executable = std::env::current_exe()?;
-    if is_homebrew_managed(&executable) {
-        return Err("Homebrew manages this foac; run `brew upgrade foac` instead".into());
+    if let Some((manager, upgrade)) = package_manager(&executable) {
+        return Err(format!("{manager} manages this foac; run `{upgrade}` instead").into());
     }
     let token = std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.is_empty());
     // Ask /releases/latest for the tag to install: that endpoint never returns
@@ -138,7 +138,7 @@ fn print_refreshed_skills(events: Vec<(&str, PathBuf)>) {
 /// After an upgrade the installed skills still describe the previous version's
 /// CLI, and only `foac update` refreshed them. Homebrew's post-install hook
 /// runs sandboxed with `deny_read_home`, so no formula can run
-/// `foac skill install`; `ubi` and `cargo` have no hook at all. So the new
+/// `foac skill install`; `ubi`, `cargo`, `uv` and `npm` have no hook at all. So the new
 /// binary refreshes them itself, on its first run. Best-effort: never fails
 /// the caller, never writes stdout.
 pub fn refresh_skills_after_upgrade() {
@@ -221,22 +221,34 @@ fn notify_if_outdated_inner() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn upgrade_command(executable: Option<&Path>) -> &'static str {
-    if executable.is_some_and(is_homebrew_managed) {
-        "brew upgrade foac"
-    } else {
-        "foac update"
-    }
+    executable
+        .and_then(package_manager)
+        .map_or("foac update", |(_, upgrade)| upgrade)
 }
 
-/// Homebrew owns the binary it installed, so `foac update` self-replacing it
-/// would be undone by the next `brew upgrade`. `Cellar/foac` is the marker
-/// under every prefix (/opt/homebrew, /usr/local, linuxbrew).
-fn is_homebrew_managed(executable: &Path) -> bool {
-    executable
-        .iter()
-        .collect::<Vec<_>>()
+/// The package manager owning this binary, if any, and how it upgrades foac.
+/// Self-replacing a managed binary is undone by the next upgrade (Homebrew) or
+/// thrown away with the environment its runner rebuilds from the registry (npm,
+/// uv), so `foac update` refuses and points at the manager instead. Each is
+/// recognized by the layout it installs into: `Cellar/foac` under any brew
+/// prefix (/opt/homebrew, /usr/local, linuxbrew), a `node_modules` ancestor for
+/// both `npm install -g` and the cache `npx` runs from, and the `pyvenv.cfg` of
+/// the virtualenv `uv tool install` and `uvx` unpack the wheel into.
+fn package_manager(executable: &Path) -> Option<(&'static str, &'static str)> {
+    let parts: Vec<_> = executable.iter().collect();
+    if parts
         .windows(2)
         .any(|pair| pair[0] == "Cellar" && pair[1] == "foac")
+    {
+        return Some(("Homebrew", "brew upgrade foac"));
+    }
+    if parts.iter().any(|part| *part == "node_modules") {
+        return Some(("npm", "npm install -g foac@latest"));
+    }
+    if executable.parent()?.parent()?.join("pyvenv.cfg").is_file() {
+        return Some(("uv", "uv tool upgrade foac"));
+    }
+    None
 }
 
 fn latest_release_tag(
@@ -526,16 +538,33 @@ mod tests {
     }
 
     #[test]
-    fn homebrew_binaries_are_upgraded_with_brew() {
-        for brewed in [
-            "/opt/homebrew/Cellar/foac/2.20.0/bin/foac",
-            "/usr/local/Cellar/foac/2.20.0/bin/foac",
-            "/home/linuxbrew/.linuxbrew/Cellar/foac/2.20.0/bin/foac",
+    fn managed_binaries_are_upgraded_by_their_manager() {
+        for (managed, upgrade) in [
+            (
+                "/opt/homebrew/Cellar/foac/2.20.0/bin/foac",
+                "brew upgrade foac",
+            ),
+            (
+                "/usr/local/Cellar/foac/2.20.0/bin/foac",
+                "brew upgrade foac",
+            ),
+            (
+                "/home/linuxbrew/.linuxbrew/Cellar/foac/2.20.0/bin/foac",
+                "brew upgrade foac",
+            ),
+            (
+                "/usr/lib/node_modules/foac/node_modules/@alephic-ai/foac-linux-x64/bin/foac",
+                "npm install -g foac@latest",
+            ),
+            (
+                "/home/u/.npm/_npx/0e1/node_modules/@alephic-ai/foac-linux-x64/bin/foac",
+                "npm install -g foac@latest",
+            ),
         ] {
-            assert!(is_homebrew_managed(Path::new(brewed)), "{brewed}");
             assert_eq!(
-                upgrade_command(Some(Path::new(brewed))),
-                "brew upgrade foac"
+                upgrade_command(Some(Path::new(managed))),
+                upgrade,
+                "{managed}"
             );
         }
         for owned in [
@@ -543,10 +572,25 @@ mod tests {
             "/opt/homebrew/Cellar/ripgrep/14.1.1/bin/rg",
             "/Users/u/Cellar/bin/foac",
         ] {
-            assert!(!is_homebrew_managed(Path::new(owned)), "{owned}");
-            assert_eq!(upgrade_command(Some(Path::new(owned))), "foac update");
+            assert_eq!(
+                upgrade_command(Some(Path::new(owned))),
+                "foac update",
+                "{owned}"
+            );
         }
         assert_eq!(upgrade_command(None), "foac update");
+    }
+
+    #[test]
+    fn wheel_installs_are_upgraded_with_uv() {
+        // uv tool install and uvx both unpack the wheel into a virtualenv, and
+        // only the pyvenv.cfg beside its bin/ tells one from a plain directory.
+        let dir = tempfile::tempdir().unwrap();
+        let executable = dir.path().join("bin/foac");
+        std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        assert_eq!(upgrade_command(Some(&executable)), "foac update");
+        std::fs::write(dir.path().join("pyvenv.cfg"), "home = /usr/bin").unwrap();
+        assert_eq!(upgrade_command(Some(&executable)), "uv tool upgrade foac");
     }
 
     #[test]
