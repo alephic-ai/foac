@@ -545,7 +545,9 @@ foac vercel project-domain create --project web preview.example.com --git-branch
 `Unchanged` without rewriting them. `foac update` replaces the binary with the
 latest release and refreshes any foac provider skills already installed in
 `~/.claude/skills` or `~/.agents/skills` — on a Homebrew install it exits 1 and
-points at `brew upgrade foac`; `foac version` prints the installed
+points at `brew upgrade foac`. However the binary was upgraded, the new version
+refreshes those installed skills on its first run, so they always match the
+running CLI. `foac version` prints the installed
 version; `foac about` prints the brand banner, version, and repository URL.
 foac checks
 GitHub at most once a day and prints a two-line notice on stderr while a newer

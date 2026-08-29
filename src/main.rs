@@ -108,7 +108,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         provider::ensure_enabled(&settings, name, &instance)?;
         Ok(instance)
     };
+    // `update` and the skill commands write skills themselves; every other
+    // command is the first run that may follow an upgrade.
     let skip_check = matches!(command, Command::Update);
+    let skip_skill_refresh = matches!(command, Command::Update | Command::Skill(_));
     let result = match command {
         Command::Auth(cmd) => auth::run(cmd, format, instance_flag.clone()),
         Command::Confluence(cmd) => confluence::run(cmd, format, &provider_instance("confluence")?),
@@ -137,6 +140,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
     };
+    if !skip_skill_refresh {
+        update::refresh_skills_after_upgrade();
+    }
     if !skip_check {
         update::notify_if_outdated();
     }

@@ -14,11 +14,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let installed_skills = installed_skills(std::env::home_dir().as_deref());
     let executable = std::env::current_exe()?;
     if is_homebrew_managed(&executable) {
-        return Err(
-            "Homebrew manages this foac; run `brew upgrade foac` instead \
-             (then `foac skill install` to refresh installed skills)"
-                .into(),
-        );
+        return Err("Homebrew manages this foac; run `brew upgrade foac` instead".into());
     }
     let token = std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.is_empty());
     // Ask /releases/latest for the tag to install: that endpoint never returns
@@ -137,6 +133,56 @@ fn print_refreshed_skills(events: Vec<(&str, PathBuf)>) {
     for (action, path) in events {
         println!("{action} {}", path.display());
     }
+}
+
+/// After an upgrade the installed skills still describe the previous version's
+/// CLI, and only `foac update` refreshed them. Homebrew's post-install hook
+/// runs sandboxed with `deny_read_home`, so no formula can run
+/// `foac skill install`; `ubi` and `cargo` have no hook at all. So the new
+/// binary refreshes them itself, on its first run. Best-effort: never fails
+/// the caller, never writes stdout.
+pub fn refresh_skills_after_upgrade() {
+    let _ = refresh_skills_after_upgrade_inner();
+}
+
+fn refresh_skills_after_upgrade_inner() -> Result<(), Box<dyn std::error::Error>> {
+    let home = std::env::home_dir();
+    let xdg = std::env::var("XDG_CACHE_HOME").ok();
+    let Some(path) = skills_stamp_path(xdg.as_deref(), home.as_deref()) else {
+        return Ok(());
+    };
+    let version = cargo_crate_version!();
+    // The steady state is this read and nothing else.
+    if !needs_skill_refresh(std::fs::read_to_string(&path).ok().as_deref(), version) {
+        return Ok(());
+    }
+    let installed = installed_skills(home.as_deref());
+    // Stamp before refreshing: the refresh shells out to `foac skill print`,
+    // and those children must find the stamp current rather than recurse.
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(&path, version)?;
+    let refreshed = refresh_installed_skills(&installed, &std::env::current_exe()?)?;
+    // The skills are for agents, but a rewrite under $HOME is the human's
+    // business, so say so exactly where the update notice does.
+    if std::io::IsTerminal::is_terminal(&std::io::stderr()) {
+        for (action, path) in refreshed
+            .iter()
+            .filter(|(action, _)| *action != "Unchanged")
+        {
+            eprintln!("{action} {}", path.display());
+        }
+    }
+    Ok(())
+}
+
+fn needs_skill_refresh(stamp: Option<&str>, version: &str) -> bool {
+    stamp != Some(version)
+}
+
+fn skills_stamp_path(xdg_cache_home: Option<&str>, home: Option<&Path>) -> Option<PathBuf> {
+    Some(cache_path(xdg_cache_home, home)?.with_file_name("skills-version"))
 }
 
 /// Best-effort notice after a command. Never fails the caller, never writes stdout.
@@ -461,6 +507,22 @@ mod tests {
         let (outcome, new_cache) = check(100, "0.6.1", None, fetch_err());
         assert_eq!(outcome, CheckOutcome::Skip);
         assert_eq!(new_cache, None);
+    }
+
+    #[test]
+    fn skills_refresh_once_per_version_beside_the_update_cache() {
+        assert!(needs_skill_refresh(None, "2.20.0"));
+        assert!(needs_skill_refresh(Some("2.19.1"), "2.20.0"));
+        assert!(!needs_skill_refresh(Some("2.20.0"), "2.20.0"));
+        assert_eq!(
+            skills_stamp_path(None, Some(Path::new("/home/u"))).unwrap(),
+            PathBuf::from("/home/u/.cache/foac/skills-version")
+        );
+        assert_eq!(
+            skills_stamp_path(Some("/tmp/xdg"), None).unwrap(),
+            PathBuf::from("/tmp/xdg/foac/skills-version")
+        );
+        assert_eq!(skills_stamp_path(None, None), None);
     }
 
     #[test]
