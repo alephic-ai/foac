@@ -15,8 +15,9 @@ The script builds the repo and measures `target/debug/foac` (never the
 a dummy `LINEAR_API_KEY`, so exactly one provider is visible. That is the
 shape foac recommends (enable only what a machine needs) and the only shape
 that reproduces across machines. The provider list comes from
-`foac provider list --format json`. The MCP baseline needs Docker; without
-it the foac rows still print and the script exits non-zero.
+`foac provider list --format json`. The MCP baseline needs Docker and the
+gh baseline needs `gh` on PATH; when either is missing its row prints as
+skipped, the rest still print, and the script exits non-zero.
 
 Every row is bytes per request, not a one-off cost. A system prompt is
 re-sent on every model call, and so is an eagerly transmitted MCP catalog;
@@ -27,6 +28,7 @@ a task that takes twenty exchanges pays it twenty times.
 | foac, always-on skill listing | 208 B |
 | foac, progressive discovery | 952 → 1 027 → 726 → 1 441 B |
 | foac, skill route | 8 363 B (one provider skill, on trigger) |
+| gh CLI, progressive discovery | 2 716 → 1 350 → 2 631 B |
 | MCP baseline: official GitHub MCP server v1.11.0 | 120 684 B (44 tools) |
 
 ## foac, always-on
@@ -71,6 +73,19 @@ An agent that triggers a skill loads one provider skill, between 8 363 B
 trigger (Claude Code does); a harness that injects everything under
 `~/.agents/skills/` pays the full skill per provider up front. That is
 still under one GitHub MCP catalog, but it is a different comparison.
+
+## gh CLI baseline
+
+The official single-provider CLI for GitHub, the kind of adapter foac
+replaces one provider at a time. With a default config under the same
+throwaway `HOME`, its discovery chain is `gh --help` 2 716 B →
+`gh issue --help` 1 350 B → `gh issue list --help` 2 631 B (gh 2.98.0).
+Three turns rather than foac's four, since gh has no provider level. It
+lands in the same order of magnitude as foac's chain, which is the point:
+CLI discovery is cheap whoever ships the CLI, and the catalog tax is a
+property of eagerly transmitted MCP catalogs. What foac adds over a pile of
+per-provider CLIs is one grammar and one login shared by every provider and
+harness, not a cheaper GitHub.
 
 ## MCP baseline
 

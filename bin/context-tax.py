@@ -9,6 +9,7 @@ Docker; without Docker the foac rows still print and the script exits 1.
 """
 
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -91,13 +92,31 @@ def main():
         print(f"  foac skill print {p}: {len(skills[p])} B")
     print(f"  all {len(providers)} skills: {sum(len(s) for s in skills.values())} B")
 
+    skipped = False
+
+    print("\n== gh CLI baseline: --help chain (stdout bytes, one turn each) ==")
+    gh = shutil.which("gh")
+    if gh is None:
+        print("  skipped (gh unavailable)")
+        skipped = True
+    else:
+        version = subprocess.run([gh, "--version"], env=env, capture_output=True,
+                                 check=True).stdout.decode().splitlines()[0]
+        print(f"  {version}")
+        for cmd in (["--help"], ["issue", "--help"], ["issue", "list", "--help"]):
+            out = subprocess.run([gh, *cmd], env=env, capture_output=True, check=True)
+            print(f"  gh {' '.join(cmd)}: {len(out.stdout)} B")
+
     print(f"\n== MCP baseline: {MCP_IMAGE} tools/list wire bytes ==")
     try:
         wire, tools, version = measure_mcp()
+        print(f"  server version {version}: {tools} tools, {wire} B")
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError, KeyError):
         print("  skipped (docker unavailable)")
+        skipped = True
+
+    if skipped:
         sys.exit(1)
-    print(f"  server version {version}: {tools} tools, {wire} B")
 
 
 if __name__ == "__main__":
