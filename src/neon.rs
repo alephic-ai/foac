@@ -136,6 +136,7 @@ enum BranchCmd {
     #[command(after_long_help = outdoc::lines(&[
         r#"{"branch": {...}, "operations": [<operation>, ...]}"#,
         "Primary identifier: branch.id",
+        "Asynchronous: poll `operation get ID` for each operation until status is finished",
         "Raw Neon data; foac adds no envelope",
     ]))]
     Create {
@@ -150,6 +151,7 @@ enum BranchCmd {
     #[command(after_long_help = outdoc::lines(&[
         r#"{"branch": {...}, "operations": [<operation>, ...]}"#,
         "Primary identifier: branch.id",
+        "Asynchronous: poll `operation get ID` for each operation until status is finished",
         "Raw Neon data; foac adds no envelope",
     ]))]
     Delete { id: String },
@@ -197,6 +199,7 @@ enum EndpointCmd {
     #[command(after_long_help = outdoc::lines(&[
         r#"{"endpoint": {...}, "operations": [<operation>, ...]}"#,
         "Primary identifier: endpoint.id",
+        "Asynchronous: poll `operation get ID` for each operation until status is finished",
         "Raw Neon data; foac adds no envelope",
     ]))]
     Start { id: String },
@@ -204,6 +207,7 @@ enum EndpointCmd {
     #[command(after_long_help = outdoc::lines(&[
         r#"{"endpoint": {...}, "operations": [<operation>, ...]}"#,
         "Primary identifier: endpoint.id",
+        "Asynchronous: poll `operation get ID` for each operation until status is finished",
         "Raw Neon data; foac adds no envelope",
     ]))]
     Suspend { id: String },
@@ -211,6 +215,7 @@ enum EndpointCmd {
     #[command(after_long_help = outdoc::lines(&[
         r#"{"endpoint": {...}, "operations": [<operation>, ...]}"#,
         "Primary identifier: endpoint.id",
+        "Asynchronous: poll `operation get ID` for each operation until status is finished",
         "Raw Neon data; foac adds no envelope",
     ]))]
     Restart { id: String },
@@ -528,12 +533,17 @@ fn list_items(body: &Value, key: &str) -> Result<Vec<Value>, Box<dyn std::error:
         .ok_or_else(|| format!("Neon list response did not contain {key}").into())
 }
 
-/// Neon returns `pagination.cursor` even on the last page (it is the keyset of
+/// Branch lists carry the cursor as `pagination.next`, project and operation
+/// lists as `pagination.cursor`; either is present even on the last page (it is the keyset of
 /// the last returned item, not a has-more signal), so a full page is the only
 /// usable has-more hint; the worst case is one extra empty fetch when the
 /// total is an exact multiple of the limit.
 fn page_info(body: &Value, count: usize, limit: u32) -> Value {
-    let cursor = body["pagination"]["cursor"].as_str().map(str::to_owned);
+    let pagination = &body["pagination"];
+    let cursor = pagination["next"]
+        .as_str()
+        .or_else(|| pagination["cursor"].as_str())
+        .map(str::to_owned);
     let has_next = cursor.is_some() && count > 0 && count as u64 == u64::from(limit);
     json!({
         "hasNextPage": has_next,
@@ -557,6 +567,9 @@ mod tests {
         let short = page_info(&body, 1, 2);
         assert_eq!(short["hasNextPage"], false);
         assert_eq!(short["endCursor"], Value::Null);
+
+        let branches = json!({ "branches": [1, 2], "pagination": { "next": "nxt" } });
+        assert_eq!(page_info(&branches, 2, 2)["endCursor"], "nxt");
 
         assert_eq!(page_info(&json!({}), 2, 2)["hasNextPage"], false);
         assert_eq!(page_info(&body, 0, 0)["hasNextPage"], false);
