@@ -453,21 +453,11 @@ fn require_atlassian_values(
 /// The auth-table summary for either Atlassian provider; both account
 /// shapes carry `emailAddress`.
 pub(crate) fn jira_identity(account: &Value) -> String {
-    let name = text_field(account, "displayName");
-    let email = text_field(account, "emailAddress");
-    let host = text_field(account, "host");
-    let person = match (name, email) {
-        (Some(name), Some(email)) => format!("{name} <{email}>"),
-        (Some(name), None) => name.to_owned(),
-        (None, Some(email)) => email.to_owned(),
-        (None, None) => String::new(),
-    };
-    match (person.is_empty(), host) {
-        (false, Some(host)) => format!("{person}  {host}"),
-        (false, None) => person,
-        (true, Some(host)) => host.to_owned(),
-        (true, None) => String::new(),
-    }
+    crate::auth::person_identity(
+        text_field(account, "displayName"),
+        text_field(account, "emailAddress"),
+        text_field(account, "host"),
+    )
 }
 
 fn jira_account(host: &str, identity: &Value) -> Value {
