@@ -472,7 +472,7 @@ fn api(token: String, format: crate::output::Format) -> Result<Api, Box<dyn std:
         base_url: reqwest::Url::parse(BASE_URL)?,
         auth: Auth::Bearer(token),
         format,
-        headers: &[],
+        headers: Vec::new(),
         trailing_slash: false,
     })
 }
@@ -746,7 +746,7 @@ mod tests {
             format: crate::output::Format::Json,
             base_url: url,
             auth: Auth::Bearer("api-key-secret".into()),
-            headers: &[],
+            headers: Vec::new(),
             trailing_slash: false,
         };
         (api, request_rx, server)

@@ -349,7 +349,7 @@ fn api(
         base_url: reqwest::Url::parse(&base_url(instance))?,
         auth: Auth::Bearer(token),
         format,
-        headers: &[],
+        headers: Vec::new(),
         // Sentry requires the trailing slash; without it the API redirects
         // and some proxies drop the request body.
         trailing_slash: true,
@@ -385,7 +385,7 @@ pub(crate) fn base_url(instance: &str) -> String {
     };
     resolve_base_url(
         environment,
-        crate::auth::stored_url(crate::provider::Credential::SentryUrl, instance),
+        crate::auth::stored_value(crate::provider::Credential::SentryUrl, instance),
     )
 }
 

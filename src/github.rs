@@ -15,6 +15,13 @@ const HEADERS: &[(&str, &str)] = &[
     ("X-GitHub-Api-Version", API_VERSION),
 ];
 
+fn headers() -> Vec<(&'static str, String)> {
+    HEADERS
+        .iter()
+        .map(|(name, value)| (*name, (*value).to_owned()))
+        .collect()
+}
+
 #[derive(Args)]
 pub struct Cmd {
     #[command(subcommand)]
@@ -1827,7 +1834,7 @@ fn api(token: String, format: crate::output::Format) -> Result<Api, Box<dyn std:
         base_url: reqwest::Url::parse(API_URL)?,
         auth: Auth::Bearer(token),
         format,
-        headers: HEADERS,
+        headers: headers(),
         trailing_slash: false,
     })
 }
@@ -2240,7 +2247,7 @@ mod tests {
             format: crate::output::Format::Json,
             base_url: url,
             auth: Auth::Bearer("secret-token".into()),
-            headers: HEADERS,
+            headers: headers(),
             trailing_slash: false,
         };
         (api, request_rx, server)

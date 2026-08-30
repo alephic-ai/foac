@@ -64,6 +64,7 @@ fn provider_list_defaults_to_all_enabled_json() {
     assert!(out.status.success());
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     for name in [
+        "axiom",
         "confluence",
         "firecrawl",
         "github",
