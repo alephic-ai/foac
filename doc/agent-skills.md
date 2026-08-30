@@ -8,8 +8,8 @@ Code, and the cross-agent standard `~/.agents/skills/` read by Cursor, Codex,
 Gemini CLI, GitHub Copilot, OpenCode, Amp, and others) and removes the skills
 of providers that are disabled or unauthenticated. Existing skills are only
 written when their contents changed; byte-identical skills are reported as
-`Unchanged`. What the installed skills cost an agent in context — and what
-they replace — is measured in [context-tax.md](context-tax.md).
+`Unchanged`. [context-tax.md](context-tax.md) measures what the installed
+skills cost an agent in context, and what they replace.
 
 `foac update` refreshes the foac provider skills already installed in either
 location. It preserves the installed provider set instead of adding or removing

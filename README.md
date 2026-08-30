@@ -15,7 +15,7 @@ its own. Humans at a TTY get readable tables from the same commands.
 
 If your agents spend their context loading MCP tool catalogs and fetching API
 docs, foac replaces all of that with a single binary that already knows the
-APIs. The difference is measured in [doc/context-tax.md](doc/context-tax.md).
+APIs. [doc/context-tax.md](doc/context-tax.md) puts numbers on that claim.
 
 ## Install
 
