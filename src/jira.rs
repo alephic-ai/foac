@@ -9,7 +9,7 @@ use serde_json::{Map, Value, json};
 
 use crate::outdoc;
 use crate::pipe::{self, FromFlag};
-use crate::rest::{self, Api, Auth, BodyInput, id_string, insert_opt, is_numeric_id, push_query};
+use crate::rest::{self, Api, BodyInput, id_string, insert_opt, is_numeric_id, push_query};
 
 #[derive(Args)]
 pub struct Cmd {
@@ -307,8 +307,8 @@ pub fn run(
         email,
         command,
     } = cmd;
-    let api = api(
-        crate::auth::atlassian_credentials(host, email, "foac auth jira login", instance)?,
+    let api = crate::atlassian::api(
+        crate::atlassian::atlassian_credentials(host, email, "foac auth jira login", instance)?,
         format,
     )?;
     match command {
@@ -321,49 +321,12 @@ pub fn run(
     }
 }
 
-pub fn authenticated() -> bool {
-    crate::auth::atlassian_authenticated()
-}
-
 pub(crate) fn auth_identity(
     host: &str,
     email: &str,
     token: &str,
 ) -> Result<Value, crate::auth::ValidationError> {
-    let url = reqwest::Url::parse(&format!("https://{host}/rest/api/2/myself"))
-        .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
-    auth_identity_at(email, token, url)
-}
-
-fn auth_identity_at(
-    email: &str,
-    token: &str,
-    url: reqwest::Url,
-) -> Result<Value, crate::auth::ValidationError> {
-    rest::identity(
-        url,
-        &Auth::Basic {
-            user: email.to_owned(),
-            password: token.to_owned(),
-        },
-        &[],
-        &[
-            reqwest::StatusCode::UNAUTHORIZED,
-            reqwest::StatusCode::FORBIDDEN,
-        ],
-    )
-}
-
-/// Turn user input into a bare host: whitespace, a pasted scheme, and
-/// trailing slashes are dropped.
-pub(crate) fn normalize_host(input: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let host = input.trim();
-    let host = host.split_once("://").map_or(host, |(_, host)| host);
-    let host = host.trim_end_matches('/');
-    if host.is_empty() {
-        return Err("Atlassian host cannot be empty".into());
-    }
-    Ok(host.to_owned())
+    crate::atlassian::identity(&format!("https://{host}/rest/api/2/myself"), email, token)
 }
 
 fn run_issue(api: &Api, cmd: IssueCmd) -> Result<(), Box<dyn std::error::Error>> {
@@ -557,23 +520,6 @@ fn run_transition(api: &Api, cmd: TransitionCmd) -> Result<(), Box<dyn std::erro
     }
 }
 
-fn api(
-    credentials: crate::auth::AtlassianCredentials,
-    format: crate::output::Format,
-) -> Result<Api, Box<dyn std::error::Error>> {
-    Ok(Api {
-        client: reqwest::blocking::Client::new(),
-        base_url: reqwest::Url::parse(&format!("https://{}", credentials.host))?,
-        auth: Auth::Basic {
-            user: credentials.email,
-            password: credentials.token,
-        },
-        format,
-        headers: &[],
-        trailing_slash: false,
-    })
-}
-
 fn print_offset_list(
     api: &Api,
     segments: Vec<String>,
@@ -704,20 +650,7 @@ mod tests {
     use std::sync::mpsc;
 
     use super::*;
-
-    #[test]
-    fn normalizes_hosts_and_rejects_empty_input() {
-        assert_eq!(
-            normalize_host(" acme.atlassian.net \n").unwrap(),
-            "acme.atlassian.net"
-        );
-        assert_eq!(
-            normalize_host("https://acme.atlassian.net/").unwrap(),
-            "acme.atlassian.net"
-        );
-        assert!(normalize_host(" \n").is_err());
-        assert!(normalize_host("https:///").is_err());
-    }
+    use crate::rest::Auth;
 
     #[test]
     fn distinguishes_numeric_ids_from_keys_and_names() {

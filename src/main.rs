@@ -1,8 +1,8 @@
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
 use foac::{
-    auth, confluence, firecrawl, github, jira, linear, neon, output, provider, sentry, slack,
-    update, vercel,
+    atlassian, auth, confluence, firecrawl, github, jira, linear, neon, output, provider, sentry,
+    slack, update, vercel,
 };
 
 #[derive(Parser)]
@@ -216,14 +216,14 @@ fn providers_where(enabled: impl Fn(&str) -> bool) -> [Provider; 9] {
     [
         Provider::new(
             "confluence",
-            enabled("confluence") && confluence::authenticated(),
+            enabled("confluence") && atlassian::authenticated(),
         ),
         Provider::new(
             "firecrawl",
             enabled("firecrawl") && firecrawl::authenticated(),
         ),
         Provider::new("github", enabled("github") && github::authenticated()),
-        Provider::new("jira", enabled("jira") && jira::authenticated()),
+        Provider::new("jira", enabled("jira") && atlassian::authenticated()),
         Provider::new("linear", enabled("linear") && linear::authenticated()),
         Provider::new("neon", enabled("neon") && neon::authenticated()),
         Provider::new("sentry", enabled("sentry") && sentry::authenticated()),

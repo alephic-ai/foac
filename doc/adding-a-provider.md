@@ -63,7 +63,7 @@ One flat file (don't split into a module directory preemptively) containing:
   `vendor`/`field` keys, the `provider_vendor` and `authenticated` matches,
   and the provider-list test fixture.
   Providers sharing vendor-level credentials reuse one vendor, like the
-  Atlassian pair.
+  Atlassian pair, whose shared code lives in `src/atlassian.rs`.
 - `tests/cli.rs`: the provider names in the `provider list` test.
   End-to-end tests stay parse-clean: no real auth, no network.
 

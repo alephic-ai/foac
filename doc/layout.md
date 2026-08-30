@@ -67,12 +67,17 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
 - Jira uses REST API v2 (plain-text bodies; v3 requires Atlassian Document
   Format) plus the Agile 1.0 API for sprints, authenticated with HTTP Basic
   (email + API token) against the tenant host. Issue search paginates with
-  `nextPageToken`; other lists use `startAt`/`maxResults`. The three
-  Atlassian credentials are stored under vendor-level `atlassian_*` keys,
-  shared with Confluence.
+  `nextPageToken`; other lists use `startAt`/`maxResults`.
+- Jira and Confluence share the Atlassian vendor, and `src/atlassian.rs`
+  holds everything that is the vendor's rather than either provider's: the
+  host/email/API-token triple stored under vendor-level `atlassian_*` keys,
+  its resolution (`atlassian_credentials`, `resolve_atlassian`), the
+  `foac auth jira|confluence` login flow, host normalization, and the
+  Basic-auth `Api` both providers request through. Each provider keeps its
+  own command tree and its own `auth_identity` path, since the identity
+  endpoint and its email field differ between the two.
 - Confluence uses REST API v2 for spaces, pages, and footer comments, and the
-  v1 root for CQL search (never ported to v2), with the same HTTP Basic
-  Atlassian credentials as Jira. Bodies are written as wiki markup and read
+  v1 root for CQL search (never ported to v2). Bodies are written as wiki markup and read
   back in the storage representation; `page update` and `comment update`
   fetch the current version and re-send omitted fields, since the v2 PUT
   requires status, title, and body alongside the incremented version. v2

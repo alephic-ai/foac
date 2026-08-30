@@ -52,8 +52,9 @@ src/
 ├── main.rs      # CLI root: dispatch, hiding inactive providers, skill render/install
 ├── linear.rs    # Linear provider: GraphQL via graphql_client codegen
 ├── github.rs    # GitHub provider: REST passthrough on rest.rs
-├── jira.rs      # Jira provider: REST passthrough on rest.rs, Basic auth
-├── confluence.rs # Confluence provider: REST passthrough on rest.rs, shares Jira's Atlassian auth
+├── jira.rs      # Jira provider: REST passthrough on rest.rs, Atlassian Basic auth
+├── confluence.rs # Confluence provider: REST passthrough on rest.rs, Atlassian Basic auth
+├── atlassian.rs # Atlassian vendor code shared by Jira and Confluence: credential triple, login flow, Basic-auth Api
 ├── firecrawl.rs # Firecrawl provider: REST passthrough on rest.rs, sync scrapes plus polled jobs
 ├── neon.rs      # Neon provider: REST passthrough on rest.rs
 ├── sentry.rs    # Sentry provider: REST passthrough on rest.rs
