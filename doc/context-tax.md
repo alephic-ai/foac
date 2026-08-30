@@ -31,6 +31,17 @@ a task that takes twenty exchanges pays it twenty times.
 | gh CLI, progressive discovery | 2 716 → 1 350 → 2 631 B |
 | MCP baseline: official GitHub MCP server v1.11.0 | 120 684 B (44 tools) |
 
+The same numbers as a chart, with each `--help` chain summed across its
+turns:
+
+```mermaid
+xychart-beta
+    title "Bytes per request (foac 2.25.1)"
+    x-axis ["foac always-on", "foac help chain", "foac skill", "gh help chain", "MCP catalog"]
+    y-axis "bytes" 0 --> 125000
+    bar [208, 4146, 8363, 6697, 120684]
+```
+
 ## foac, always-on
 
 What Claude Code injects into the system prompt so the agent knows what it
