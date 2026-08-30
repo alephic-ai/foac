@@ -399,10 +399,10 @@ fn statuses_with(
 /// Whether a credential resolves for the provider; no network validation.
 fn authenticated(name: &str) -> bool {
     match name {
-        "confluence" => crate::confluence::authenticated(),
+        "confluence" => crate::atlassian::authenticated(),
         "firecrawl" => crate::firecrawl::authenticated(),
         "github" => crate::github::authenticated(),
-        "jira" => crate::jira::authenticated(),
+        "jira" => crate::atlassian::authenticated(),
         "linear" => crate::linear::authenticated(),
         "neon" => crate::neon::authenticated(),
         "sentry" => crate::sentry::authenticated(),

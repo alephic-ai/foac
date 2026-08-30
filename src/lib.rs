@@ -2,6 +2,7 @@
 //! `tests/` and doc tests can link against the crate; `src/main.rs` is the
 //! only intended consumer.
 
+pub mod atlassian;
 pub mod auth;
 pub mod confluence;
 pub mod firecrawl;

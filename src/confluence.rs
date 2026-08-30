@@ -10,7 +10,7 @@ use serde_json::{Map, Value, json};
 
 use crate::outdoc;
 use crate::pipe::{self, FromFlag};
-use crate::rest::{self, Api, Auth, BodyInput, id_string, insert_opt, is_numeric_id, push_query};
+use crate::rest::{self, Api, BodyInput, id_string, insert_opt, is_numeric_id, push_query};
 
 #[derive(Args)]
 pub struct Cmd {
@@ -220,8 +220,13 @@ pub fn run(
         email,
         command,
     } = cmd;
-    let api = api(
-        crate::auth::atlassian_credentials(host, email, "foac auth confluence login", instance)?,
+    let api = crate::atlassian::api(
+        crate::atlassian::atlassian_credentials(
+            host,
+            email,
+            "foac auth confluence login",
+            instance,
+        )?,
         format,
     )?;
     match command {
@@ -236,28 +241,15 @@ pub fn run(
     }
 }
 
-pub fn authenticated() -> bool {
-    crate::auth::atlassian_authenticated()
-}
-
 pub(crate) fn auth_identity(
     host: &str,
     email: &str,
     token: &str,
 ) -> Result<Value, crate::auth::ValidationError> {
-    let url = reqwest::Url::parse(&format!("https://{host}/wiki/rest/api/user/current"))
-        .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
-    rest::identity(
-        url,
-        &Auth::Basic {
-            user: email.to_owned(),
-            password: token.to_owned(),
-        },
-        &[],
-        &[
-            reqwest::StatusCode::UNAUTHORIZED,
-            reqwest::StatusCode::FORBIDDEN,
-        ],
+    crate::atlassian::identity(
+        &format!("https://{host}/wiki/rest/api/user/current"),
+        email,
+        token,
     )
 }
 
@@ -397,23 +389,6 @@ fn run_search(
     Ok(())
 }
 
-fn api(
-    credentials: crate::auth::AtlassianCredentials,
-    format: crate::output::Format,
-) -> Result<Api, Box<dyn std::error::Error>> {
-    Ok(Api {
-        client: reqwest::blocking::Client::new(),
-        base_url: reqwest::Url::parse(&format!("https://{}", credentials.host))?,
-        auth: Auth::Basic {
-            user: credentials.email,
-            password: credentials.token,
-        },
-        format,
-        headers: &[],
-        trailing_slash: false,
-    })
-}
-
 fn wiki_body(value: String) -> Value {
     json!({ "representation": "wiki", "value": value })
 }
@@ -533,6 +508,7 @@ mod tests {
     use std::sync::mpsc;
 
     use super::*;
+    use crate::rest::Auth;
 
     #[test]
     fn cursor_page_info_extracts_the_cursor_from_the_next_link() {
