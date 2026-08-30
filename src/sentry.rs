@@ -11,7 +11,7 @@ const DEFAULT_URL: &str = "https://sentry.io";
 
 #[derive(Args)]
 pub struct Cmd {
-    /// Organization slug; defaults to SENTRY_ORG
+    /// Organization slug or numeric ID; defaults to SENTRY_ORG
     #[arg(long, global = true)]
     org: Option<String>,
     #[command(subcommand)]
@@ -65,7 +65,7 @@ enum ProjectCmd {
         #[command(flatten)]
         page: Page,
     },
-    /// Get a project by slug
+    /// Get a project by slug or numeric ID
     #[command(after_long_help = outdoc::rest_obj("raw Sentry project object", "slug"))]
     Get {
         slug: Option<String>,
@@ -79,7 +79,7 @@ enum IssueCmd {
     /// List issues across the organization or one project
     #[command(after_long_help = outdoc::rest_list("raw Sentry issue objects", &["id", "shortId"], &outdoc::SENTRY_CURSOR))]
     List {
-        /// Project slug
+        /// Project slug or numeric ID
         #[arg(long)]
         project: Option<String>,
         /// Sentry issue search query, e.g. "is:unresolved release:1.2.0"
@@ -142,7 +142,7 @@ enum EventCmd {
     #[command(after_long_help = outdoc::rest_obj("raw Sentry event object", "eventID"))]
     Get {
         id: Option<String>,
-        /// Project slug
+        /// Project slug or numeric ID
         #[arg(long)]
         project: String,
         #[command(flatten)]
@@ -394,6 +394,11 @@ pub(crate) fn base_url(instance: &str) -> String {
 pub(crate) fn normalize_host(input: &str) -> String {
     let host = input.trim().trim_end_matches('/');
     let host = host.split_once("://").map_or(host, |(_, host)| host);
+    // Sentry docs and the Terraform provider write the base URL as `https://host/api/`.
+    let host = host
+        .strip_suffix("/api/0")
+        .or_else(|| host.strip_suffix("/api"))
+        .unwrap_or(host);
     if host.is_empty() {
         DEFAULT_URL.to_owned()
     } else {
@@ -513,7 +518,12 @@ mod tests {
             normalize_host(" sentry.example.com \n"),
             "https://sentry.example.com"
         );
-        for pasted_url in ["https://sentry.example.com/\n", "http://sentry.example.com"] {
+        for pasted_url in [
+            "https://sentry.example.com/\n",
+            "http://sentry.example.com",
+            "https://sentry.example.com/api/",
+            "https://sentry.example.com/api/0",
+        ] {
             assert_eq!(normalize_host(pasted_url), "https://sentry.example.com");
         }
     }
