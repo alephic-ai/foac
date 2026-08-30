@@ -1,8 +1,8 @@
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
 use foac::{
-    atlassian, auth, confluence, firecrawl, github, jira, linear, neon, output, provider, sentry,
-    slack, update, vercel,
+    auth, confluence, firecrawl, github, jira, linear, neon, output, provider, sentry, slack,
+    update, vercel,
 };
 
 #[derive(Parser)]
@@ -129,7 +129,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Command::Provider(cmd) => provider::run(cmd, format, instance_flag.clone()),
         Command::Skill(cmd) => match cmd {
             SkillCmd::Print { provider } => {
-                print!("{}", render_provider_skill(&provider));
+                print!("{}", render_provider_skill(provider.as_str()));
                 Ok(())
             }
             SkillCmd::Install => skill_install_cmd(),
@@ -196,40 +196,27 @@ fn about() {
 enum SkillCmd {
     /// Print one provider's skill to stdout
     #[command(arg_required_else_help = true)]
-    Print {
-        #[arg(value_parser = clap::builder::PossibleValuesParser::new(provider::PROVIDERS))]
-        provider: String,
-    },
+    Print { provider: auth::Provider },
     /// Install one skill per active provider for every supported agent found
     /// on this machine, removing the skills of inactive providers; uses the
     /// global toggles only, ignoring .foac.toml overrides
     Install,
 }
 
-fn providers() -> Result<[Provider; 9], Box<dyn std::error::Error>> {
+fn providers() -> Result<Vec<Provider>, Box<dyn std::error::Error>> {
     let settings = provider::SettingsStore.load()?;
     Ok(providers_where(|name| settings.enabled(name)))
 }
 
-fn providers_where(enabled: impl Fn(&str) -> bool) -> [Provider; 9] {
-    // Settings first: short-circuit skips the keychain/`gh` probe when disabled.
-    [
-        Provider::new(
-            "confluence",
-            enabled("confluence") && atlassian::authenticated(),
-        ),
-        Provider::new(
-            "firecrawl",
-            enabled("firecrawl") && firecrawl::authenticated(),
-        ),
-        Provider::new("github", enabled("github") && github::authenticated()),
-        Provider::new("jira", enabled("jira") && atlassian::authenticated()),
-        Provider::new("linear", enabled("linear") && linear::authenticated()),
-        Provider::new("neon", enabled("neon") && neon::authenticated()),
-        Provider::new("sentry", enabled("sentry") && sentry::authenticated()),
-        Provider::new("slack", enabled("slack") && slack::authenticated()),
-        Provider::new("vercel", enabled("vercel") && vercel::authenticated()),
-    ]
+fn providers_where(enabled: impl Fn(&str) -> bool) -> Vec<Provider> {
+    auth::Provider::all()
+        .iter()
+        .map(|provider| {
+            let name = provider.as_str();
+            // Settings first: short-circuit skips the keychain/`gh` probe when disabled.
+            Provider::new(name, enabled(name) && provider.authenticated())
+        })
+        .collect()
 }
 
 fn cli_command(providers: &[Provider]) -> clap::Command {
@@ -360,7 +347,11 @@ fn render_skill(providers: &[Provider]) -> String {
 }
 
 fn render_provider_skill(name: &str) -> String {
-    render_skill(&provider::PROVIDERS.map(|p| Provider::new(p, p == name)))
+    let providers: Vec<_> = auth::Provider::all()
+        .iter()
+        .map(|p| Provider::new(p.as_str(), p.as_str() == name))
+        .collect();
+    render_skill(&providers)
 }
 
 fn skill_install_cmd() -> Result<(), Box<dyn std::error::Error>> {
@@ -420,7 +411,7 @@ fn skill_install(
 ) -> Result<Vec<(&'static str, std::path::PathBuf)>, Box<dyn std::error::Error>> {
     let mut events = Vec::new();
     for skills_dir in agent_skill_dirs(home) {
-        for name in provider::PROVIDERS {
+        for name in auth::Provider::all().iter().map(|p| p.as_str()) {
             let dir = skills_dir.join(format!("foac-{name}"));
             if active.contains(&name) {
                 std::fs::create_dir_all(&dir)?;
@@ -492,7 +483,7 @@ mod tests {
         }
         let mut command = Cli::command();
         command.build();
-        for provider in provider::PROVIDERS {
+        for provider in auth::Provider::all().iter().map(|p| p.as_str()) {
             walk(command.find_subcommand(provider).unwrap(), provider);
         }
     }
@@ -553,7 +544,7 @@ mod tests {
             vec!["firecrawl"],
             vec!["neon"],
             vec!["vercel"],
-            provider::PROVIDERS.to_vec(),
+            auth::Provider::all().iter().map(|p| p.as_str()).collect(),
         ] {
             let providers = test_providers(&expected);
             for args in [vec!["foac"], vec!["foac", "--help"]] {
@@ -1052,18 +1043,11 @@ mod tests {
         );
     }
 
-    fn test_providers(active: &[&str]) -> [Provider; 9] {
-        [
-            Provider::new("confluence", active.contains(&"confluence")),
-            Provider::new("firecrawl", active.contains(&"firecrawl")),
-            Provider::new("github", active.contains(&"github")),
-            Provider::new("jira", active.contains(&"jira")),
-            Provider::new("linear", active.contains(&"linear")),
-            Provider::new("neon", active.contains(&"neon")),
-            Provider::new("sentry", active.contains(&"sentry")),
-            Provider::new("slack", active.contains(&"slack")),
-            Provider::new("vercel", active.contains(&"vercel")),
-        ]
+    fn test_providers(active: &[&str]) -> Vec<Provider> {
+        auth::Provider::all()
+            .iter()
+            .map(|p| Provider::new(p.as_str(), active.contains(&p.as_str())))
+            .collect()
     }
 
     fn help_lists(help: &str, command: &str) -> bool {

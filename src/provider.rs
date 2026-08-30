@@ -9,18 +9,6 @@ use toml_edit::{Array, DocumentMut, Item, Value, value};
 
 use crate::auth::Provider;
 
-pub const PROVIDERS: [&str; 9] = [
-    "confluence",
-    "firecrawl",
-    "github",
-    "jira",
-    "linear",
-    "neon",
-    "sentry",
-    "slack",
-    "vercel",
-];
-
 /// Per-folder settings file, looked up from the working directory to `/`;
 /// the nearest file wins and overrides the global toggles.
 pub const LOCAL_SETTINGS_FILE: &str = ".foac.toml";
@@ -330,26 +318,10 @@ pub fn run(
     }
 }
 
-/// The vendor whose credentials authenticate a provider; Jira and Confluence
-/// share the Atlassian vendor.
-pub(crate) fn provider_vendor(provider: &str) -> &'static str {
-    match provider {
-        "jira" | "confluence" => "atlassian",
-        "firecrawl" => "firecrawl",
-        "github" => "github",
-        "linear" => "linear",
-        "neon" => "neon",
-        "sentry" => "sentry",
-        "slack" => "slack",
-        "vercel" => "vercel",
-        _ => unreachable!("unknown provider"),
-    }
-}
-
 fn statuses(settings: &Settings) -> serde_json::Value {
     statuses_with(
         settings,
-        authenticated,
+        Provider::authenticated,
         &crate::update::installed_skill_providers(),
         &CredentialStore.load().unwrap_or_default(),
     )
@@ -357,26 +329,27 @@ fn statuses(settings: &Settings) -> serde_json::Value {
 
 fn statuses_with(
     settings: &Settings,
-    authenticated: impl Fn(&str) -> bool,
+    authenticated: impl Fn(Provider) -> bool,
     installed_skills: &[&str],
     credentials: &Credentials,
 ) -> serde_json::Value {
     serde_json::Value::Object(
-        PROVIDERS
+        Provider::all()
             .iter()
-            .flat_map(|name| {
-                let provider = std::iter::once((
+            .flat_map(|&provider| {
+                let name = provider.as_str();
+                let bare = std::iter::once((
                     name.to_string(),
                     json!({
                         "enabled": settings.enabled(name),
-                        "authenticated": authenticated(name),
-                        "skill_installed": installed_skills.contains(name),
+                        "authenticated": authenticated(provider),
+                        "skill_installed": installed_skills.contains(&name),
                     }),
                 ));
                 // One row per stored named instance; the bare row is the
                 // default instance.
                 let named = credentials
-                    .instances(provider_vendor(name))
+                    .instances(provider.credential().vendor())
                     .into_iter()
                     .filter(|instance| instance != DEFAULT_INSTANCE)
                     .map(|instance| {
@@ -385,31 +358,15 @@ fn statuses_with(
                             json!({
                                 "enabled": settings.instance_enabled(name, &instance),
                                 "authenticated": true,
-                                "skill_installed": installed_skills.contains(name),
+                                "skill_installed": installed_skills.contains(&name),
                             }),
                         )
                     })
                     .collect::<Vec<_>>();
-                provider.chain(named)
+                bare.chain(named)
             })
             .collect(),
     )
-}
-
-/// Whether a credential resolves for the provider; no network validation.
-fn authenticated(name: &str) -> bool {
-    match name {
-        "confluence" => crate::atlassian::authenticated(),
-        "firecrawl" => crate::firecrawl::authenticated(),
-        "github" => crate::github::authenticated(),
-        "jira" => crate::atlassian::authenticated(),
-        "linear" => crate::linear::authenticated(),
-        "neon" => crate::neon::authenticated(),
-        "sentry" => crate::sentry::authenticated(),
-        "slack" => crate::slack::authenticated(),
-        "vercel" => crate::vercel::authenticated(),
-        _ => false,
-    }
 }
 
 fn set_enabled(
@@ -1425,7 +1382,7 @@ mod tests {
         assert_eq!(
             statuses_with(
                 &settings,
-                |name| name == "github",
+                |provider| provider == Provider::Github,
                 &["linear"],
                 &credentials
             ),
