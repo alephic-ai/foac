@@ -22,9 +22,10 @@ Create it with Advanced permissions and grant only what you use:
 A personal access token (`xapt-`, Settings > Profile) acts as you across
 organizations, so it also needs the organization ID: pass `--org-id ID`
 anywhere after `axiom`, set `AXIOM_ORG_ID` (default instance only), or save
-it with the token via `foac auth axiom login --org-id ID`. `AXIOM_URL`
-overrides the API base URL (`https://api.axiom.co`) for the default instance
-only.
+it with the token via `foac auth axiom login --org-id ID`. The API base URL
+(`https://api.axiom.co`) comes from `AXIOM_URL` (default instance only),
+then the host saved by `foac auth axiom login --host HOST` for a regional or
+dedicated deployment.
 
 ```sh
 export AXIOM_TOKEN=xaat-...

@@ -29,8 +29,9 @@ pub(crate) struct Api {
     pub(crate) base_url: reqwest::Url,
     pub(crate) auth: Auth,
     pub(crate) format: crate::output::Format,
-    /// Provider-specific static headers, e.g. GitHub's Accept and API version.
-    pub(crate) headers: &'static [(&'static str, &'static str)],
+    /// Provider-specific headers, e.g. GitHub's Accept and API version or
+    /// Axiom's org ID.
+    pub(crate) headers: Vec<(&'static str, String)>,
     /// Sentry requires the trailing slash; without it the API redirects and
     /// some proxies drop the request body.
     pub(crate) trailing_slash: bool,
@@ -78,8 +79,8 @@ impl Api {
             .apply(self.client.request(method, self.url(segments)?))
             .header("User-Agent", "foac")
             .query(query);
-        for (name, value) in self.headers {
-            request = request.header(*name, *value);
+        for (name, value) in &self.headers {
+            request = request.header(*name, value.as_str());
         }
         if let Some(body) = body {
             request = request.json(&body);
@@ -325,7 +326,7 @@ mod tests {
             base_url: url,
             auth: Auth::Bearer("secret-token".into()),
             format: crate::output::Format::Json,
-            headers: &[("X-Test-Header", "test-value")],
+            headers: vec![("X-Test-Header", "test-value".into())],
             trailing_slash,
         }
     }

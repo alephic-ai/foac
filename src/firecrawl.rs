@@ -911,7 +911,7 @@ fn api(
         base_url: reqwest::Url::parse(&base_url(instance))?,
         auth: Auth::Bearer(token),
         format,
-        headers: &[],
+        headers: Vec::new(),
         trailing_slash: false,
     })
 }
@@ -1320,7 +1320,7 @@ mod tests {
             format: crate::output::Format::Json,
             base_url: url,
             auth: Auth::Bearer("fc-secret".into()),
-            headers: &[],
+            headers: Vec::new(),
             trailing_slash: false,
         };
         (api, request_rx, server)

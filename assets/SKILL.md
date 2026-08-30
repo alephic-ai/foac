@@ -174,8 +174,9 @@ foac <provider> <resource> <verb> [flags]
   API token (`xaat-`) carries its own organization; a personal access token
   (`xapt-`) also needs the organization ID: `--org-id` anywhere after
   `axiom`, `AXIOM_ORG_ID` (default instance only), or the ID saved with the
-  token by `foac auth axiom login --org-id ID`. `AXIOM_URL` overrides the
-  API base URL for the default instance only.
+  token by `foac auth axiom login --org-id ID`. The API base URL comes from
+  `AXIOM_URL` (default instance only), then the host saved by
+  `foac auth axiom login --host HOST` for a regional or dedicated deployment.
 <!-- /foac-provider:axiom -->
 <!-- foac-provider:linear -->
 - **Linear auth precedence**: `LINEAR_API_KEY`, then the credentials file.

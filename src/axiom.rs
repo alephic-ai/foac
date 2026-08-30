@@ -15,6 +15,7 @@ use crate::outdoc;
 use crate::pipe::{self, FromFlag};
 use crate::rest::{self, Api, Auth, insert_opt, push_query};
 
+pub(crate) const DEFAULT_HOST: &str = "api.axiom.co";
 const DEFAULT_URL: &str = "https://api.axiom.co";
 const ORG_HEADER: &str = "X-Axiom-Org-Id";
 
@@ -314,9 +315,10 @@ enum OrgCmd {
 }
 
 macro_rules! path {
-    ($($segment:expr),* $(,)?) => {
-        vec![$($segment.to_string()),*]
-    };
+    ($($segment:expr),* $(,)?) => {{
+        let segments: Vec<String> = vec![$($segment.to_string()),*];
+        segments
+    }};
 }
 
 pub fn run(
@@ -341,10 +343,26 @@ pub fn run(
         Resource::Ingest(args) => run_ingest(&api, args),
         Resource::Annotation(cmd) => run_annotation(&api, cmd),
         Resource::Monitor(cmd) => run_monitor(&api, cmd),
-        Resource::Notifier(cmd) => run_simple(&api, "notifiers", cmd.into()),
-        Resource::User(cmd) => run_simple(&api, "users", cmd.into()),
-        Resource::Org(cmd) => run_simple(&api, "orgs", cmd.into()),
+        Resource::Notifier(NotifierCmd::List) => {
+            print_list(&api, path!["v2", "notifiers"], Vec::new())
+        }
+        Resource::Notifier(NotifierCmd::Get { id, from }) => get_by_id(&api, "notifiers", id, from),
+        Resource::User(UserCmd::List) => print_list(&api, path!["v2", "users"], Vec::new()),
+        Resource::User(UserCmd::Get { id, from }) => get_by_id(&api, "users", id, from),
+        Resource::Org(OrgCmd::List) => print_list(&api, path!["v2", "orgs"], Vec::new()),
+        Resource::Org(OrgCmd::Get { id, from }) => get_by_id(&api, "orgs", id, from),
     }
+}
+
+fn get_by_id(
+    api: &Api,
+    resource: &str,
+    id: Option<String>,
+    from: FromFlag,
+) -> Result<(), Box<dyn std::error::Error>> {
+    pipe::run_get(id, from, api.format, |id| {
+        api.get_body(path!["v2", resource, id], Vec::new())
+    })
 }
 
 pub fn authenticated() -> bool {
@@ -354,12 +372,17 @@ pub fn authenticated() -> bool {
 
 pub(crate) fn auth_identity(
     token: &str,
+    url_override: Option<&str>,
     org_override: Option<&str>,
     instance: &str,
 ) -> Result<Value, crate::auth::ValidationError> {
+    let base = match url_override {
+        Some(url) => normalize_host(url),
+        None => base_url(instance),
+    };
     // Not /v2/user: an API token is not a user, and Axiom answers that
     // endpoint with a 500 for one. Every useful foac token can read datasets.
-    let url = reqwest::Url::parse(&format!("{}/v2/datasets", base_url(instance)))
+    let url = reqwest::Url::parse(&format!("{base}/v2/datasets"))
         .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
     let org_id = org_override.map(str::to_owned).or_else(|| org_id(instance));
     let headers: Vec<(&str, &str)> = org_id.iter().map(|id| (ORG_HEADER, id.as_str())).collect();
@@ -454,7 +477,7 @@ fn run_query(api: &Api, args: QueryArgs) -> Result<(), Box<dyn std::error::Error
     }
     let response = api.send(
         Method::POST,
-        &["v1".to_owned(), "datasets".to_owned(), "_apl".to_owned()],
+        &path!["v1", "datasets", "_apl"],
         &[("format", "tabular".to_owned())],
         Some(payload.into()),
     )?;
@@ -501,19 +524,24 @@ fn table_rows(table: &Value) -> Vec<Value> {
         .flatten()
         .filter_map(|field| field["name"].as_str())
         .collect();
-    let columns: Vec<&Vec<Value>> = table["columns"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_array)
-        .collect();
-    let count = columns.first().map_or(0, |column| column.len());
+    let columns: Vec<&Value> = table["columns"].as_array().into_iter().flatten().collect();
+    // Columns are equal-length in practice; a short or non-array one yields
+    // null cells rather than a panic.
+    let count = columns
+        .iter()
+        .filter_map(|column| column.as_array())
+        .map(Vec::len)
+        .max()
+        .unwrap_or(0);
     (0..count)
         .map(|row| {
             names
                 .iter()
                 .zip(&columns)
-                .map(|(name, column)| ((*name).to_owned(), column[row].clone()))
+                .map(|(name, column)| {
+                    let cell = column.get(row).cloned().unwrap_or(Value::Null);
+                    ((*name).to_owned(), cell)
+                })
                 .collect::<Map<String, Value>>()
                 .into()
         })
@@ -593,48 +621,6 @@ fn run_monitor(api: &Api, cmd: MonitorCmd) -> Result<(), Box<dyn std::error::Err
     }
 }
 
-/// The read-only resources share one list/get shape.
-enum SimpleCmd {
-    List,
-    Get(Option<String>, FromFlag),
-}
-
-impl From<NotifierCmd> for SimpleCmd {
-    fn from(cmd: NotifierCmd) -> Self {
-        match cmd {
-            NotifierCmd::List => Self::List,
-            NotifierCmd::Get { id, from } => Self::Get(id, from),
-        }
-    }
-}
-
-impl From<UserCmd> for SimpleCmd {
-    fn from(cmd: UserCmd) -> Self {
-        match cmd {
-            UserCmd::List => Self::List,
-            UserCmd::Get { id, from } => Self::Get(id, from),
-        }
-    }
-}
-
-impl From<OrgCmd> for SimpleCmd {
-    fn from(cmd: OrgCmd) -> Self {
-        match cmd {
-            OrgCmd::List => Self::List,
-            OrgCmd::Get { id, from } => Self::Get(id, from),
-        }
-    }
-}
-
-fn run_simple(api: &Api, resource: &str, cmd: SimpleCmd) -> Result<(), Box<dyn std::error::Error>> {
-    match cmd {
-        SimpleCmd::List => print_list(api, path!["v2", resource], Vec::new()),
-        SimpleCmd::Get(id, from) => pipe::run_get(id, from, api.format, |id| {
-            api.get_body(path!["v2", resource, id], Vec::new())
-        }),
-    }
-}
-
 impl EventsInput {
     fn read(self) -> Result<String, Box<dyn std::error::Error>> {
         match (self.events, self.events_file) {
@@ -696,25 +682,13 @@ fn api(
     instance: &str,
 ) -> Result<Api, Box<dyn std::error::Error>> {
     Ok(Api {
-        client: client(org_id)?,
+        client: reqwest::blocking::Client::new(),
         base_url: reqwest::Url::parse(&base_url(instance))?,
         auth: Auth::Bearer(token),
         format,
-        headers: &[],
+        headers: org_id.map(|id| (ORG_HEADER, id)).into_iter().collect(),
         trailing_slash: false,
     })
-}
-
-/// The org header is per invocation, so it rides on the client rather than
-/// on `Api::headers`, which is static.
-fn client(org_id: Option<String>) -> Result<reqwest::blocking::Client, Box<dyn std::error::Error>> {
-    let mut headers = reqwest::header::HeaderMap::new();
-    if let Some(org_id) = org_id {
-        headers.insert(ORG_HEADER, org_id.parse()?);
-    }
-    Ok(reqwest::blocking::Client::builder()
-        .default_headers(headers)
-        .build()?)
 }
 
 fn print_list(
@@ -746,20 +720,38 @@ fn org_id(instance: &str) -> Option<String> {
         .or_else(|| crate::auth::stored_value(crate::provider::Credential::AxiomOrg, instance))
 }
 
-/// `AXIOM_URL` for the default instance, else the cloud API.
+/// The instance's base URL: `AXIOM_URL` (default instance only), then the
+/// host stored with the instance's credentials, then the cloud API.
 pub(crate) fn base_url(instance: &str) -> String {
     let environment = if instance == crate::provider::DEFAULT_INSTANCE {
         crate::auth::environment("AXIOM_URL")
     } else {
         None
     };
-    resolve_base_url(environment)
+    resolve_base_url(
+        environment,
+        crate::auth::stored_value(crate::provider::Credential::AxiomUrl, instance),
+    )
 }
 
-fn resolve_base_url(environment: Option<String>) -> String {
+/// Turn the host the user gave at login into a base URL: empty means the
+/// cloud API, a bare hostname gets https.
+pub(crate) fn normalize_host(input: &str) -> String {
+    let host = input.trim().trim_end_matches('/');
+    if host.is_empty() {
+        DEFAULT_URL.to_owned()
+    } else if host.contains("://") {
+        host.to_owned()
+    } else {
+        format!("https://{host}")
+    }
+}
+
+fn resolve_base_url(environment: Option<String>, stored: Option<String>) -> String {
     environment
-        .map(|url| url.trim().trim_end_matches('/').to_owned())
-        .filter(|url| !url.is_empty())
+        .filter(|url| !url.trim().is_empty())
+        .or(stored)
+        .map(|url| normalize_host(&url))
         .unwrap_or_else(|| DEFAULT_URL.to_owned())
 }
 
@@ -824,6 +816,17 @@ mod tests {
         assert_eq!(empty["items"], json!([]));
         assert_eq!(empty["pageInfo"]["hasNextPage"], false);
         assert_eq!(query_result(json!({}), None)["items"], json!([]));
+        let ragged = query_result(
+            json!({ "tables": [{
+                "fields": [{ "name": "a" }, { "name": "b" }, { "name": "c" }],
+                "columns": [[1, 2], [3], "not-a-column"],
+            }] }),
+            None,
+        );
+        assert_eq!(
+            ragged["items"],
+            json!([{ "a": 1, "b": 3, "c": null }, { "a": 2, "b": null, "c": null }])
+        );
     }
 
     #[test]
@@ -865,7 +868,7 @@ mod tests {
     }
 
     #[test]
-    fn org_header_rides_on_the_client_when_configured() {
+    fn org_header_is_sent_when_configured() {
         let (api, request_rx, server) = test_api("200 OK", "[]", Some("org-1"));
         run_dataset(&api, DatasetCmd::List).unwrap();
         server.join().unwrap();
@@ -967,6 +970,22 @@ mod tests {
     }
 
     #[test]
+    fn annotation_payload_sends_only_supplied_fields() {
+        assert_eq!(
+            Value::from(annotation_payload(AnnotationFields {
+                datasets: vec![],
+                kind: None,
+                time: None,
+                end_time: None,
+                title: Some("v1".into()),
+                description: None,
+                url: None,
+            })),
+            json!({ "title": "v1" })
+        );
+    }
+
+    #[test]
     fn dataset_create_sends_retention_only_when_asked() {
         let (api, request_rx, server) = test_api("200 OK", "{}", None);
         run_dataset(
@@ -986,28 +1005,19 @@ mod tests {
             body,
             json!({ "name": "logs", "description": "", "useRetentionPeriod": true, "retentionDays": 30 })
         );
-        assert_eq!(
-            Value::from(annotation_payload(AnnotationFields {
-                datasets: vec![],
-                kind: None,
-                time: None,
-                end_time: None,
-                title: Some("v1".into()),
-                description: None,
-                url: None,
-            })),
-            json!({ "title": "v1" })
-        );
     }
 
     #[test]
-    fn base_url_prefers_the_environment_then_the_cloud_api() {
+    fn base_url_prefers_environment_then_stored_then_default() {
         assert_eq!(
-            resolve_base_url(Some("https://axiom.example.com/".into())),
+            resolve_base_url(Some("https://axiom.example.com/".into()), Some("x".into())),
             "https://axiom.example.com"
         );
-        assert_eq!(resolve_base_url(Some("  ".into())), DEFAULT_URL);
-        assert_eq!(resolve_base_url(None), DEFAULT_URL);
+        assert_eq!(
+            resolve_base_url(Some("  ".into()), Some("api.eu.example.com".into())),
+            "https://api.eu.example.com"
+        );
+        assert_eq!(resolve_base_url(None, None), DEFAULT_URL);
     }
 
     fn test_api(
@@ -1017,11 +1027,14 @@ mod tests {
     ) -> (Api, mpsc::Receiver<String>, std::thread::JoinHandle<()>) {
         let (url, request_rx, server) = rest::testing::test_server(status, body, "");
         let api = Api {
-            client: client(org_id.map(str::to_owned)).unwrap(),
+            client: reqwest::blocking::Client::new(),
             base_url: url,
             auth: Auth::Bearer("secret-token".into()),
             format: crate::output::Format::Json,
-            headers: &[],
+            headers: org_id
+                .map(|id| (ORG_HEADER, id.to_owned()))
+                .into_iter()
+                .collect(),
             trailing_slash: false,
         };
         (api, request_rx, server)

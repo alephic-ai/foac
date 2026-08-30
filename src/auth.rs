@@ -84,14 +84,18 @@ struct AxiomCmd {
     command: AxiomAction,
 }
 
-/// Same shape as [`ProviderAction`], plus the `--org-id` login flag a
-/// personal access token needs; the ID is stored beside the token.
+/// Same shape as [`HostedAction`], plus the `--org-id` login flag a
+/// personal access token needs; both are stored beside the token.
 #[derive(Subcommand)]
 enum AxiomAction {
     /// Check authentication for this provider
     Status,
     /// Validate and save a token in foac's credentials file
     Login {
+        /// Hostname or URL to log in to (api.axiom.co by default), skipping
+        /// the prompt
+        #[arg(long)]
+        host: Option<String>,
         /// Organization ID, needed with a personal access token (xapt-)
         #[arg(long)]
         org_id: Option<String>,
@@ -271,8 +275,8 @@ pub fn run(
                 print_status(Provider::Axiom, &store, format, instance);
                 Ok(())
             }
-            AxiomAction::Login { org_id } => {
-                login(Provider::Axiom, org_id, &store, format, instance)
+            AxiomAction::Login { host, org_id } => {
+                login(Provider::Axiom, host, org_id, &store, format, instance)
             }
             AxiomAction::Logout => logout(Provider::Axiom, &store, format, instance),
         },
@@ -316,7 +320,7 @@ fn run_hosted(
             print_status(provider, store, format, instance);
             Ok(())
         }
-        HostedAction::Login { host } => login(provider, host, store, format, instance),
+        HostedAction::Login { host } => login(provider, host, None, store, format, instance),
         HostedAction::Logout => logout(provider, store, format, instance),
     }
 }
@@ -585,6 +589,12 @@ impl Provider {
                 url_environment: "FIRECRAWL_API_URL",
                 normalize: crate::firecrawl::normalize_host,
             }),
+            Self::Axiom => Some(Hosted {
+                default_host: crate::axiom::DEFAULT_HOST,
+                url_credential: crate::provider::Credential::AxiomUrl,
+                url_environment: "AXIOM_URL",
+                normalize: crate::axiom::normalize_host,
+            }),
             _ => None,
         }
     }
@@ -652,7 +662,7 @@ fn run_provider(
             print_status(provider, store, format, instance);
             Ok(())
         }
-        ProviderAction::Login => login(provider, None, store, format, instance),
+        ProviderAction::Login => login(provider, None, None, store, format, instance),
         ProviderAction::Logout => logout(provider, store, format, instance),
     }
 }
@@ -694,6 +704,7 @@ pub(crate) fn logout(
         Provider::Axiom => vec![
             crate::provider::Credential::Axiom,
             crate::provider::Credential::AxiomOrg,
+            crate::provider::Credential::AxiomUrl,
         ],
         // A self-hostable provider's stored URL goes with its token.
         _ => std::iter::once(provider.credential())
@@ -708,22 +719,23 @@ pub(crate) fn logout(
     Ok(())
 }
 
-/// `extra` is the login flag beside the token: the host of a self-hostable
-/// provider, or the org ID of an Axiom personal access token.
+/// `host` is the `--host` flag of a self-hostable provider and `org_id` the
+/// `--org-id` of an Axiom personal access token; both are stored beside the
+/// token.
 fn login(
     provider: Provider,
-    extra: Option<String>,
+    host: Option<String>,
+    org_id: Option<String>,
     store: &dyn SecretStore,
     format: crate::output::Format,
     instance: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let hosted = provider.hosted();
-    let url = match (&hosted, &extra) {
-        (Some(hosted), Some(host)) => Some((hosted.normalize)(host)),
+    let url = match (&hosted, host) {
+        (Some(hosted), Some(host)) => Some((hosted.normalize)(&host)),
         (Some(hosted), None) => read_host(provider, hosted)?,
         (None, _) => None,
     };
-    let org_id = extra.filter(|_| provider == Provider::Axiom);
     if let Some(hosted) = &hosted {
         // Preflight the store before prompting: the URL and token are
         // written together, so a malformed file must fail before any input.
@@ -752,7 +764,8 @@ fn login(
         validate(
             provider,
             &token,
-            url.as_deref().or(org_id.as_deref()),
+            url.as_deref(),
+            org_id.as_deref(),
             instance,
         )
     })?;
@@ -844,7 +857,7 @@ fn validate_slack_login_token(token: &str, bot: bool) -> Result<Value, Validatio
             "Slack {expected} token required"
         )));
     }
-    validate(Provider::Slack, token, None, DEFAULT_INSTANCE)
+    validate(Provider::Slack, token, None, None, DEFAULT_INSTANCE)
 }
 
 fn validate_and_store_slack<F>(
@@ -1197,7 +1210,9 @@ fn provider_status(provider: Provider, store: &dyn SecretStore, instance: &str) 
         ),
         Provider::Jira | Provider::Confluence => unreachable!("handled above"),
     };
-    credential_status(resolved, |token| validate(provider, token, None, instance))
+    credential_status(resolved, |token| {
+        validate(provider, token, None, None, instance)
+    })
 }
 
 fn all_provider_statuses(store: &dyn SecretStore) -> Value {
@@ -1530,19 +1545,19 @@ where
     }
 }
 
-/// `url_override` is the value login just collected beside the token (a
-/// hosted provider's base URL, Axiom's org ID), before it is stored; status
-/// checks pass `None` and read the stored one.
+/// `url_override` is the base URL a hosted provider's login just collected,
+/// and `org_override` the org ID an Axiom login collected, before they are
+/// stored; status checks pass `None` and read the stored ones.
 fn validate(
     provider: Provider,
     token: &str,
     url_override: Option<&str>,
+    org_override: Option<&str>,
     instance: &str,
 ) -> Result<Value, ValidationError> {
     match provider {
-        Provider::Axiom => {
-            crate::axiom::auth_identity(token, url_override, instance).map(axiom_account)
-        }
+        Provider::Axiom => crate::axiom::auth_identity(token, url_override, org_override, instance)
+            .map(axiom_account),
         Provider::Linear => crate::linear::auth_identity(token).map(linear_account),
         Provider::Github => crate::github::auth_identity(token).map(github_account),
         Provider::Neon => crate::neon::auth_identity(token).map(neon_account),
@@ -1744,7 +1759,8 @@ pub(crate) fn print_login_help(
                - Notifiers: read                           (notifier)\n\
                - Users: read                               (user)\n\
              \n\
-             A personal access token (Settings > Profile) also works but needs the organization ID: pass --org-id to this login (stored with the token) or set AXIOM_ORG_ID."
+             A personal access token (Settings > Profile) also works but needs the organization ID: pass --org-id to this login (stored with the token) or set AXIOM_ORG_ID.\n\
+             A regional or dedicated deployment uses another API host: pass --host to this login (stored with the token) or set AXIOM_URL."
         ),
         Provider::Linear => eprintln!(
             "Create a personal API key at https://linear.app/settings/account/security and grant the permissions needed by your foac commands."

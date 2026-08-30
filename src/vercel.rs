@@ -642,7 +642,7 @@ fn api(token: String, format: crate::output::Format) -> Result<Api, Box<dyn std:
         base_url: reqwest::Url::parse(BASE_URL)?,
         auth: Auth::Bearer(token),
         format,
-        headers: &[],
+        headers: Vec::new(),
         trailing_slash: false,
     })
 }
@@ -726,7 +726,7 @@ mod tests {
                 base_url,
                 auth: Auth::Bearer("vercel-token-secret".into()),
                 format: crate::output::Format::Json,
-                headers: &[],
+                headers: Vec::new(),
                 trailing_slash: false,
             },
             request_rx,

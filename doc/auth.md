@@ -67,9 +67,10 @@ foac auth status                         # lists every stored instance, keyed sl
 Instance names use lowercase letters, digits, `-`, and `_`. The credentials
 file nests them per provider (`{"slack": {"default": {...}, "workb": {...}}}`);
 Jira and Confluence share the vendor-level `atlassian` entry, so an Atlassian
-instance covers both. A named Sentry or Firecrawl instance stores its base
-URL alongside its token (`foac auth <provider> login --host ...`), and an
-Axiom instance its organization ID (`foac auth axiom login --org-id ...`).
+instance covers both. A named Sentry, Firecrawl, or Axiom instance stores
+its base URL alongside its token (`foac auth <provider> login --host ...`),
+and an Axiom instance its organization ID too (`foac auth axiom login
+--org-id ...`).
 
 A provider command picks its instance in this order:
 

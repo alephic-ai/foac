@@ -130,6 +130,9 @@ pub(crate) enum Credential {
     /// The organization ID a personal access token needs, stored with the
     /// instance's token.
     AxiomOrg,
+    /// The base URL of a regional or dedicated Axiom deployment, stored with
+    /// the instance's token.
+    AxiomUrl,
     Linear,
     Firecrawl,
     /// The base URL of a self-hosted Firecrawl, stored with the instance's token.
@@ -154,7 +157,7 @@ impl Credential {
     /// `atlassian` vendor.
     pub(crate) fn vendor(self) -> &'static str {
         match self {
-            Self::Axiom | Self::AxiomOrg => "axiom",
+            Self::Axiom | Self::AxiomOrg | Self::AxiomUrl => "axiom",
             Self::Linear => "linear",
             Self::Firecrawl | Self::FirecrawlUrl => "firecrawl",
             Self::Github => "github",
@@ -176,7 +179,7 @@ impl Credential {
             | Self::Neon
             | Self::Sentry
             | Self::Vercel => "token",
-            Self::SentryUrl | Self::FirecrawlUrl => "url",
+            Self::SentryUrl | Self::FirecrawlUrl | Self::AxiomUrl => "url",
             Self::AxiomOrg => "org_id",
             Self::SlackBot => "bot_token",
             Self::SlackUser => "user_token",

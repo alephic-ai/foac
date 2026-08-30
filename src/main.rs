@@ -586,6 +586,7 @@ mod tests {
     fn hidden_providers_still_parse() {
         let providers = test_providers(&[]);
         for args in [
+            vec!["foac", "axiom", "dataset", "list"],
             vec!["foac", "confluence", "page", "list"],
             vec!["foac", "firecrawl", "scrape", "https://example.com"],
             vec!["foac", "github", "issue", "list", "--repo", "owner/repo"],
@@ -733,6 +734,14 @@ mod tests {
             vec!["foac", "auth", "axiom", "status"],
             vec!["foac", "auth", "axiom", "login"],
             vec!["foac", "auth", "axiom", "login", "--org-id", "my-org"],
+            vec![
+                "foac",
+                "auth",
+                "axiom",
+                "login",
+                "--host",
+                "axiom.example.com",
+            ],
             vec!["foac", "auth", "axiom", "logout"],
             vec!["foac", "auth", "sentry", "status"],
             vec!["foac", "auth", "sentry", "login"],
@@ -945,6 +954,7 @@ mod tests {
             vec!["foac", "slack", "user", "get", "--from", "email"],
             vec!["foac", "slack", "message", "get", "#eng", "--from", "ts"],
             vec!["foac", "vercel", "project", "get", "--from", "name"],
+            vec!["foac", "axiom", "dataset", "get", "--from", "name"],
             vec![
                 "foac",
                 "vercel",

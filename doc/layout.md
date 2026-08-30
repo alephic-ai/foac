@@ -49,13 +49,14 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   `pagination.cursor`; Neon returns that cursor even on the last page, so
   `hasNextPage` uses a full-page heuristic instead.
 - Axiom uses bearer-authenticated REST against `https://api.axiom.co`
-  (`AXIOM_URL` overrides it for the default instance): management
+  (`AXIOM_URL` for the default instance, then the host stored at login):
+  management
   resources on `/v2`, APL queries and ingest on the `/v1` dataset endpoints
   (`POST /v1/datasets/_apl?format=tabular`,
   `POST /v1/datasets/{name}/ingest`). Personal access tokens need
   `X-Axiom-Org-Id` (`--org-id`, `AXIOM_ORG_ID` for the default instance, or
-  the ID stored beside the token at login), which rides on the reqwest
-  client's default headers because `Api::headers` is static. Management lists are bare arrays with no
+  the ID stored beside the token at login), sent as an `Api::headers`
+  entry. Management lists are bare arrays with no
   pagination. Query results are transposed from Axiom's column-major
   tables into `{items, pageInfo, status}` rows; paging uses the
   `minCursor`/`maxCursor` Axiom reports in `status`.
