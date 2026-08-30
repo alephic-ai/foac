@@ -370,7 +370,7 @@ pub enum TeamCmd {
         #[command(flatten)]
         page: Page,
     },
-    /// Get one team by UUID
+    /// Get one team by UUID or key like ENG
     #[command(after_long_help = outdoc::linear_get("team", "team.id (UUID); team.key is the human key like ENG"))]
     Get {
         id: Option<String>,
@@ -412,7 +412,7 @@ pub enum CycleCmd {
     /// List cycles of a team
     #[command(after_long_help = outdoc::linear_nested_list("team", "cycles", &["id", "number"]))]
     List {
-        /// Team UUID
+        /// Team UUID or key like ENG
         #[arg(long)]
         team: String,
         #[command(flatten)]

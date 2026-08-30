@@ -161,7 +161,7 @@ enum DeploymentCmd {
         /// Filter by project ID or name
         #[arg(long)]
         project: Option<String>,
-        /// Filter by state, e.g. READY, ERROR, BUILDING, or CANCELED
+        /// Filter by state: QUEUED, INITIALIZING, BUILDING, READY, ERROR, or CANCELED
         #[arg(long)]
         state: Option<String>,
         /// Filter by target environment, e.g. production or preview
