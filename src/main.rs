@@ -6,7 +6,7 @@ use foac::{
 };
 
 #[derive(Parser)]
-#[command(about, arg_required_else_help = true)]
+#[command(about, version, arg_required_else_help = true)]
 struct Cli {
     /// Output format for JSON command output (version, update, and skill ignore it)
     #[arg(long, global = true, value_enum, default_value = "auto")]
@@ -69,7 +69,7 @@ enum Command {
     Skill(SkillCmd),
     /// Download the latest release and refresh any installed foac skills
     Update,
-    /// Print the version
+    /// Print the version (same as --version)
     Version,
     /// Show the foac banner, version, and repository
     About,
@@ -138,8 +138,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             SkillCmd::Install => skill_install_cmd(),
         },
         Command::Update => update::run(),
+        // Same line as `--version`, so the two spellings never disagree.
         Command::Version => {
-            println!("{}", env!("CARGO_PKG_VERSION"));
+            print!("{}", Cli::command().render_version());
             Ok(())
         }
         Command::About => {

@@ -35,14 +35,17 @@ fn malformed_settings(test_name: &str) -> (PathBuf, PathBuf, Vec<u8>) {
 }
 
 #[test]
-fn version_prints_the_cargo_version() {
-    let out = foac(&["version"]).output().unwrap();
-    assert!(out.status.success());
-    assert_eq!(
-        String::from_utf8(out.stdout).unwrap(),
-        concat!(env!("CARGO_PKG_VERSION"), "\n")
-    );
-    assert!(out.stderr.is_empty());
+fn version_command_and_flags_print_the_cargo_version() {
+    for args in [&["version"][..], &["--version"], &["-V"]] {
+        let out = foac(args).output().unwrap();
+        assert!(out.status.success(), "{args:?}");
+        assert_eq!(
+            String::from_utf8(out.stdout).unwrap(),
+            concat!("foac ", env!("CARGO_PKG_VERSION"), "\n"),
+            "{args:?}"
+        );
+        assert!(out.stderr.is_empty(), "{args:?}");
+    }
 }
 
 #[test]
