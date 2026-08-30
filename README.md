@@ -173,6 +173,9 @@ graph LR
 | Vercel | Teams, projects, deployments, account domains, project domains | [doc/vercel.md](doc/vercel.md) |
 | Firecrawl | Web scraping, site maps, web search, crawl jobs, batch scrapes, browsing agents, team usage | [doc/firecrawl.md](doc/firecrawl.md) |
 
+Candidates for more providers are tracked in
+[GitHub issues](https://github.com/alephic-ai/foac/issues).
+
 ## Configuration
 
 foac stores editable provider settings in `~/.config/foac/config.toml` and
@@ -214,16 +217,3 @@ refresh themselves on the next run.
 Other commands check GitHub for a newer release at most once a day, and print a
 notice on stderr while one exists. They never auto-install. Set
 `FOAC_NO_UPDATE_CHECK` (or `CI`) to skip the check.
-
-## Hacking on foac
-
-[CLAUDE.md](CLAUDE.md) has the build and test commands and a map of
-[ARCHITECTURE.md](ARCHITECTURE.md) and [doc/](doc/).
-[doc/adding-a-command.md](doc/adding-a-command.md) and
-[doc/adding-a-provider.md](doc/adding-a-provider.md) are the recipes for
-growing foac; provider candidates are tracked in
-[GitHub issues](https://github.com/alephic-ai/foac/issues).
-
-## License
-
-[GPL-3.0](LICENSE).
