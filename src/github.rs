@@ -2036,6 +2036,15 @@ mod tests {
         assert_eq!(page_info(Some(link))["nextPage"], 3);
         assert_eq!(page_info(Some(link))["previousPage"], 1);
 
+        // parse_link_header is all-or-nothing: one malformed entry (valueless
+        // query key) fails the whole header, so every relation reads as absent.
+        let malformed = concat!(
+            "<https://api.github.com/repositories/1/issues?page=3>; rel=\"next\", ",
+            "<https://api.github.com/repositories/1/issues?page=1&foo>; rel=\"prev\""
+        );
+        assert_eq!(page_info(Some(malformed))["hasNextPage"], false);
+        assert_eq!(page_info(Some(malformed))["nextPage"], Value::Null);
+
         let items = list_items(
             json!([
                 { "number": 1, "title": "Issue" },
