@@ -37,10 +37,10 @@ enum Resource {
     Field(FieldCmd),
     /// Run an APL query
     #[command(after_long_help = outdoc::lines(&[
-        r#"{"status": {"rowsMatched": N, "minCursor": "...", "maxCursor": "...", ...}, "tables": [...], ...}"#,
-        r#"With --legacy: {"status": {...}, "matches": [{"_time": ..., "data": {...}}, ...], ...}"#,
-        "Next page: sort by _time in the query, then pass status.maxCursor (ascending) or status.minCursor (descending) to --cursor; stop on a short page",
-        "Raw Axiom query result; foac adds no envelope",
+        r#"{"items": [<row>, ...], "pageInfo": {"hasNextPage": true, "minCursor": "...", "maxCursor": "..."}, "status": {...}}"#,
+        "Records: items[], one object per result row keyed by the query's output fields (Axiom's columnar tables transposed)",
+        "Next page: sort by _time in the query, then pass pageInfo.maxCursor (ascending) or pageInfo.minCursor (descending) to --cursor while hasNextPage is true",
+        "status is Axiom's raw query status (rowsMatched, elapsedTime, messages, ...)",
     ]))]
     Query(QueryArgs),
     /// Ingest events into a dataset
@@ -76,15 +76,12 @@ struct QueryArgs {
     /// Query window end, RFC 3339
     #[arg(long)]
     end_time: Option<String>,
-    /// Cursor from a previous result's status.minCursor/maxCursor
+    /// Cursor from a previous result's pageInfo.minCursor/maxCursor
     #[arg(long)]
     cursor: Option<String>,
     /// Include the event the cursor points at
     #[arg(long)]
     include_cursor: bool,
-    /// Row-shaped legacy result (matches[]) instead of the tabular one
-    #[arg(long)]
-    legacy: bool,
 }
 
 #[derive(Args)]
@@ -356,7 +353,9 @@ pub(crate) fn auth_identity(
     token: &str,
     instance: &str,
 ) -> Result<Value, crate::auth::ValidationError> {
-    let url = reqwest::Url::parse(&format!("{}/v2/user", base_url(instance)))
+    // Not /v2/user: an API token is not a user, and Axiom answers that
+    // endpoint with a 500 for one. Every useful foac token can read datasets.
+    let url = reqwest::Url::parse(&format!("{}/v2/datasets", base_url(instance)))
         .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
     let org_id = crate::auth::environment("AXIOM_ORG_ID");
     let headers: Vec<(&str, &str)> = org_id.iter().map(|id| (ORG_HEADER, id.as_str())).collect();
@@ -449,13 +448,65 @@ fn run_query(api: &Api, args: QueryArgs) -> Result<(), Box<dyn std::error::Error
     if args.include_cursor {
         payload.insert("includeCursor".into(), json!(true));
     }
-    let format = if args.legacy { "legacy" } else { "tabular" };
-    api.print(
+    let response = api.send(
         Method::POST,
-        path!["v1", "datasets", "_apl"],
-        vec![("format", format.to_owned())],
+        &["v1".to_owned(), "datasets".to_owned(), "_apl".to_owned()],
+        &[("format", "tabular".to_owned())],
         Some(payload.into()),
-    )
+    )?;
+    crate::output::print(&query_result(response.body), api.format);
+    Ok(())
+}
+
+/// Axiom's tabular result stores each table column-major (`fields[]` names,
+/// `columns[c][r]` values); rows as objects are what a reader wants.
+fn query_result(body: Value) -> Value {
+    let rows: Vec<Value> = body["tables"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(table_rows)
+        .collect();
+    let status = &body["status"];
+    let has_next = status["rowsMatched"]
+        .as_u64()
+        .is_some_and(|matched| matched > rows.len() as u64);
+    let mut result = rest::wrap_list(
+        rows,
+        json!({
+            "hasNextPage": has_next,
+            "minCursor": status["minCursor"],
+            "maxCursor": status["maxCursor"],
+        }),
+    );
+    result["status"] = status.clone();
+    result
+}
+
+fn table_rows(table: &Value) -> Vec<Value> {
+    let names: Vec<&str> = table["fields"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|field| field["name"].as_str())
+        .collect();
+    let columns: Vec<&Vec<Value>> = table["columns"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_array)
+        .collect();
+    let count = columns.first().map_or(0, |column| column.len());
+    (0..count)
+        .map(|row| {
+            names
+                .iter()
+                .zip(&columns)
+                .map(|(name, column)| ((*name).to_owned(), column[row].clone()))
+                .collect::<Map<String, Value>>()
+                .into()
+        })
+        .collect()
 }
 
 fn run_ingest(api: &Api, args: IngestArgs) -> Result<(), Box<dyn std::error::Error>> {
@@ -697,7 +748,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn query_posts_apl_with_the_result_format() {
+    fn query_posts_apl_and_transposes_the_tabular_result() {
         let (api, request_rx, server) = test_api("200 OK", "{\"status\":{}}", None);
         run_query(
             &api,
@@ -707,14 +758,13 @@ mod tests {
                 end_time: None,
                 cursor: None,
                 include_cursor: false,
-                legacy: true,
             },
         )
         .unwrap();
         server.join().unwrap();
 
         let request = request_rx.recv().unwrap();
-        assert!(request.starts_with("POST /v1/datasets/_apl?format=legacy HTTP/1.1"));
+        assert!(request.starts_with("POST /v1/datasets/_apl?format=tabular HTTP/1.1"));
         assert!(request.contains("authorization: Bearer secret-token"));
         assert!(!request.contains("x-axiom-org-id"));
         let body: Value = serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap();
@@ -722,6 +772,35 @@ mod tests {
             body,
             json!({ "apl": "['logs'] | limit 1", "startTime": "2026-01-01T00:00:00Z" })
         );
+    }
+
+    #[test]
+    fn query_result_turns_columns_into_row_objects() {
+        let body = json!({
+            "status": { "rowsMatched": 5, "minCursor": "min", "maxCursor": "max" },
+            "tables": [{
+                "name": "0",
+                "fields": [{ "name": "_time" }, { "name": "level" }],
+                "columns": [["t1", "t2"], ["error", null]],
+            }],
+        });
+        assert_eq!(
+            query_result(body),
+            json!({
+                "items": [
+                    { "_time": "t1", "level": "error" },
+                    { "_time": "t2", "level": null },
+                ],
+                "pageInfo": { "hasNextPage": true, "minCursor": "min", "maxCursor": "max" },
+                "status": { "rowsMatched": 5, "minCursor": "min", "maxCursor": "max" },
+            })
+        );
+        let empty = query_result(
+            json!({ "status": { "rowsMatched": 0 }, "tables": [{ "fields": [], "columns": [] }] }),
+        );
+        assert_eq!(empty["items"], json!([]));
+        assert_eq!(empty["pageInfo"]["hasNextPage"], false);
+        assert_eq!(query_result(json!({}))["items"], json!([]));
     }
 
     #[test]

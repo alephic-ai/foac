@@ -51,12 +51,13 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
 - Axiom uses bearer-authenticated REST against `https://api.axiom.co`
   (`AXIOM_URL` overrides it for the default instance): management
   resources on `/v2`, APL queries and ingest on the `/v1` dataset endpoints
-  (`POST /v1/datasets/_apl?format=tabular|legacy`,
+  (`POST /v1/datasets/_apl?format=tabular`,
   `POST /v1/datasets/{name}/ingest`). Personal access tokens need
   `X-Axiom-Org-Id`, which rides on the reqwest client's default headers
   because `Api::headers` is static. Management lists are bare arrays with no
-  pagination; query paging is cursor data inside the raw result
-  (`status.minCursor`/`maxCursor`).
+  pagination. Query results are transposed from Axiom's column-major
+  tables into `{items, pageInfo, status}` rows; paging uses the
+  `minCursor`/`maxCursor` Axiom reports in `status`.
 - Firecrawl uses REST API v2 with a bearer API key; its base URL comes from
   `FIRECRAWL_API_URL` (default instance only), then the host saved with the
   instance's credentials by `foac auth firecrawl login` (its prompt or

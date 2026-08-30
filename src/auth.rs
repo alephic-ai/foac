@@ -985,8 +985,7 @@ fn logout_summary(removed: bool) -> String {
 
 fn account_identity(provider: Provider, account: &Value) -> String {
     match provider {
-        // Same `name <email>` shape as Neon.
-        Provider::Axiom => neon_identity(account),
+        Provider::Axiom => axiom_identity(account),
         Provider::Linear => linear_identity(account),
         Provider::Github => github_identity(account),
         Provider::Neon => neon_identity(account),
@@ -1036,6 +1035,18 @@ fn neon_identity(account: &Value) -> String {
 fn vercel_identity(account: &Value) -> String {
     let name = text_field(account, "name").or_else(|| text_field(account, "username"));
     person_identity(name, text_field(account, "email"), None)
+}
+
+fn axiom_identity(account: &Value) -> String {
+    let Some(datasets) = account.get("datasets").and_then(Value::as_array) else {
+        return String::new();
+    };
+    let names: Vec<&str> = datasets.iter().filter_map(Value::as_str).collect();
+    match names.len() {
+        0 => "no datasets".to_owned(),
+        1..=5 => names.join(", "),
+        count => format!("{}, +{} more", names[..5].join(", "), count - 5),
+    }
 }
 
 fn sentry_identity(account: &Value) -> String {
@@ -1509,16 +1520,19 @@ fn firecrawl_account(identity: Value) -> Value {
     })
 }
 
+/// Axiom has no whoami an API token can call; the dataset list is the
+/// identity check, and the dataset names are the safe account detail.
 fn axiom_account(identity: Value) -> Value {
-    json!({
-        "id": identity["id"],
-        "name": identity["name"],
-        "email": identity["email"],
-        "role": {
-            "id": identity["role"]["id"],
-            "name": identity["role"]["name"],
-        },
-    })
+    let datasets: Vec<Value> = identity
+        .as_array()
+        .map(|datasets| {
+            datasets
+                .iter()
+                .filter_map(|dataset| dataset.get("name").cloned())
+                .collect()
+        })
+        .unwrap_or_default();
+    json!({ "datasets": datasets })
 }
 
 fn linear_account(identity: Value) -> Value {
@@ -1665,7 +1679,21 @@ pub(crate) fn print_login_help(
 ) -> Result<(), Box<dyn std::error::Error>> {
     match provider {
         Provider::Axiom => eprintln!(
-            "Create an API token in Axiom under Settings > API tokens with Advanced permissions: on All datasets, Ingest (create), Query (read), and Trim (update); at org level, Datasets and Annotations (create/read/update/delete) plus Monitors, Notifiers, and Users (read). Grant only what your foac commands need. A personal access token (Settings > Profile) also works but needs the organization ID in AXIOM_ORG_ID or --org-id."
+            "Create an API token in Axiom under Settings > API tokens, choose Advanced permissions, and grant only what your foac commands need:\n\
+             \n\
+             All datasets (or individual datasets)\n\
+               - Ingest: create        (ingest)\n\
+               - Query: read           (query)\n\
+               - Trim: update          (dataset trim)\n\
+             \n\
+             Org level permissions\n\
+               - Datasets: create/read/update/delete       (dataset, field)\n\
+               - Annotations: create/read/update/delete    (annotation)\n\
+               - Monitors: read                            (monitor)\n\
+               - Notifiers: read                           (notifier)\n\
+               - Users: read                               (user)\n\
+             \n\
+             A personal access token (Settings > Profile) also works but needs the organization ID in AXIOM_ORG_ID or --org-id."
         ),
         Provider::Linear => eprintln!(
             "Create a personal API key at https://linear.app/settings/account/security and grant the permissions needed by your foac commands."
@@ -2397,6 +2425,24 @@ pub(crate) mod tests {
         assert_eq!(
             account_identity(Provider::Neon, &neon),
             "Lolo <lolo@example.com>"
+        );
+
+        let axiom = axiom_account(json!([
+            { "id": "logs", "name": "logs" },
+            { "id": "traces", "name": "traces" },
+        ]));
+        assert_eq!(axiom, json!({ "datasets": ["logs", "traces"] }));
+        assert_eq!(account_identity(Provider::Axiom, &axiom), "logs, traces");
+        assert_eq!(
+            account_identity(Provider::Axiom, &axiom_account(json!([]))),
+            "no datasets"
+        );
+        let many: Vec<Value> = (1..=7)
+            .map(|n| json!({ "name": format!("d{n}") }))
+            .collect();
+        assert_eq!(
+            account_identity(Provider::Axiom, &axiom_account(json!(many))),
+            "d1, d2, d3, d4, d5, +2 more"
         );
 
         let sentry = sentry_account(json!([

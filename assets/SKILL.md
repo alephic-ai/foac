@@ -295,12 +295,14 @@ foac <provider> <resource> <verb> [flags]
 - **Axiom queries**: `query "APL"` runs an APL query across datasets, e.g.
   `['logs'] | where level == 'error' | summarize count() by bin(_time, 1h)`.
   Put relative ranges in the query (`| where _time > ago(1h)`) or pass
-  `--start-time`/`--end-time` as RFC 3339. The default result is Axiom's
-  tabular format (`tables[].columns`); `--legacy` returns one object per
-  event under `matches[].data`, which is easier to read. Cursor paging:
-  sort by `_time`, then pass `status.maxCursor` (ascending) or
-  `status.minCursor` (descending) to `--cursor` until a page is short.
-  Use `field list --dataset NAME` to discover a dataset's columns first.
+  `--start-time`/`--end-time` as RFC 3339. Output is a foac list: `items`
+  holds one object per result row keyed by the query's output fields
+  (Axiom's columnar tables transposed), `pageInfo` carries `hasNextPage`
+  plus Axiom's `minCursor`/`maxCursor`, and `status` is Axiom's raw query
+  status (`rowsMatched`, `elapsedTime`, `messages`). To page, sort by
+  `_time` and pass `pageInfo.maxCursor` (ascending) or `minCursor`
+  (descending) to `--cursor` while `hasNextPage` is true. Use
+  `field list --dataset NAME` to discover a dataset's columns first.
 - **Axiom ingest**: `ingest DATASET --events JSON` or
   `--events-file PATH` (`-` for stdin) accepts a JSON array, one object, or
   NDJSON and posts them as one batch; `--timestamp-field` names the field
@@ -589,7 +591,7 @@ foac github repo list | foac vercel project get --from name
 ```sh
 foac axiom dataset list
 foac axiom field list --dataset logs
-foac axiom query "['logs'] | where level == 'error' | where _time > ago(1h) | limit 20" --legacy
+foac axiom query "['logs'] | where level == 'error' | where _time > ago(1h) | limit 20"
 foac axiom ingest logs --events-file events.ndjson --timestamp-field ts
 foac axiom annotation create --type deploy --dataset logs --title "v1.2.0" --url https://github.com/owner/repo/pull/42
 ```
