@@ -580,6 +580,7 @@ version = "2.23.1"
 dependencies = [
  "clap",
  "graphql_client",
+ "parse_link_header",
  "reqwest",
  "rpassword",
  "self_update",
@@ -1103,6 +1104,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "lazy_static"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+
+[[package]]
 name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1198,6 +1205,17 @@ dependencies = [
  "bytecount",
  "fnv",
  "unicode-width",
+]
+
+[[package]]
+name = "parse_link_header"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4eb9c7a76731a2792f9b97fb34c1e774fff008badcd449d61fcdacb7a912392b"
+dependencies = [
+ "http",
+ "lazy_static",
+ "regex",
 ]
 
 [[package]]
