@@ -4,6 +4,7 @@
 
 pub mod auth;
 pub mod confluence;
+pub mod firecrawl;
 pub mod github;
 pub mod jira;
 pub mod linear;

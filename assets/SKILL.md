@@ -3,6 +3,10 @@
 name: foac-confluence
 description: Use the foac CLI to interact with Confluence from the shell. Covers spaces, pages, footer comments, and CQL search.
 <!-- /foac-provider:confluence -->
+<!-- foac-provider:firecrawl -->
+name: foac-firecrawl
+description: Use the foac CLI to interact with Firecrawl from the shell. Covers web scraping, site maps, web search, crawl jobs, batch scrapes, browsing agents, and team usage.
+<!-- /foac-provider:firecrawl -->
 <!-- foac-provider:github -->
 name: foac-github
 description: Use the foac CLI to interact with GitHub from the shell. Covers repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, and collaborators.
@@ -37,6 +41,9 @@ description: Use the foac CLI to interact with Vercel from the shell. Covers tea
 <!-- foac-provider:confluence -->
 # foac-confluence
 <!-- /foac-provider:confluence -->
+<!-- foac-provider:firecrawl -->
+# foac-firecrawl
+<!-- /foac-provider:firecrawl -->
 <!-- foac-provider:github -->
 # foac-github
 <!-- /foac-provider:github -->
@@ -87,6 +94,10 @@ foac <provider> <resource> <verb> [flags]
 <!-- foac-provider:confluence -->
 - `confluence`: spaces, pages, footer comments, and CQL search.
 <!-- /foac-provider:confluence -->
+<!-- foac-provider:firecrawl -->
+- `firecrawl`: web scraping, site maps, web search, crawl jobs, batch
+  scrapes, browsing agents, and team usage.
+<!-- /foac-provider:firecrawl -->
 <!-- foac-provider:jira -->
 - `jira`: issues, comments, projects, sprints, users, and workflow
   transitions.
@@ -176,6 +187,17 @@ foac <provider> <resource> <verb> [flags]
   history. The stored credential is shared at the Atlassian vendor level:
   logging in or out through Jira or Confluence covers both.
 <!-- /foac-provider:confluence -->
+<!-- foac-provider:firecrawl -->
+- **Firecrawl auth precedence**: `FIRECRAWL_API_KEY`, then the credentials
+  file. On a TTY, `foac auth firecrawl login` first asks for the host
+  (default `api.firecrawl.dev`; an explicit `http://` scheme is kept, so a
+  local Docker deployment works) and saves it with the instance's
+  credentials; with redirected stdin it reads only the token, so pass
+  `--host URL` to save a self-hosted host non-interactively. A self-hosted
+  Firecrawl with authentication disabled accepts any non-empty token.
+  `FIRECRAWL_API_URL` overrides the saved host for the default instance
+  only.
+<!-- /foac-provider:firecrawl -->
 <!-- foac-provider:neon -->
 - **Neon auth precedence**: `NEON_API_KEY`, then the credentials file.
 <!-- /foac-provider:neon -->
@@ -306,6 +328,37 @@ foac <provider> <resource> <verb> [flags]
   current version internally and re-send omitted fields unchanged, so there is
   no version flag to manage.
 <!-- /foac-provider:confluence -->
+<!-- foac-provider:firecrawl -->
+- **Firecrawl output**: `scrape` prints Firecrawl's raw
+  `{"success": true, "data": {...}}` with one key per requested format
+  (`data.markdown`, `data.links`, `data.json`, ...) plus `data.metadata`.
+  `map`, `search`, and `crawl list` are single-page foac lists
+  (`{"items":[...],"pageInfo":{"hasNextPage":false}}`); `search` flattens the
+  requested sources into one list, web first. Every other response is raw
+  Firecrawl JSON. Credits are spent per page scraped; check
+  `team credit-usage` before large crawls.
+- **Firecrawl scraping**: `scrape URL` returns markdown by default; pass
+  `--formats markdown,html,rawHtml,links,images,screenshot,summary,branding`
+  (comma-separated) for more, `--json-prompt`/`--json-schema[-file]` for
+  structured extraction (the `json` format, the replacement for the retired
+  extract endpoint), and `--only-main-content false` for the whole page.
+  Pipe a `map` or `search` list into `scrape --from url` to scrape every
+  result. The same per-page flags apply to `crawl create` and
+  `batch-scrape create`.
+- **Firecrawl jobs**: `crawl`, `batch-scrape`, and `agent` are asynchronous.
+  `create` returns `{"id": ...}` at once; `get ID` reads the job's status
+  and result (scraped pages in `data` for crawl and batch-scrape, the
+  agent's answer in `data` for agent); `cancel ID` stops it. Crawl and
+  batch-scrape also have `errors ID` (failed pages) and `get --skip N`: a
+  status with a `next` URL has more pages, pass its `skip` value. Add
+  `--wait [--poll-interval S] [--wait-timeout S]` to `create` to block until
+  the job is `completed`, `failed`, or `cancelled` and print that final
+  status with `id` added; a timed-out or failed wait reports the job ID on
+  stderr so the job can still be fetched or cancelled.
+- **Firecrawl agents**: `agent create "PROMPT" [--url URL]... [--schema JSON]
+  [--max-credits N]` runs a browsing agent; results land in `data` once
+  `completed`. Agents spend tokens (`team token-usage`) on top of credits.
+<!-- /foac-provider:firecrawl -->
 <!-- foac-provider:neon -->
 - **Neon project**: pass `--project ID` anywhere after `neon`, or set
   `NEON_PROJECT_ID`; only `org list` and `project list` work without it. Neon
@@ -413,6 +466,18 @@ Use `foac confluence <resource> --help` for flags and required arguments.
 Inline comments, attachments, whiteboards, and databases are not covered.
 <!-- /foac-provider:confluence -->
 
+<!-- foac-provider:firecrawl -->
+## Firecrawl resources
+
+- Synchronous: `scrape URL`, `map URL`, `search QUERY`.
+- Jobs: `crawl list|create|get|errors|cancel`,
+  `batch-scrape create|get|errors|cancel`, `agent create|get|cancel`.
+- Usage: `team credit-usage|token-usage|queue-status|concurrency`.
+
+Use `foac firecrawl <resource> --help` for flags. Local file parsing,
+monitors, browser sessions, and page interaction are not covered.
+<!-- /foac-provider:firecrawl -->
+
 <!-- foac-provider:slack -->
 ## Slack resources
 
@@ -494,6 +559,18 @@ foac confluence search --cql 'type = page AND text ~ "login"'
 ```
 
 <!-- /foac-provider:confluence -->
+
+<!-- foac-provider:firecrawl -->
+
+```sh
+foac firecrawl scrape https://docs.example.com/api --formats markdown,links
+foac firecrawl map https://docs.example.com --search "authentication" | foac firecrawl scrape --from url
+foac firecrawl search "rust async runtime comparison" --limit 5 --tbs qdr:y
+foac firecrawl crawl create https://docs.example.com --limit 50 --include-paths "/docs/*" --wait
+foac firecrawl agent create "List the pricing tiers and their monthly prices" --url https://example.com/pricing --wait
+```
+
+<!-- /foac-provider:firecrawl -->
 
 <!-- foac-provider:neon -->
 

@@ -383,7 +383,10 @@ pub(crate) fn base_url(instance: &str) -> String {
     } else {
         None
     };
-    resolve_base_url(environment, crate::auth::sentry_stored_url(instance))
+    resolve_base_url(
+        environment,
+        crate::auth::stored_url(crate::provider::Credential::SentryUrl, instance),
+    )
 }
 
 /// Turn the hostname the user gave at login into a base URL: empty means the

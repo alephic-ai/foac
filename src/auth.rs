@@ -31,9 +31,11 @@ enum AuthCmd {
     /// Configure Slack authentication
     Slack(SlackCmd),
     /// Configure Sentry authentication
-    Sentry(SentryCmd),
+    Sentry(HostedCmd),
     /// Configure Vercel authentication
     Vercel(ProviderCmd),
+    /// Configure Firecrawl authentication
+    Firecrawl(HostedCmd),
 }
 
 #[derive(Args)]
@@ -106,24 +108,36 @@ enum AtlassianAction {
 
 #[derive(Args)]
 #[command(arg_required_else_help = true)]
-struct SentryCmd {
+struct HostedCmd {
     #[command(subcommand)]
-    command: SentryAction,
+    command: HostedAction,
 }
 
-/// Same shape as [`ProviderAction`], plus the Sentry-only `--host` login flag.
+/// Same shape as [`ProviderAction`], plus the `--host` login flag of
+/// providers that can be self-hosted (Sentry, Firecrawl).
 #[derive(Subcommand)]
-enum SentryAction {
+enum HostedAction {
     /// Check authentication for this provider
     Status,
     /// Validate and save a token in foac's credentials file
     Login {
-        /// Sentry hostname to log in to, skipping the prompt
+        /// Hostname or URL to log in to (the provider's cloud host by
+        /// default), skipping the prompt
         #[arg(long)]
         host: Option<String>,
     },
     /// Remove foac's token from the credentials file
     Logout,
+}
+
+/// How a self-hostable provider stores and normalizes its base URL: login
+/// asks for the host and saves the URL beside the token, and an environment
+/// variable overrides it for the default instance.
+struct Hosted {
+    default_host: &'static str,
+    url_credential: crate::provider::Credential,
+    url_environment: &'static str,
+    normalize: fn(&str) -> String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, clap::ValueEnum)]
@@ -136,6 +150,7 @@ pub enum Provider {
     Slack,
     Sentry,
     Vercel,
+    Firecrawl,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -255,18 +270,42 @@ pub fn run(
             run_atlassian(Provider::Confluence, cmd.command, &store, format, instance)
         }
         AuthCmd::Slack(cmd) => run_slack(cmd.command, &store, format, instance),
-        AuthCmd::Sentry(cmd) => match cmd.command {
-            SentryAction::Status => {
-                print_status(Provider::Sentry, &store, format, instance);
-                Ok(())
-            }
-            SentryAction::Login { host } => login(Provider::Sentry, host, &store, format, instance),
-            SentryAction::Logout => logout(Provider::Sentry, &store, format, instance),
-        },
+        AuthCmd::Sentry(cmd) => run_hosted(Provider::Sentry, cmd.command, &store, format, instance),
         AuthCmd::Vercel(cmd) => {
             run_provider(Provider::Vercel, cmd.command, &store, format, instance)
         }
+        AuthCmd::Firecrawl(cmd) => {
+            run_hosted(Provider::Firecrawl, cmd.command, &store, format, instance)
+        }
     }
+}
+
+fn run_hosted(
+    provider: Provider,
+    action: HostedAction,
+    store: &dyn SecretStore,
+    format: crate::output::Format,
+    instance: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match action {
+        HostedAction::Status => {
+            print_status(provider, store, format, instance);
+            Ok(())
+        }
+        HostedAction::Login { host } => login(provider, host, store, format, instance),
+        HostedAction::Logout => logout(provider, store, format, instance),
+    }
+}
+
+pub(crate) fn firecrawl_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
+    resolve_stored(
+        Provider::Firecrawl,
+        environment_token(Provider::Firecrawl),
+        &crate::provider::CredentialStore,
+        instance,
+    )
+    .map(|credential| credential.token)
+    .map_err(Into::into)
 }
 
 pub(crate) fn linear_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -302,13 +341,16 @@ pub(crate) fn sentry_token(instance: &str) -> Result<String, Box<dyn std::error:
     .map_err(Into::into)
 }
 
-/// A named Sentry instance's stored base URL, if any; environment and
-/// settings never apply to named instances.
-pub(crate) fn sentry_stored_url(instance: &str) -> Option<String> {
+/// An instance's stored base URL, if any (Sentry, Firecrawl); environment
+/// and settings never apply to named instances.
+pub(crate) fn stored_url(
+    credential: crate::provider::Credential,
+    instance: &str,
+) -> Option<String> {
     crate::provider::CredentialStore
         .load()
         .ok()?
-        .get(crate::provider::Credential::SentryUrl, instance)
+        .get(credential, instance)
         .map(str::to_owned)
 }
 
@@ -601,6 +643,7 @@ impl Provider {
             Self::Slack => "slack",
             Self::Sentry => "sentry",
             Self::Vercel => "vercel",
+            Self::Firecrawl => "firecrawl",
         }
     }
 
@@ -614,6 +657,7 @@ impl Provider {
             Self::Slack => "Slack",
             Self::Sentry => "Sentry",
             Self::Vercel => "Vercel",
+            Self::Firecrawl => "Firecrawl",
         }
     }
 
@@ -626,6 +670,7 @@ impl Provider {
             Self::Slack => "SLACK_BOT_TOKEN",
             Self::Sentry => "SENTRY_AUTH_TOKEN",
             Self::Vercel => "VERCEL_TOKEN",
+            Self::Firecrawl => "FIRECRAWL_API_KEY",
         }
     }
 
@@ -638,6 +683,26 @@ impl Provider {
             Self::Slack => crate::provider::Credential::SlackBot,
             Self::Sentry => crate::provider::Credential::Sentry,
             Self::Vercel => crate::provider::Credential::Vercel,
+            Self::Firecrawl => crate::provider::Credential::Firecrawl,
+        }
+    }
+
+    /// The self-hosting descriptor for providers whose login asks for a host.
+    fn hosted(self) -> Option<Hosted> {
+        match self {
+            Self::Sentry => Some(Hosted {
+                default_host: crate::sentry::DEFAULT_HOST,
+                url_credential: crate::provider::Credential::SentryUrl,
+                url_environment: "SENTRY_URL",
+                normalize: crate::sentry::normalize_host,
+            }),
+            Self::Firecrawl => Some(Hosted {
+                default_host: crate::firecrawl::DEFAULT_HOST,
+                url_credential: crate::provider::Credential::FirecrawlUrl,
+                url_environment: "FIRECRAWL_API_URL",
+                normalize: crate::firecrawl::normalize_host,
+            }),
+            _ => None,
         }
     }
 }
@@ -750,26 +815,25 @@ fn logout(
     format: crate::output::Format,
     instance: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let credentials: &[crate::provider::Credential] = match provider {
-        Provider::Slack => &[
+    let credentials: Vec<crate::provider::Credential> = match provider {
+        Provider::Slack => vec![
             crate::provider::Credential::SlackBot,
             crate::provider::Credential::SlackUser,
         ],
         // The credential is vendor-level, so either Atlassian provider's
         // logout de-authenticates both, mirroring login.
-        Provider::Jira | Provider::Confluence => &[
+        Provider::Jira | Provider::Confluence => vec![
             crate::provider::Credential::AtlassianHost,
             crate::provider::Credential::AtlassianEmail,
             crate::provider::Credential::AtlassianToken,
         ],
-        Provider::Sentry => &[
-            crate::provider::Credential::Sentry,
-            crate::provider::Credential::SentryUrl,
-        ],
-        _ => &[provider.credential()],
+        // A self-hostable provider's stored URL goes with its token.
+        _ => std::iter::once(provider.credential())
+            .chain(provider.hosted().map(|hosted| hosted.url_credential))
+            .collect(),
     };
     let removed = store
-        .delete_many(credentials, instance)
+        .delete_many(&credentials, instance)
         .map_err(|error| format!("could not delete {} credential: {error}", provider.as_str()))?;
     let report = logout_report(provider, instance, removed);
     crate::output::print_text(&logout_summary(removed), &report, format);
@@ -783,15 +847,23 @@ fn login(
     format: crate::output::Format,
     instance: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let url = match (provider, host) {
-        (Provider::Sentry, Some(host)) => Some(crate::sentry::normalize_host(&host)),
-        (Provider::Sentry, None) => read_sentry_host()?,
-        _ => None,
+    let hosted = provider.hosted();
+    let url = match (&hosted, host) {
+        (Some(hosted), Some(host)) => Some((hosted.normalize)(&host)),
+        (Some(hosted), None) => read_host(provider, hosted)?,
+        (None, _) => None,
     };
-    if provider == Provider::Sentry {
+    if let Some(hosted) = &hosted {
+        // Preflight the store before prompting: the URL and token are
+        // written together, so a malformed file must fail before any input.
         store
-            .get(provider.credential(), instance)
-            .map_err(|error| format!("could not read Sentry credential: {error}"))?;
+            .get(hosted.url_credential, instance)
+            .map_err(|error| {
+                format!(
+                    "could not read {} credential: {error}",
+                    provider.display_name()
+                )
+            })?;
     }
     print_login_help(provider, url.as_deref(), instance)?;
     let token = read_token()?;
@@ -799,15 +871,21 @@ fn login(
         return Err("token cannot be empty".into());
     }
     let mut credentials = vec![(provider.credential(), token.as_str())];
-    if let Some(url) = url.as_deref() {
-        credentials.push((crate::provider::Credential::SentryUrl, url));
+    if let (Some(hosted), Some(url)) = (&hosted, url.as_deref()) {
+        credentials.push((hosted.url_credential, url));
     }
     let account = validate_and_store(provider, &credentials, store, instance, || {
         validate(provider, &token, url.as_deref(), instance)
     })?;
     if instance == DEFAULT_INSTANCE {
-        if url.is_some() && std::env::var("SENTRY_URL").is_ok_and(|url| !url.is_empty()) {
-            eprintln!("Warning: SENTRY_URL is set and takes precedence over the stored URL.");
+        if let Some(hosted) = &hosted
+            && url.is_some()
+            && environment(hosted.url_environment).is_some()
+        {
+            eprintln!(
+                "Warning: {} is set and takes precedence over the stored URL.",
+                hosted.url_environment
+            );
         }
         if environment_token(provider).is_some() {
             eprintln!(
@@ -1135,6 +1213,7 @@ fn provider_from_status_key(key: &str) -> Option<Provider> {
         "slack" => Some(Provider::Slack),
         "sentry" => Some(Provider::Sentry),
         "vercel" => Some(Provider::Vercel),
+        "firecrawl" => Some(Provider::Firecrawl),
         _ => None,
     }
 }
@@ -1220,6 +1299,18 @@ fn account_identity(provider: Provider, account: &Value) -> String {
         Provider::Slack => slack_identity(account),
         Provider::Sentry => sentry_identity(account),
         Provider::Vercel => vercel_identity(account),
+        Provider::Firecrawl => firecrawl_identity(account),
+    }
+}
+
+fn firecrawl_identity(account: &Value) -> String {
+    match (
+        account["remainingCredits"].as_u64(),
+        account["planCredits"].as_u64(),
+    ) {
+        (Some(remaining), Some(plan)) => format!("{remaining} of {plan} credits left"),
+        (Some(remaining), None) => format!("{remaining} credits left"),
+        _ => String::new(),
     }
 }
 
@@ -1347,7 +1438,11 @@ fn provider_status(provider: Provider, store: &dyn SecretStore, instance: &str) 
         };
     }
     let resolved = match provider {
-        Provider::Linear | Provider::Neon | Provider::Sentry | Provider::Vercel => {
+        Provider::Linear
+        | Provider::Neon
+        | Provider::Sentry
+        | Provider::Vercel
+        | Provider::Firecrawl => {
             resolve_stored(provider, environment_token(provider), store, instance)
         }
         Provider::Github => resolve_github(
@@ -1377,6 +1472,7 @@ fn all_provider_statuses(store: &dyn SecretStore) -> Value {
         Provider::Slack,
         Provider::Sentry,
         Provider::Vercel,
+        Provider::Firecrawl,
     ];
     let mut statuses = serde_json::Map::new();
     for provider in providers {
@@ -1667,10 +1763,12 @@ where
     }
 }
 
+/// `url_override` is the base URL a hosted provider's login just collected,
+/// before it is stored; status checks pass `None` and read the stored one.
 fn validate(
     provider: Provider,
     token: &str,
-    sentry_url: Option<&str>,
+    url_override: Option<&str>,
     instance: &str,
 ) -> Result<Value, ValidationError> {
     match provider {
@@ -1682,10 +1780,24 @@ fn validate(
         }
         Provider::Slack => crate::slack::auth_identity(token).map(slack_account),
         Provider::Sentry => {
-            crate::sentry::auth_identity(token, sentry_url, instance).map(sentry_account)
+            crate::sentry::auth_identity(token, url_override, instance).map(sentry_account)
         }
         Provider::Vercel => crate::vercel::auth_identity(token).map(vercel_account),
+        Provider::Firecrawl => {
+            crate::firecrawl::auth_identity(token, url_override, instance).map(firecrawl_account)
+        }
     }
+}
+
+/// Firecrawl has no whoami; the credit-usage endpoint is the identity check,
+/// and its balance is the safe account detail.
+fn firecrawl_account(identity: Value) -> Value {
+    let usage = &identity["data"];
+    json!({
+        "remainingCredits": usage["remainingCredits"],
+        "planCredits": usage["planCredits"],
+        "billingPeriodEnd": usage["billingPeriodEnd"],
+    })
 }
 
 fn jira_account(host: &str, identity: &Value) -> Value {
@@ -1816,17 +1928,24 @@ fn github_cli_token() -> Result<Option<String>, String> {
         })
 }
 
-/// Ask which Sentry host to log in to, defaulting to sentry.io. Skipped when
-/// stdin is redirected: piped input stays token-only, and the host falls back
-/// to `SENTRY_URL`, then the settings file, then the default.
-fn read_sentry_host() -> Result<Option<String>, Box<dyn std::error::Error>> {
+/// Ask which host to log in to, defaulting to the provider's cloud host.
+/// Skipped when stdin is redirected: piped input stays token-only, and the
+/// host falls back to the environment, then the stored URL, then the default.
+fn read_host(
+    provider: Provider,
+    hosted: &Hosted,
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
     if !std::io::stdin().is_terminal() {
         return Ok(None);
     }
-    eprint!("Sentry host [{}]: ", crate::sentry::DEFAULT_HOST);
+    eprint!(
+        "{} host [{}]: ",
+        provider.display_name(),
+        hosted.default_host
+    );
     let mut line = String::new();
     std::io::stdin().read_line(&mut line)?;
-    Ok(Some(crate::sentry::normalize_host(&line)))
+    Ok(Some((hosted.normalize)(&line)))
 }
 
 fn read_token() -> Result<String, Box<dyn std::error::Error>> {
@@ -1840,7 +1959,7 @@ fn read_token() -> Result<String, Box<dyn std::error::Error>> {
 
 fn print_login_help(
     provider: Provider,
-    sentry_url: Option<&str>,
+    url_override: Option<&str>,
     instance: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match provider {
@@ -1860,7 +1979,7 @@ fn print_login_help(
             "Go to https://api.slack.com/apps and choose Create New App > From a manifest.\nSuggested manifest:\n{SLACK_APP_MANIFEST}\nInstall the app to your workspace from OAuth & Permissions, then enter its Bot User OAuth Token (xoxb-) and User OAuth Token (xoxp-). Leave either prompt blank if that token type is not needed."
         ),
         Provider::Sentry => {
-            let url = match sentry_url {
+            let url = match url_override {
                 Some(url) => url.to_owned(),
                 None => crate::sentry::base_url(instance),
             };
@@ -1870,6 +1989,9 @@ fn print_login_help(
         }
         Provider::Vercel => eprintln!(
             "Create an access token at https://vercel.com/account/settings/tokens and grant the scope needed by your foac commands."
+        ),
+        Provider::Firecrawl => eprintln!(
+            "Create an API key at https://www.firecrawl.dev/app/api-keys. A self-hosted Firecrawl with authentication disabled accepts any non-empty value."
         ),
     }
     Ok(())
@@ -2679,6 +2801,32 @@ mod tests {
         assert_eq!(account_identity(Provider::Sentry, &sentry), "acme, globex");
         assert_eq!(
             account_identity(Provider::Sentry, &sentry_account(json!([]))),
+            ""
+        );
+
+        let firecrawl = firecrawl_account(json!({
+            "success": true,
+            "data": {
+                "remainingCredits": 489590,
+                "planCredits": 500000,
+                "billingPeriodStart": "2026-08-26T22:00:10.000Z",
+                "billingPeriodEnd": "2026-09-26T22:00:10.000Z",
+            },
+        }));
+        assert_eq!(
+            firecrawl,
+            json!({
+                "remainingCredits": 489590,
+                "planCredits": 500000,
+                "billingPeriodEnd": "2026-09-26T22:00:10.000Z",
+            })
+        );
+        assert_eq!(
+            account_identity(Provider::Firecrawl, &firecrawl),
+            "489590 of 500000 credits left"
+        );
+        assert_eq!(
+            account_identity(Provider::Firecrawl, &firecrawl_account(json!({}))),
             ""
         );
     }

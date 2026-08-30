@@ -7,11 +7,11 @@
 # foac
 
 foac, the Father Of All CLIs: one CLI for all your SaaS providers (Linear,
-GitHub, Jira, Confluence, Neon, Sentry, Slack, Vercel, and more on the way),
-built for the coding agents on your machine rather than for you. Install it
-once, log in once, and every harness (Claude Code, Cursor, Codex, Gemini CLI,
-Grok Build, ...) can use all your providers without any setup of its own. Humans
-at a TTY get readable tables from the same commands.
+GitHub, Jira, Confluence, Neon, Sentry, Slack, Vercel, Firecrawl, and more on
+the way), built for the coding agents on your machine rather than for you.
+Install it once, log in once, and every harness (Claude Code, Cursor, Codex,
+Gemini CLI, Grok Build, ...) can use all your providers without any setup of
+its own. Humans at a TTY get readable tables from the same commands.
 
 If your agents spend their context loading MCP tool catalogs and fetching API
 docs, foac replaces all of that with a single binary that already knows the
@@ -156,6 +156,7 @@ graph LR
 | Sentry | Organizations, projects, issues, error events, releases | [doc/sentry.md](doc/sentry.md) |
 | Slack | Conversations, messages, threads, users, message search, reactions | [doc/slack.md](doc/slack.md) |
 | Vercel | Teams, projects, deployments, account domains, project domains | [doc/vercel.md](doc/vercel.md) |
+| Firecrawl | Web scraping, site maps, web search, crawl jobs, batch scrapes, browsing agents, team usage | [doc/firecrawl.md](doc/firecrawl.md) |
 
 Candidates for more providers are tracked in
 [GitHub issues](https://github.com/alephic-ai/foac/issues).

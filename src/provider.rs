@@ -9,8 +9,9 @@ use toml_edit::{Array, DocumentMut, Item, Value, value};
 
 use crate::auth::Provider;
 
-pub const PROVIDERS: [&str; 8] = [
+pub const PROVIDERS: [&str; 9] = [
     "confluence",
+    "firecrawl",
     "github",
     "jira",
     "linear",
@@ -138,6 +139,9 @@ pub fn resolve_instance(
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Credential {
     Linear,
+    Firecrawl,
+    /// The base URL of a self-hosted Firecrawl, stored with the instance's token.
+    FirecrawlUrl,
     Github,
     Neon,
     Sentry,
@@ -159,6 +163,7 @@ impl Credential {
     pub(crate) fn vendor(self) -> &'static str {
         match self {
             Self::Linear => "linear",
+            Self::Firecrawl | Self::FirecrawlUrl => "firecrawl",
             Self::Github => "github",
             Self::Neon => "neon",
             Self::Sentry | Self::SentryUrl => "sentry",
@@ -171,8 +176,13 @@ impl Credential {
     /// The field key inside an instance record.
     fn field(self) -> &'static str {
         match self {
-            Self::Linear | Self::Github | Self::Neon | Self::Sentry | Self::Vercel => "token",
-            Self::SentryUrl => "url",
+            Self::Linear
+            | Self::Firecrawl
+            | Self::Github
+            | Self::Neon
+            | Self::Sentry
+            | Self::Vercel => "token",
+            Self::SentryUrl | Self::FirecrawlUrl => "url",
             Self::SlackBot => "bot_token",
             Self::SlackUser => "user_token",
             Self::AtlassianHost => "host",
@@ -325,6 +335,7 @@ pub fn run(
 pub(crate) fn provider_vendor(provider: &str) -> &'static str {
     match provider {
         "jira" | "confluence" => "atlassian",
+        "firecrawl" => "firecrawl",
         "github" => "github",
         "linear" => "linear",
         "neon" => "neon",
@@ -389,6 +400,7 @@ fn statuses_with(
 fn authenticated(name: &str) -> bool {
     match name {
         "confluence" => crate::confluence::authenticated(),
+        "firecrawl" => crate::firecrawl::authenticated(),
         "github" => crate::github::authenticated(),
         "jira" => crate::jira::authenticated(),
         "linear" => crate::linear::authenticated(),
@@ -1419,6 +1431,7 @@ mod tests {
             ),
             json!({
                 "confluence": {"enabled": true, "authenticated": false, "skill_installed": false},
+                "firecrawl": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "github": {"enabled": true, "authenticated": true, "skill_installed": false},
                 "jira": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "linear": {"enabled": true, "authenticated": false, "skill_installed": true},

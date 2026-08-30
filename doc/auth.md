@@ -33,6 +33,9 @@ foac auth slack logout
 foac auth vercel status
 foac auth vercel login
 foac auth vercel logout
+foac auth firecrawl status
+foac auth firecrawl login
+foac auth firecrawl logout
 ```
 
 `login` prints a link and permission guidance, securely prompts for a personal
@@ -47,9 +50,9 @@ use.
 
 Every provider can hold several *instances*: independent, named logins to
 different tenants of the same product (two Slack workspaces, two Atlassian
-sites, a SaaS and a self-hosted Sentry). An unnamed `login` creates the
-instance named `default`, which is what unqualified commands use — a
-single-tenant setup never has to think about instances.
+sites, a SaaS and a self-hosted Sentry or Firecrawl). An unnamed `login`
+creates the instance named `default`, which is what unqualified commands
+use — a single-tenant setup never has to think about instances.
 
 ```sh
 foac auth slack login --instance workb   # log the "workb" workspace in
@@ -61,8 +64,8 @@ foac auth status                         # lists every stored instance, keyed sl
 Instance names use lowercase letters, digits, `-`, and `_`. The credentials
 file nests them per provider (`{"slack": {"default": {...}, "workb": {...}}}`);
 Jira and Confluence share the vendor-level `atlassian` entry, so an Atlassian
-instance covers both. A named Sentry instance stores its base URL alongside
-its token.
+instance covers both. A named Sentry or Firecrawl instance stores its base
+URL alongside its token (`foac auth <provider> login --host ...`).
 
 A provider command picks its instance in this order:
 
@@ -79,10 +82,11 @@ A provider command picks its instance in this order:
 
 **Environment tokens belong to the default instance only.** When a named
 instance is selected, `SLACK_BOT_TOKEN`, `GITHUB_TOKEN`, the `gh` CLI
-fallback, `SENTRY_URL`, and the rest never apply: a named instance reads
-exactly its stored credentials, so an ambient token from workspace A can
-never leak into commands aimed at workspace B. Auth commands use the flag
-only — never folder defaults — so a `login` is never silently redirected.
+fallback, `SENTRY_URL`, `FIRECRAWL_API_URL`, and the rest never apply: a
+named instance reads exactly its stored credentials, so an ambient token from
+workspace A can never leak into commands aimed at workspace B. Auth commands
+use the flag only — never folder defaults — so a `login` is never silently
+redirected.
 
 Instances can be enabled or disabled like providers, globally or per folder:
 `foac provider disable slack --instance workb [--local]` writes the qualified
