@@ -126,6 +126,13 @@ pub fn resolve_instance(
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Credential {
+    Axiom,
+    /// The organization ID a personal access token needs, stored with the
+    /// instance's token.
+    AxiomOrg,
+    /// The base URL of a regional or dedicated Axiom deployment, stored with
+    /// the instance's token.
+    AxiomUrl,
     Linear,
     Firecrawl,
     /// The base URL of a self-hosted Firecrawl, stored with the instance's token.
@@ -150,6 +157,7 @@ impl Credential {
     /// `atlassian` vendor.
     pub(crate) fn vendor(self) -> &'static str {
         match self {
+            Self::Axiom | Self::AxiomOrg | Self::AxiomUrl => "axiom",
             Self::Linear => "linear",
             Self::Firecrawl | Self::FirecrawlUrl => "firecrawl",
             Self::Github => "github",
@@ -164,13 +172,15 @@ impl Credential {
     /// The field key inside an instance record.
     fn field(self) -> &'static str {
         match self {
-            Self::Linear
+            Self::Axiom
+            | Self::Linear
             | Self::Firecrawl
             | Self::Github
             | Self::Neon
             | Self::Sentry
             | Self::Vercel => "token",
-            Self::SentryUrl | Self::FirecrawlUrl => "url",
+            Self::SentryUrl | Self::FirecrawlUrl | Self::AxiomUrl => "url",
+            Self::AxiomOrg => "org_id",
             Self::SlackBot => "bot_token",
             Self::SlackUser => "user_token",
             Self::AtlassianHost => "host",
@@ -1387,6 +1397,7 @@ mod tests {
                 &credentials
             ),
             json!({
+                "axiom": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "confluence": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "firecrawl": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "github": {"enabled": true, "authenticated": true, "skill_installed": false},

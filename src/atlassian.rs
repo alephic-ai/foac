@@ -75,7 +75,7 @@ pub(crate) fn api(
             password: credentials.token,
         },
         format,
-        headers: &[],
+        headers: Vec::new(),
         trailing_slash: false,
     })
 }

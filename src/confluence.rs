@@ -673,7 +673,7 @@ mod tests {
                 user: "user@example.com".into(),
                 password: "api-token".into(),
             },
-            headers: &[],
+            headers: Vec::new(),
             trailing_slash: false,
         };
         (api, request_rx, server)

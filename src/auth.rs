@@ -18,6 +18,8 @@ pub struct Cmd {
 enum AuthCmd {
     /// Check authentication for every provider
     Status,
+    /// Configure Axiom authentication
+    Axiom(AxiomCmd),
     /// Configure Linear authentication
     Linear(ProviderCmd),
     /// Configure GitHub authentication
@@ -77,6 +79,33 @@ enum SlackAction {
 
 #[derive(Args)]
 #[command(arg_required_else_help = true)]
+struct AxiomCmd {
+    #[command(subcommand)]
+    command: AxiomAction,
+}
+
+/// Same shape as [`HostedAction`], plus the `--org-id` login flag a
+/// personal access token needs; both are stored beside the token.
+#[derive(Subcommand)]
+enum AxiomAction {
+    /// Check authentication for this provider
+    Status,
+    /// Validate and save a token in foac's credentials file
+    Login {
+        /// Hostname or URL to log in to (api.axiom.co by default), skipping
+        /// the prompt
+        #[arg(long)]
+        host: Option<String>,
+        /// Organization ID, needed with a personal access token (xapt-)
+        #[arg(long)]
+        org_id: Option<String>,
+    },
+    /// Remove foac's token from the credentials file
+    Logout,
+}
+
+#[derive(Args)]
+#[command(arg_required_else_help = true)]
 struct HostedCmd {
     #[command(subcommand)]
     command: HostedAction,
@@ -124,6 +153,7 @@ pub(crate) struct Info {
 /// skill rendering, and clap's possible values.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, clap::ValueEnum)]
 pub enum Provider {
+    Axiom,
     Confluence,
     Firecrawl,
     Github,
@@ -240,6 +270,16 @@ pub fn run(
             print_all_statuses(&store, format);
             Ok(())
         }
+        AuthCmd::Axiom(cmd) => match cmd.command {
+            AxiomAction::Status => {
+                print_status(Provider::Axiom, &store, format, instance);
+                Ok(())
+            }
+            AxiomAction::Login { host, org_id } => {
+                login(Provider::Axiom, host, org_id, &store, format, instance)
+            }
+            AxiomAction::Logout => logout(Provider::Axiom, &store, format, instance),
+        },
         AuthCmd::Linear(cmd) => {
             run_provider(Provider::Linear, cmd.command, &store, format, instance)
         }
@@ -280,9 +320,20 @@ fn run_hosted(
             print_status(provider, store, format, instance);
             Ok(())
         }
-        HostedAction::Login { host } => login(provider, host, store, format, instance),
+        HostedAction::Login { host } => login(provider, host, None, store, format, instance),
         HostedAction::Logout => logout(provider, store, format, instance),
     }
+}
+
+pub(crate) fn axiom_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
+    resolve_stored(
+        Provider::Axiom,
+        environment_token(Provider::Axiom),
+        &crate::provider::CredentialStore,
+        instance,
+    )
+    .map(|credential| credential.token)
+    .map_err(Into::into)
 }
 
 pub(crate) fn firecrawl_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -329,9 +380,10 @@ pub(crate) fn sentry_token(instance: &str) -> Result<String, Box<dyn std::error:
     .map_err(Into::into)
 }
 
-/// An instance's stored base URL, if any (Sentry, Firecrawl); environment
-/// and settings never apply to named instances.
-pub(crate) fn stored_url(
+/// A value stored beside an instance's token, if any (Sentry and Firecrawl
+/// base URLs, the Axiom org ID); environment and settings never apply to
+/// named instances.
+pub(crate) fn stored_value(
     credential: crate::provider::Credential,
     instance: &str,
 ) -> Option<String> {
@@ -428,6 +480,13 @@ impl Provider {
     pub(crate) fn info(self) -> Info {
         use crate::provider::Credential;
         match self {
+            Self::Axiom => Info {
+                name: "axiom",
+                display: "Axiom",
+                env: "AXIOM_TOKEN",
+                credential: Credential::Axiom,
+                authenticated: crate::axiom::authenticated,
+            },
             Self::Confluence => Info {
                 name: "confluence",
                 display: "Confluence",
@@ -530,6 +589,12 @@ impl Provider {
                 url_environment: "FIRECRAWL_API_URL",
                 normalize: crate::firecrawl::normalize_host,
             }),
+            Self::Axiom => Some(Hosted {
+                default_host: crate::axiom::DEFAULT_HOST,
+                url_credential: crate::provider::Credential::AxiomUrl,
+                url_environment: "AXIOM_URL",
+                normalize: crate::axiom::normalize_host,
+            }),
             _ => None,
         }
     }
@@ -597,7 +662,7 @@ fn run_provider(
             print_status(provider, store, format, instance);
             Ok(())
         }
-        ProviderAction::Login => login(provider, None, store, format, instance),
+        ProviderAction::Login => login(provider, None, None, store, format, instance),
         ProviderAction::Logout => logout(provider, store, format, instance),
     }
 }
@@ -636,6 +701,11 @@ pub(crate) fn logout(
             crate::provider::Credential::AtlassianEmail,
             crate::provider::Credential::AtlassianToken,
         ],
+        Provider::Axiom => vec![
+            crate::provider::Credential::Axiom,
+            crate::provider::Credential::AxiomOrg,
+            crate::provider::Credential::AxiomUrl,
+        ],
         // A self-hostable provider's stored URL goes with its token.
         _ => std::iter::once(provider.credential())
             .chain(provider.hosted().map(|hosted| hosted.url_credential))
@@ -649,9 +719,13 @@ pub(crate) fn logout(
     Ok(())
 }
 
+/// `host` is the `--host` flag of a self-hostable provider and `org_id` the
+/// `--org-id` of an Axiom personal access token; both are stored beside the
+/// token.
 fn login(
     provider: Provider,
     host: Option<String>,
+    org_id: Option<String>,
     store: &dyn SecretStore,
     format: crate::output::Format,
     instance: &str,
@@ -683,8 +757,17 @@ fn login(
     if let (Some(hosted), Some(url)) = (&hosted, url.as_deref()) {
         credentials.push((hosted.url_credential, url));
     }
+    if let Some(org_id) = org_id.as_deref() {
+        credentials.push((crate::provider::Credential::AxiomOrg, org_id));
+    }
     let account = validate_and_store(provider, &credentials, store, instance, || {
-        validate(provider, &token, url.as_deref(), instance)
+        validate(
+            provider,
+            &token,
+            url.as_deref(),
+            org_id.as_deref(),
+            instance,
+        )
     })?;
     if instance == DEFAULT_INSTANCE {
         if let Some(hosted) = &hosted
@@ -774,7 +857,7 @@ fn validate_slack_login_token(token: &str, bot: bool) -> Result<Value, Validatio
             "Slack {expected} token required"
         )));
     }
-    validate(Provider::Slack, token, None, DEFAULT_INSTANCE)
+    validate(Provider::Slack, token, None, None, DEFAULT_INSTANCE)
 }
 
 fn validate_and_store_slack<F>(
@@ -963,6 +1046,7 @@ fn logout_summary(removed: bool) -> String {
 
 fn account_identity(provider: Provider, account: &Value) -> String {
     match provider {
+        Provider::Axiom => axiom_identity(account),
         Provider::Linear => linear_identity(account),
         Provider::Github => github_identity(account),
         Provider::Neon => neon_identity(account),
@@ -1012,6 +1096,18 @@ fn neon_identity(account: &Value) -> String {
 fn vercel_identity(account: &Value) -> String {
     let name = text_field(account, "name").or_else(|| text_field(account, "username"));
     person_identity(name, text_field(account, "email"), None)
+}
+
+fn axiom_identity(account: &Value) -> String {
+    let Some(datasets) = account.get("datasets").and_then(Value::as_array) else {
+        return String::new();
+    };
+    let names: Vec<&str> = datasets.iter().filter_map(Value::as_str).collect();
+    match names.len() {
+        0 => "no datasets".to_owned(),
+        1..=5 => names.join(", "),
+        count => format!("{}, +{} more", names[..5].join(", "), count - 5),
+    }
 }
 
 fn sentry_identity(account: &Value) -> String {
@@ -1092,7 +1188,8 @@ fn provider_status(provider: Provider, store: &dyn SecretStore, instance: &str) 
         };
     }
     let resolved = match provider {
-        Provider::Linear
+        Provider::Axiom
+        | Provider::Linear
         | Provider::Neon
         | Provider::Sentry
         | Provider::Vercel
@@ -1113,7 +1210,9 @@ fn provider_status(provider: Provider, store: &dyn SecretStore, instance: &str) 
         ),
         Provider::Jira | Provider::Confluence => unreachable!("handled above"),
     };
-    credential_status(resolved, |token| validate(provider, token, None, instance))
+    credential_status(resolved, |token| {
+        validate(provider, token, None, None, instance)
+    })
 }
 
 fn all_provider_statuses(store: &dyn SecretStore) -> Value {
@@ -1447,14 +1546,18 @@ where
 }
 
 /// `url_override` is the base URL a hosted provider's login just collected,
-/// before it is stored; status checks pass `None` and read the stored one.
+/// and `org_override` the org ID an Axiom login collected, before they are
+/// stored; status checks pass `None` and read the stored ones.
 fn validate(
     provider: Provider,
     token: &str,
     url_override: Option<&str>,
+    org_override: Option<&str>,
     instance: &str,
 ) -> Result<Value, ValidationError> {
     match provider {
+        Provider::Axiom => crate::axiom::auth_identity(token, url_override, org_override, instance)
+            .map(axiom_account),
         Provider::Linear => crate::linear::auth_identity(token).map(linear_account),
         Provider::Github => crate::github::auth_identity(token).map(github_account),
         Provider::Neon => crate::neon::auth_identity(token).map(neon_account),
@@ -1481,6 +1584,21 @@ fn firecrawl_account(identity: Value) -> Value {
         "planCredits": usage["planCredits"],
         "billingPeriodEnd": usage["billingPeriodEnd"],
     })
+}
+
+/// Axiom has no whoami an API token can call; the dataset list is the
+/// identity check, and the dataset names are the safe account detail.
+fn axiom_account(identity: Value) -> Value {
+    let datasets: Vec<Value> = identity
+        .as_array()
+        .map(|datasets| {
+            datasets
+                .iter()
+                .filter_map(|dataset| dataset.get("name").cloned())
+                .collect()
+        })
+        .unwrap_or_default();
+    json!({ "datasets": datasets })
 }
 
 fn linear_account(identity: Value) -> Value {
@@ -1626,6 +1744,24 @@ pub(crate) fn print_login_help(
     instance: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match provider {
+        Provider::Axiom => eprintln!(
+            "Create an API token in Axiom under Settings > API tokens, choose Advanced permissions, and grant only what your foac commands need:\n\
+             \n\
+             All datasets (or individual datasets)\n\
+               - Ingest: create        (ingest)\n\
+               - Query: read           (query)\n\
+               - Trim: update          (dataset trim)\n\
+             \n\
+             Org level permissions\n\
+               - Datasets: create/read/update/delete       (dataset, field)\n\
+               - Annotations: create/read/update/delete    (annotation)\n\
+               - Monitors: read                            (monitor)\n\
+               - Notifiers: read                           (notifier)\n\
+               - Users: read                               (user)\n\
+             \n\
+             A personal access token (Settings > Profile) also works but needs the organization ID: pass --org-id to this login (stored with the token) or set AXIOM_ORG_ID.\n\
+             A regional or dedicated deployment uses another API host: pass --host to this login (stored with the token) or set AXIOM_URL."
+        ),
         Provider::Linear => eprintln!(
             "Create a personal API key at https://linear.app/settings/account/security and grant the permissions needed by your foac commands."
         ),
@@ -2356,6 +2492,24 @@ pub(crate) mod tests {
         assert_eq!(
             account_identity(Provider::Neon, &neon),
             "Lolo <lolo@example.com>"
+        );
+
+        let axiom = axiom_account(json!([
+            { "id": "logs", "name": "logs" },
+            { "id": "traces", "name": "traces" },
+        ]));
+        assert_eq!(axiom, json!({ "datasets": ["logs", "traces"] }));
+        assert_eq!(account_identity(Provider::Axiom, &axiom), "logs, traces");
+        assert_eq!(
+            account_identity(Provider::Axiom, &axiom_account(json!([]))),
+            "no datasets"
+        );
+        let many: Vec<Value> = (1..=7)
+            .map(|n| json!({ "name": format!("d{n}") }))
+            .collect();
+        assert_eq!(
+            account_identity(Provider::Axiom, &axiom_account(json!(many))),
+            "d1, d2, d3, d4, d5, +2 more"
         );
 
         let sentry = sentry_account(json!([
