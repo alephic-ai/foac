@@ -68,7 +68,8 @@ Instance names use lowercase letters, digits, `-`, and `_`. The credentials
 file nests them per provider (`{"slack": {"default": {...}, "workb": {...}}}`);
 Jira and Confluence share the vendor-level `atlassian` entry, so an Atlassian
 instance covers both. A named Sentry or Firecrawl instance stores its base
-URL alongside its token (`foac auth <provider> login --host ...`).
+URL alongside its token (`foac auth <provider> login --host ...`), and an
+Axiom instance its organization ID (`foac auth axiom login --org-id ...`).
 
 A provider command picks its instance in this order:
 
@@ -85,7 +86,7 @@ A provider command picks its instance in this order:
 
 **Environment tokens belong to the default instance only.** When a named
 instance is selected, `SLACK_BOT_TOKEN`, `GITHUB_TOKEN`, the `gh` CLI
-fallback, `SENTRY_URL`, `FIRECRAWL_API_URL`, `AXIOM_URL`, and the rest never apply: a
+fallback, `SENTRY_URL`, `FIRECRAWL_API_URL`, `AXIOM_URL`, `AXIOM_ORG_ID`, and the rest never apply: a
 named instance reads exactly its stored credentials, so an ambient token from
 workspace A can never leak into commands aimed at workspace B. Auth commands
 use the flag only — never folder defaults — so a `login` is never silently

@@ -127,6 +127,9 @@ pub fn resolve_instance(
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Credential {
     Axiom,
+    /// The organization ID a personal access token needs, stored with the
+    /// instance's token.
+    AxiomOrg,
     Linear,
     Firecrawl,
     /// The base URL of a self-hosted Firecrawl, stored with the instance's token.
@@ -151,7 +154,7 @@ impl Credential {
     /// `atlassian` vendor.
     pub(crate) fn vendor(self) -> &'static str {
         match self {
-            Self::Axiom => "axiom",
+            Self::Axiom | Self::AxiomOrg => "axiom",
             Self::Linear => "linear",
             Self::Firecrawl | Self::FirecrawlUrl => "firecrawl",
             Self::Github => "github",
@@ -174,6 +177,7 @@ impl Credential {
             | Self::Sentry
             | Self::Vercel => "token",
             Self::SentryUrl | Self::FirecrawlUrl => "url",
+            Self::AxiomOrg => "org_id",
             Self::SlackBot => "bot_token",
             Self::SlackUser => "user_token",
             Self::AtlassianHost => "host",

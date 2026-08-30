@@ -1,7 +1,8 @@
 //! Axiom provider. REST passthrough against api.axiom.co with a bearer
 //! token: management resources live on `/v2`, APL queries and ingest on the
 //! `/v1` dataset endpoints. Personal access tokens (`xapt-`) also need the
-//! organization ID header, taken from --org-id or AXIOM_ORG_ID.
+//! organization ID header: --org-id, AXIOM_ORG_ID (default instance), or the
+//! ID saved at login.
 
 use std::io::Read;
 use std::path::PathBuf;
@@ -20,7 +21,7 @@ const ORG_HEADER: &str = "X-Axiom-Org-Id";
 #[derive(Args)]
 pub struct Cmd {
     /// Organization ID, needed with a personal access token (xapt-);
-    /// defaults to AXIOM_ORG_ID
+    /// defaults to AXIOM_ORG_ID, then the ID saved by `foac auth axiom login`
     #[arg(long, global = true)]
     org_id: Option<String>,
     #[command(subcommand)]
@@ -39,7 +40,7 @@ enum Resource {
     #[command(after_long_help = outdoc::lines(&[
         r#"{"items": [<row>, ...], "pageInfo": {"hasNextPage": true, "minCursor": "...", "maxCursor": "..."}, "status": {...}}"#,
         "Records: items[], one object per result row keyed by the query's output fields (Axiom's columnar tables transposed)",
-        "Next page: sort by _time in the query, then pass pageInfo.maxCursor (ascending) or pageInfo.minCursor (descending) to --cursor while hasNextPage is true",
+        "Next page: sort by _time in the query, then pass pageInfo.maxCursor (ascending) or pageInfo.minCursor (descending) to --cursor while hasNextPage is true (false once a page has no rows past the cursor)",
         "status is Axiom's raw query status (rowsMatched, elapsedTime, messages, ...)",
     ]))]
     Query(QueryArgs),
@@ -323,11 +324,13 @@ pub fn run(
     format: crate::output::Format,
     instance: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let Cmd { org_id, command } = cmd;
-    let org_id = org_id.or_else(|| crate::auth::environment("AXIOM_ORG_ID"));
+    let Cmd {
+        org_id: flag,
+        command,
+    } = cmd;
     let api = api(
         crate::auth::axiom_token(instance)?,
-        org_id,
+        flag.or_else(|| org_id(instance)),
         format,
         instance,
     )?;
@@ -351,13 +354,14 @@ pub fn authenticated() -> bool {
 
 pub(crate) fn auth_identity(
     token: &str,
+    org_override: Option<&str>,
     instance: &str,
 ) -> Result<Value, crate::auth::ValidationError> {
     // Not /v2/user: an API token is not a user, and Axiom answers that
     // endpoint with a 500 for one. Every useful foac token can read datasets.
     let url = reqwest::Url::parse(&format!("{}/v2/datasets", base_url(instance)))
         .map_err(|error| crate::auth::ValidationError::Failed(error.to_string()))?;
-    let org_id = crate::auth::environment("AXIOM_ORG_ID");
+    let org_id = org_override.map(str::to_owned).or_else(|| org_id(instance));
     let headers: Vec<(&str, &str)> = org_id.iter().map(|id| (ORG_HEADER, id.as_str())).collect();
     rest::identity(
         url,
@@ -444,7 +448,7 @@ fn run_query(api: &Api, args: QueryArgs) -> Result<(), Box<dyn std::error::Error
     payload.insert("apl".into(), json!(args.apl));
     insert_opt(&mut payload, "startTime", args.start_time);
     insert_opt(&mut payload, "endTime", args.end_time);
-    insert_opt(&mut payload, "cursor", args.cursor);
+    insert_opt(&mut payload, "cursor", args.cursor.clone());
     if args.include_cursor {
         payload.insert("includeCursor".into(), json!(true));
     }
@@ -454,13 +458,20 @@ fn run_query(api: &Api, args: QueryArgs) -> Result<(), Box<dyn std::error::Error
         &[("format", "tabular".to_owned())],
         Some(payload.into()),
     )?;
-    crate::output::print(&query_result(response.body), api.format);
+    crate::output::print(
+        &query_result(response.body, args.cursor.as_deref()),
+        api.format,
+    );
     Ok(())
 }
 
 /// Axiom's tabular result stores each table column-major (`fields[]` names,
 /// `columns[c][r]` values); rows as objects are what a reader wants.
-fn query_result(body: Value) -> Value {
+///
+/// Axiom ends a cursor walk with an empty page, or (with `includeCursor`)
+/// a page holding only the cursor event, so both cursors equal `sent`.
+/// `rowsMatched` is the whole-window count and says nothing about paging.
+fn query_result(body: Value, sent: Option<&str>) -> Value {
     let rows: Vec<Value> = body["tables"]
         .as_array()
         .into_iter()
@@ -468,9 +479,9 @@ fn query_result(body: Value) -> Value {
         .flat_map(table_rows)
         .collect();
     let status = &body["status"];
-    let has_next = status["rowsMatched"]
-        .as_u64()
-        .is_some_and(|matched| matched > rows.len() as u64);
+    let cursor = |key: &str| status[key].as_str().filter(|cursor| !cursor.is_empty());
+    let (min, max) = (cursor("minCursor"), cursor("maxCursor"));
+    let has_next = !rows.is_empty() && max.is_some() && !(min == sent && max == sent);
     let mut result = rest::wrap_list(
         rows,
         json!({
@@ -724,6 +735,17 @@ fn print_list(
     Ok(())
 }
 
+/// `AXIOM_ORG_ID` for the default instance, else the org ID saved at login.
+fn org_id(instance: &str) -> Option<String> {
+    let environment = if instance == crate::provider::DEFAULT_INSTANCE {
+        crate::auth::environment("AXIOM_ORG_ID")
+    } else {
+        None
+    };
+    environment
+        .or_else(|| crate::auth::stored_value(crate::provider::Credential::AxiomOrg, instance))
+}
+
 /// `AXIOM_URL` for the default instance, else the cloud API.
 pub(crate) fn base_url(instance: &str) -> String {
     let environment = if instance == crate::provider::DEFAULT_INSTANCE {
@@ -785,7 +807,7 @@ mod tests {
             }],
         });
         assert_eq!(
-            query_result(body),
+            query_result(body, None),
             json!({
                 "items": [
                     { "_time": "t1", "level": "error" },
@@ -797,10 +819,49 @@ mod tests {
         );
         let empty = query_result(
             json!({ "status": { "rowsMatched": 0 }, "tables": [{ "fields": [], "columns": [] }] }),
+            None,
         );
         assert_eq!(empty["items"], json!([]));
         assert_eq!(empty["pageInfo"]["hasNextPage"], false);
-        assert_eq!(query_result(json!({}))["items"], json!([]));
+        assert_eq!(query_result(json!({}), None)["items"], json!([]));
+    }
+
+    #[test]
+    fn has_next_page_follows_axiom_cursor_end_signals_not_rows_matched() {
+        let page = |min: &str, max: &str, rows: usize| {
+            json!({
+                "status": { "rowsMatched": 2500, "minCursor": min, "maxCursor": max },
+                "tables": [{ "fields": [{ "name": "_time" }], "columns": [vec!["t"; rows]] }],
+            })
+        };
+        // A full page mid-walk: more to fetch.
+        assert_eq!(
+            query_result(page("c6", "c9", 4), Some("c5"))["pageInfo"]["hasNextPage"],
+            true
+        );
+        // Ascending with --include-cursor: minCursor echoes the sent cursor.
+        assert_eq!(
+            query_result(page("c5", "c9", 5), Some("c5"))["pageInfo"]["hasNextPage"],
+            true
+        );
+        // The last page is empty, or only the cursor event itself.
+        assert_eq!(
+            query_result(page("", "", 0), Some("c9"))["pageInfo"]["hasNextPage"],
+            false
+        );
+        assert_eq!(
+            query_result(page("c9", "c9", 1), Some("c9"))["pageInfo"]["hasNextPage"],
+            false
+        );
+        // An aggregation reports no cursors: nothing to walk.
+        let summary = json!({
+            "status": { "rowsMatched": 100000 },
+            "tables": [{ "fields": [{ "name": "count_" }], "columns": [[3]] }],
+        });
+        assert_eq!(
+            query_result(summary, None)["pageInfo"]["hasNextPage"],
+            false
+        );
     }
 
     #[test]

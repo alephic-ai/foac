@@ -53,8 +53,9 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   resources on `/v2`, APL queries and ingest on the `/v1` dataset endpoints
   (`POST /v1/datasets/_apl?format=tabular`,
   `POST /v1/datasets/{name}/ingest`). Personal access tokens need
-  `X-Axiom-Org-Id`, which rides on the reqwest client's default headers
-  because `Api::headers` is static. Management lists are bare arrays with no
+  `X-Axiom-Org-Id` (`--org-id`, `AXIOM_ORG_ID` for the default instance, or
+  the ID stored beside the token at login), which rides on the reqwest
+  client's default headers because `Api::headers` is static. Management lists are bare arrays with no
   pagination. Query results are transposed from Axiom's column-major
   tables into `{items, pageInfo, status}` rows; paging uses the
   `minCursor`/`maxCursor` Axiom reports in `status`.

@@ -21,8 +21,10 @@ Create it with Advanced permissions and grant only what you use:
 
 A personal access token (`xapt-`, Settings > Profile) acts as you across
 organizations, so it also needs the organization ID: pass `--org-id ID`
-anywhere after `axiom` or set `AXIOM_ORG_ID`. `AXIOM_URL` overrides the API
-base URL (`https://api.axiom.co`) for the default instance only.
+anywhere after `axiom`, set `AXIOM_ORG_ID` (default instance only), or save
+it with the token via `foac auth axiom login --org-id ID`. `AXIOM_URL`
+overrides the API base URL (`https://api.axiom.co`) for the default instance
+only.
 
 ```sh
 export AXIOM_TOKEN=xaat-...
@@ -42,13 +44,14 @@ prints it as a foac list: Axiom returns each table column-major (`fields[]`
 names and `columns[c][r]` values), which is unreadable as-is, so foac
 transposes it into `items`, one object per row keyed by the query's output
 fields. This is the one reshaping in the provider. `pageInfo` carries
-`hasNextPage` (more rows matched than returned) plus Axiom's `minCursor` /
-`maxCursor`, and `status` is Axiom's raw query status (`rowsMatched`,
-`elapsedTime`, `messages`, ...). Time ranges go in the query
-(`where _time > ago(1h)`) or in `--start-time` / `--end-time` as RFC 3339.
-To page, sort by `_time`, then pass `pageInfo.maxCursor` (ascending) or
-`pageInfo.minCursor` (descending) back through `--cursor`, adding
-`--include-cursor` to keep the boundary event.
+`hasNextPage` plus Axiom's `minCursor` / `maxCursor`, and `status` is
+Axiom's raw query status (`rowsMatched`, `elapsedTime`, `messages`, ...).
+Time ranges go in the query (`where _time > ago(1h)`) or in `--start-time` /
+`--end-time` as RFC 3339. To page, sort by `_time`, then pass
+`pageInfo.maxCursor` (ascending) or `pageInfo.minCursor` (descending) back
+through `--cursor`, adding `--include-cursor` to keep the boundary event.
+`hasNextPage` follows Axiom's end signal, not `rowsMatched` (which counts
+the whole window): it is false once a page has no rows past the cursor.
 
 ## Ingest
 

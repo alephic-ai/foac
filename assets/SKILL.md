@@ -172,9 +172,10 @@ foac <provider> <resource> <verb> [flags]
 <!-- foac-provider:axiom -->
 - **Axiom auth precedence**: `AXIOM_TOKEN`, then the credentials file. An
   API token (`xaat-`) carries its own organization; a personal access token
-  (`xapt-`) also needs the organization ID, from `--org-id` anywhere after
-  `axiom` or `AXIOM_ORG_ID`. `AXIOM_URL` overrides the API base URL for the
-  default instance only.
+  (`xapt-`) also needs the organization ID: `--org-id` anywhere after
+  `axiom`, `AXIOM_ORG_ID` (default instance only), or the ID saved with the
+  token by `foac auth axiom login --org-id ID`. `AXIOM_URL` overrides the
+  API base URL for the default instance only.
 <!-- /foac-provider:axiom -->
 <!-- foac-provider:linear -->
 - **Linear auth precedence**: `LINEAR_API_KEY`, then the credentials file.
@@ -301,7 +302,8 @@ foac <provider> <resource> <verb> [flags]
   plus Axiom's `minCursor`/`maxCursor`, and `status` is Axiom's raw query
   status (`rowsMatched`, `elapsedTime`, `messages`). To page, sort by
   `_time` and pass `pageInfo.maxCursor` (ascending) or `minCursor`
-  (descending) to `--cursor` while `hasNextPage` is true. Use
+  (descending) to `--cursor` while `hasNextPage` is true; it turns false
+  once a page has no rows past the cursor. Use
   `field list --dataset NAME` to discover a dataset's columns first.
 - **Axiom ingest**: `ingest DATASET --events JSON` or
   `--events-file PATH` (`-` for stdin) accepts a JSON array, one object, or

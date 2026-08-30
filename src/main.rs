@@ -730,6 +730,10 @@ mod tests {
                 "user@example.com",
             ],
             vec!["foac", "auth", "confluence", "logout"],
+            vec!["foac", "auth", "axiom", "status"],
+            vec!["foac", "auth", "axiom", "login"],
+            vec!["foac", "auth", "axiom", "login", "--org-id", "my-org"],
+            vec!["foac", "auth", "axiom", "logout"],
             vec!["foac", "auth", "sentry", "status"],
             vec!["foac", "auth", "sentry", "login"],
             vec![

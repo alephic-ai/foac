@@ -926,7 +926,7 @@ pub(crate) fn base_url(instance: &str) -> String {
     };
     resolve_base_url(
         environment,
-        crate::auth::stored_url(crate::provider::Credential::FirecrawlUrl, instance),
+        crate::auth::stored_value(crate::provider::Credential::FirecrawlUrl, instance),
     )
 }
 

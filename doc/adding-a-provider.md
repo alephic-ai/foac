@@ -86,8 +86,8 @@ One flat file (don't split into a module directory preemptively) containing:
   and pagination quirks.
 - `ARCHITECTURE.md`: the intro provider list, the module diagram, and the
   codemap.
-- `README.md`: the intro provider list and the provider table row only.
-  Leave the two mermaid diagrams and their integration count alone: they
+- `README.md`: the intro provider list and the provider table row only
+  (the table is sorted alphabetically; insert the row in place). Leave the two mermaid diagrams and their integration count alone: they
   illustrate the idea with a fixed set of providers and must not grow with
   every addition.
 
