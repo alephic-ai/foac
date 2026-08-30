@@ -987,22 +987,10 @@ fn firecrawl_identity(account: &Value) -> String {
 
 fn linear_identity(account: &Value) -> String {
     let name = text_field(account, "name").or_else(|| text_field(account, "displayName"));
-    let email = text_field(account, "email");
     let workspace = account
         .get("workspace")
         .and_then(|workspace| text_field(workspace, "name"));
-    let person = match (name, email) {
-        (Some(name), Some(email)) => format!("{name} <{email}>"),
-        (Some(name), None) => name.to_owned(),
-        (None, Some(email)) => email.to_owned(),
-        (None, None) => String::new(),
-    };
-    match (person.is_empty(), workspace) {
-        (false, Some(workspace)) => format!("{person}  {workspace}"),
-        (false, None) => person,
-        (true, Some(workspace)) => workspace.to_owned(),
-        (true, None) => String::new(),
-    }
+    person_identity(name, text_field(account, "email"), workspace)
 }
 
 fn github_identity(account: &Value) -> String {
@@ -1018,24 +1006,12 @@ fn github_identity(account: &Value) -> String {
 
 fn neon_identity(account: &Value) -> String {
     let name = text_field(account, "name").or_else(|| text_field(account, "login"));
-    let email = text_field(account, "email");
-    match (name, email) {
-        (Some(name), Some(email)) => format!("{name} <{email}>"),
-        (Some(name), None) => name.to_owned(),
-        (None, Some(email)) => email.to_owned(),
-        (None, None) => String::new(),
-    }
+    person_identity(name, text_field(account, "email"), None)
 }
 
 fn vercel_identity(account: &Value) -> String {
     let name = text_field(account, "name").or_else(|| text_field(account, "username"));
-    let email = text_field(account, "email");
-    match (name, email) {
-        (Some(name), Some(email)) => format!("{name} <{email}>"),
-        (Some(name), None) => name.to_owned(),
-        (None, Some(email)) => email.to_owned(),
-        (None, None) => String::new(),
-    }
+    person_identity(name, text_field(account, "email"), None)
 }
 
 fn sentry_identity(account: &Value) -> String {
@@ -1060,6 +1036,27 @@ fn slack_identity(account: &Value) -> String {
         (None, Some(team)) => team.to_owned(),
         (None, None) => String::new(),
     }
+}
+
+/// `name <email>`, then an optional trailing context (host, workspace),
+/// skipping whatever is missing.
+pub(crate) fn person_identity(
+    name: Option<&str>,
+    email: Option<&str>,
+    context: Option<&str>,
+) -> String {
+    let person = match (name, email) {
+        (Some(name), Some(email)) => format!("{name} <{email}>"),
+        (Some(name), None) => name.to_owned(),
+        (None, Some(email)) => email.to_owned(),
+        (None, None) => String::new(),
+    };
+    [Some(person.as_str()), context]
+        .into_iter()
+        .flatten()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("  ")
 }
 
 pub(crate) fn text_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
@@ -2303,6 +2300,14 @@ pub(crate) mod tests {
             account_identity(Provider::Linear, &linear),
             "User <user@example.com>  Workspace"
         );
+        let sparse_linear = linear_account(json!({
+            "viewer": { "id": "user-id", "email": "user@example.com" },
+            "organization": { "id": "ws", "name": "Workspace", "urlKey": "workspace" },
+        }));
+        assert_eq!(
+            account_identity(Provider::Linear, &sparse_linear),
+            "user@example.com  Workspace"
+        );
 
         let github = github_account(json!({
             "id": 1,
@@ -2339,6 +2344,17 @@ pub(crate) mod tests {
         }));
         assert_eq!(
             account_identity(Provider::Vercel, &vercel),
+            "Lolo <lolo@example.com>"
+        );
+
+        let neon = neon_account(json!({
+            "id": "user_456",
+            "login": "lolo",
+            "name": "Lolo",
+            "email": "lolo@example.com",
+        }));
+        assert_eq!(
+            account_identity(Provider::Neon, &neon),
             "Lolo <lolo@example.com>"
         );
 
