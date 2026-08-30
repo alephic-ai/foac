@@ -40,6 +40,21 @@ With [cargo](https://doc.rust-lang.org/cargo/), from source:
 cargo install foac
 ```
 
+## Quick start
+
+```sh
+foac auth linear login                                # once, for every harness
+foac skill install                                    # teach your agents foac
+foac linear issue list --team ENG --state "In Progress"
+```
+
+That is the whole setup. From here an agent finds its own way around:
+`foac --help` lists the providers, `foac linear --help` the resources,
+`foac linear issue --help` the verbs, and every provider follows the same
+`foac <provider> <resource> <verb>` shape. Output is compact JSON on a pipe
+and an auto-rendered table at an interactive terminal; see
+[doc/output.md](doc/output.md).
+
 ## The picture
 
 Without foac, every harness wires up its own adapters — a mix of MCP servers
@@ -161,28 +176,17 @@ graph LR
 Candidates for more providers are tracked in
 [GitHub issues](https://github.com/alephic-ai/foac/issues).
 
-## Quick start
+## Configuration
 
-```sh
-foac auth linear login                                # once, for every harness
-foac skill install                                    # teach your agents foac
-foac linear issue list --team ENG --state "In Progress"
-foac provider disable slack                           # auth stays; re-enable anytime
-foac update
-```
+foac stores editable provider settings in `~/.config/foac/config.toml` and
+machine-managed credentials in `~/.config/foac/credentials.json` (or the
+equivalent paths under `XDG_CONFIG_HOME`). The credentials file is atomically
+replaced and kept mode `0600` on Unix.
 
-`foac update` downloads the latest GitHub release for this platform and
-replaces the running binary; on a Homebrew install it points at
-`brew upgrade foac` instead. Either way, the installed foac provider skills
-refresh themselves on the next run.
-
-foac stores editable provider settings in
-`~/.config/foac/config.toml` and machine-managed credentials in
-`~/.config/foac/credentials.json` (or the equivalent paths under
-`XDG_CONFIG_HOME`). The credentials file is atomically replaced and kept mode
-`0600` on Unix.
-
-To toggle providers per project, drop a `.foac.toml` in the project folder:
+**Toggling providers.** `foac provider disable slack` hides a provider from
+`--help` and from the installed skills without touching its auth, so
+`foac provider enable slack` never asks you to log in again. To toggle per
+project, drop a `.foac.toml` in the project folder:
 
 ```toml
 enabled_providers = ["linear"]        # on here even if disabled globally
@@ -197,15 +201,19 @@ its toggles override the global ones, and auth is never affected.
 `foac provider <enable|disable> <name> [--instance <name>] --local` edits that
 nearest file for you, creating `./.foac.toml` when none exists.
 
-Each provider can hold several named instances — independent logins to
-different tenants, like two Slack workspaces (`foac auth slack login
---instance workb`, then `foac slack conversation list -i workb`). The
-unnamed login is the `default` instance, used when no instance is selected;
-see [doc/auth.md](doc/auth.md).
+**Several instances of one provider.** Each provider can hold several named
+instances: independent logins to different tenants, like two Slack workspaces
+(`foac auth slack login --instance workb`, then
+`foac slack conversation list -i workb`). The unnamed login is the `default`
+instance, used when no instance is selected; see [doc/auth.md](doc/auth.md).
+
+## Updating
+
+`foac update` downloads the latest GitHub release for this platform and
+replaces the running binary; on a Homebrew install it points at
+`brew upgrade foac` instead. Either way, the installed foac provider skills
+refresh themselves on the next run.
 
 Other commands check GitHub for a newer release at most once a day, and print a
 notice on stderr while one exists. They never auto-install. Set
 `FOAC_NO_UPDATE_CHECK` (or `CI`) to skip the check.
-
-Humans get auto-rendered tables at an interactive terminal instead of JSON;
-see [doc/output.md](doc/output.md).
