@@ -292,7 +292,9 @@ foac <provider> <resource> <verb> [flags]
   an explicit `--id` or `--tag`, so numeric tags remain unambiguous.
 - **Long Markdown**: GitHub commands accept mutually exclusive `--body` and
   `--body-file`. Nested API structures use native JSON flags such as
-  `--comments-json`, `--inputs-json`, and `--rules-json`.
+  `--comments-json`, `--inputs-json`, and `--rules-json`. In `--rules-json`,
+  `required_status_checks.contexts` is deprecated; use
+  `required_status_checks.checks` with `{"context": ..., "app_id": ...}`.
 - **Metadata only**: GitHub release assets, Actions artifacts, and run jobs are
   JSON metadata. Binary uploads/downloads and log streaming are not supported.
 <!-- /foac-provider:github -->
@@ -373,10 +375,15 @@ foac <provider> <resource> <verb> [flags]
   IDs like `ep-...`; find them with `branch list` and `endpoint list`.
   `connection-uri` requires `--database` and `--role` and prints a URI
   containing that role's password.
+- **Neon operations are asynchronous**: `branch create|delete` and
+  `endpoint start|suspend|restart` return `operations` still running; poll
+  `operation get ID` until `status` is `finished` before using the result.
+  `branch delete` refuses the default branch and branches with children.
 <!-- /foac-provider:neon -->
 <!-- foac-provider:sentry -->
 - **Sentry organization**: pass `--org SLUG` anywhere after `sentry`, or set
-  `SENTRY_ORG`; only `org list` works without it. On a TTY,
+  `SENTRY_ORG`; only `org list` works without it. `--org` and `--project`
+  take a slug or a numeric ID; IDs survive renames. On a TTY,
   `foac auth sentry login` first asks for the Sentry hostname (default
   `sentry.io`, always https) and saves it; with redirected stdin it reads only
   the token, so pass `--host HOSTNAME` to save a self-hosted host

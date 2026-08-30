@@ -12,6 +12,10 @@ commands you will use) to Issues, Pull requests, Actions, Checks, Commit
 statuses, Contents, and Administration. Branch protection and collaborator
 changes require Administration write access.
 
+GitHub App installation tokens need Contents write to read a repository's
+merge settings (`allow_squash_merge` and friends); without it those fields are
+omitted from `repo get`.
+
 ```sh
 export GITHUB_TOKEN=github_pat_...
 foac github issue list --repo owner/repo --state open
