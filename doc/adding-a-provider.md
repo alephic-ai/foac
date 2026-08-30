@@ -48,19 +48,19 @@ One flat file (don't split into a module directory preemptively) containing:
 - `src/lib.rs`: `pub mod <provider>;` (alphabetical).
 - `src/main.rs`: the `use foac::{...}` import, a `Command` variant with a
   `/// Interact with <Provider>` doc comment, its dispatch arm through
-  `provider::ensure_enabled`, an entry in `providers_where` (bump the array
-  lengths), and the `help_only_lists_authenticated_providers` test.
+  `provider::ensure_enabled`, and the
+  `help_only_lists_authenticated_providers` test.
 - `src/auth.rs`: an `AuthCmd` variant and dispatch arm; a `Provider` enum
-  variant with its `name`, `display_name`, `env_var`, and `credential`
-  arms; a `<provider>_token(instance)` resolver (env var for the default
-  instance, then the credentials file); a
+  variant (alphabetical: the enum order is the `provider list`, `auth
+  status`, and skill order) with its `info()` arm (name, display name, env
+  var, credential, and the module's `authenticated` fn — every other
+  provider list derives from that one match); a `<provider>_token(instance)`
+  resolver (env var for the default instance, then the credentials file); a
   `validate` arm mapping `auth_identity` to an account object (safe fields
   only — never token material); an identity formatter for the auth table;
-  entries in `provider_status`, the provider array in
-  `all_provider_statuses`, `provider_from_status_key`; and a
-  `print_login_help` arm telling the user where to create a token.
-- `src/provider.rs`: the `PROVIDERS` array, a `Credential` variant with its
-  `vendor`/`field` keys, the `provider_vendor` and `authenticated` matches,
+  an arm in `provider_status`; and a `print_login_help` arm telling the
+  user where to create a token.
+- `src/provider.rs`: a `Credential` variant with its `vendor`/`field` keys,
   and the provider-list test fixture.
   Providers sharing vendor-level credentials reuse one vendor, like the
   Atlassian pair, whose shared code lives in `src/atlassian.rs`.

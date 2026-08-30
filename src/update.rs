@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use self_update::cargo_crate_version;
 use serde::{Deserialize, Serialize};
 
-use crate::provider;
+use crate::auth::Provider;
 
 const CHECK_TTL_SECS: u64 = 24 * 60 * 60;
 const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/alephic-ai/foac/releases/latest";
@@ -65,7 +65,8 @@ fn installed_skills(home: Option<&Path>) -> Vec<InstalledSkill> {
     [".claude/skills", ".agents/skills"]
         .into_iter()
         .flat_map(|root| {
-            provider::PROVIDERS.into_iter().filter_map(move |provider| {
+            Provider::all().iter().filter_map(move |provider| {
+                let provider = provider.as_str();
                 let path = home.join(root).join(format!("foac-{provider}/SKILL.md"));
                 path.is_file().then_some(InstalledSkill { provider, path })
             })

@@ -109,17 +109,30 @@ struct Hosted {
     normalize: fn(&str) -> String,
 }
 
+/// The per-provider registration row; `info()` is the one exhaustive match,
+/// so a new variant fails to build until its row exists.
+pub(crate) struct Info {
+    pub(crate) name: &'static str,
+    pub(crate) display: &'static str,
+    pub(crate) env: &'static str,
+    pub(crate) credential: crate::provider::Credential,
+    /// Cheap credential presence check from the provider module; no network.
+    pub(crate) authenticated: fn() -> bool,
+}
+
+/// Alphabetical: `value_variants()` drives `provider list`, `auth status`,
+/// skill rendering, and clap's possible values.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, clap::ValueEnum)]
 pub enum Provider {
-    Linear,
-    Github,
-    Neon,
-    Jira,
     Confluence,
-    Slack,
-    Sentry,
-    Vercel,
     Firecrawl,
+    Github,
+    Jira,
+    Linear,
+    Neon,
+    Sentry,
+    Slack,
+    Vercel,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -402,58 +415,104 @@ impl fmt::Display for ResolveError {
 impl std::error::Error for ResolveError {}
 
 impl Provider {
-    pub(crate) fn as_str(self) -> &'static str {
+    /// Every variant, in declaration (alphabetical) order.
+    pub fn all() -> &'static [Self] {
+        <Self as clap::ValueEnum>::value_variants()
+    }
+
+    /// The variant a status key (`name` or `name@instance`) names.
+    pub(crate) fn from_name(name: &str) -> Option<Self> {
+        <Self as clap::ValueEnum>::from_str(name, false).ok()
+    }
+
+    pub(crate) fn info(self) -> Info {
+        use crate::provider::Credential;
         match self {
-            Self::Linear => "linear",
-            Self::Github => "github",
-            Self::Neon => "neon",
-            Self::Jira => "jira",
-            Self::Confluence => "confluence",
-            Self::Slack => "slack",
-            Self::Sentry => "sentry",
-            Self::Vercel => "vercel",
-            Self::Firecrawl => "firecrawl",
+            Self::Confluence => Info {
+                name: "confluence",
+                display: "Confluence",
+                env: "ATLASSIAN_API_TOKEN",
+                credential: Credential::AtlassianToken,
+                authenticated: crate::atlassian::authenticated,
+            },
+            Self::Firecrawl => Info {
+                name: "firecrawl",
+                display: "Firecrawl",
+                env: "FIRECRAWL_API_KEY",
+                credential: Credential::Firecrawl,
+                authenticated: crate::firecrawl::authenticated,
+            },
+            Self::Github => Info {
+                name: "github",
+                display: "GitHub",
+                env: "GITHUB_TOKEN",
+                credential: Credential::Github,
+                authenticated: crate::github::authenticated,
+            },
+            Self::Jira => Info {
+                name: "jira",
+                display: "Jira",
+                env: "ATLASSIAN_API_TOKEN",
+                credential: Credential::AtlassianToken,
+                authenticated: crate::atlassian::authenticated,
+            },
+            Self::Linear => Info {
+                name: "linear",
+                display: "Linear",
+                env: "LINEAR_API_KEY",
+                credential: Credential::Linear,
+                authenticated: crate::linear::authenticated,
+            },
+            Self::Neon => Info {
+                name: "neon",
+                display: "Neon",
+                env: "NEON_API_KEY",
+                credential: Credential::Neon,
+                authenticated: crate::neon::authenticated,
+            },
+            Self::Sentry => Info {
+                name: "sentry",
+                display: "Sentry",
+                env: "SENTRY_AUTH_TOKEN",
+                credential: Credential::Sentry,
+                authenticated: crate::sentry::authenticated,
+            },
+            Self::Slack => Info {
+                name: "slack",
+                display: "Slack",
+                env: "SLACK_BOT_TOKEN",
+                credential: Credential::SlackBot,
+                authenticated: crate::slack::authenticated,
+            },
+            Self::Vercel => Info {
+                name: "vercel",
+                display: "Vercel",
+                env: "VERCEL_TOKEN",
+                credential: Credential::Vercel,
+                authenticated: crate::vercel::authenticated,
+            },
         }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        self.info().name
     }
 
     fn display_name(self) -> &'static str {
-        match self {
-            Self::Linear => "Linear",
-            Self::Github => "GitHub",
-            Self::Neon => "Neon",
-            Self::Jira => "Jira",
-            Self::Confluence => "Confluence",
-            Self::Slack => "Slack",
-            Self::Sentry => "Sentry",
-            Self::Vercel => "Vercel",
-            Self::Firecrawl => "Firecrawl",
-        }
+        self.info().display
     }
 
     fn environment_variable(self) -> &'static str {
-        match self {
-            Self::Linear => "LINEAR_API_KEY",
-            Self::Github => "GITHUB_TOKEN",
-            Self::Neon => "NEON_API_KEY",
-            Self::Jira | Self::Confluence => "ATLASSIAN_API_TOKEN",
-            Self::Slack => "SLACK_BOT_TOKEN",
-            Self::Sentry => "SENTRY_AUTH_TOKEN",
-            Self::Vercel => "VERCEL_TOKEN",
-            Self::Firecrawl => "FIRECRAWL_API_KEY",
-        }
+        self.info().env
     }
 
-    fn credential(self) -> crate::provider::Credential {
-        match self {
-            Self::Linear => crate::provider::Credential::Linear,
-            Self::Github => crate::provider::Credential::Github,
-            Self::Neon => crate::provider::Credential::Neon,
-            Self::Jira | Self::Confluence => crate::provider::Credential::AtlassianToken,
-            Self::Slack => crate::provider::Credential::SlackBot,
-            Self::Sentry => crate::provider::Credential::Sentry,
-            Self::Vercel => crate::provider::Credential::Vercel,
-            Self::Firecrawl => crate::provider::Credential::Firecrawl,
-        }
+    pub(crate) fn credential(self) -> crate::provider::Credential {
+        self.info().credential
+    }
+
+    /// Whether a credential resolves for the provider; no network validation.
+    pub fn authenticated(self) -> bool {
+        (self.info().authenticated)()
     }
 
     /// The self-hosting descriptor for providers whose login asks for a host.
@@ -827,19 +886,7 @@ pub(crate) fn status_key(provider: Provider, instance: &str) -> String {
 
 /// The provider (and instance suffix, if any) a status key names.
 fn provider_from_status_key(key: &str) -> Option<Provider> {
-    let name = key.split_once('@').map_or(key, |(name, _)| name);
-    match name {
-        "linear" => Some(Provider::Linear),
-        "github" => Some(Provider::Github),
-        "neon" => Some(Provider::Neon),
-        "jira" => Some(Provider::Jira),
-        "confluence" => Some(Provider::Confluence),
-        "slack" => Some(Provider::Slack),
-        "sentry" => Some(Provider::Sentry),
-        "vercel" => Some(Provider::Vercel),
-        "firecrawl" => Some(Provider::Firecrawl),
-        _ => None,
-    }
+    Provider::from_name(key.split_once('@').map_or(key, |(name, _)| name))
 }
 
 fn nest(provider: Provider, instance: &str, body: Value) -> Value {
@@ -1073,19 +1120,9 @@ fn provider_status(provider: Provider, store: &dyn SecretStore, instance: &str) 
 }
 
 fn all_provider_statuses(store: &dyn SecretStore) -> Value {
-    let providers = [
-        Provider::Linear,
-        Provider::Github,
-        Provider::Neon,
-        Provider::Jira,
-        Provider::Confluence,
-        Provider::Slack,
-        Provider::Sentry,
-        Provider::Vercel,
-        Provider::Firecrawl,
-    ];
+    let providers = Provider::all().iter().copied();
     let mut statuses = serde_json::Map::new();
-    for provider in providers {
+    for provider in providers.clone() {
         statuses.insert(
             provider.as_str().to_owned(),
             with_spinner(provider.as_str(), || {
@@ -1095,7 +1132,7 @@ fn all_provider_statuses(store: &dyn SecretStore) -> Value {
     }
     // One entry per stored named instance, keyed provider@instance.
     for provider in providers {
-        let vendor = crate::provider::provider_vendor(provider.as_str());
+        let vendor = provider.credential().vendor();
         for instance in store.instances(vendor).unwrap_or_default() {
             if instance == DEFAULT_INSTANCE {
                 continue;
