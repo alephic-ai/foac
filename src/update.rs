@@ -232,8 +232,14 @@ fn upgrade_command(executable: Option<&Path>) -> &'static str {
 /// Homebrew owns the binary it installed, so `foac update` self-replacing it
 /// would be undone by the next `brew upgrade`. `Cellar/foac` is the marker
 /// under every prefix (/opt/homebrew, /usr/local, linuxbrew).
+///
+/// Resolve symlinks first: brew puts the binary in the Cellar and links it
+/// into `<prefix>/bin`, and macOS `current_exe()` reports the link that was
+/// exec'd, not its target.
 fn is_homebrew_managed(executable: &Path) -> bool {
-    executable
+    std::fs::canonicalize(executable)
+        .as_deref()
+        .unwrap_or(executable)
         .iter()
         .collect::<Vec<_>>()
         .windows(2)
@@ -548,6 +554,21 @@ mod tests {
             assert_eq!(upgrade_command(Some(Path::new(owned))), "foac update");
         }
         assert_eq!(upgrade_command(None), "foac update");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn homebrew_is_detected_through_the_prefix_symlink() {
+        let prefix = tempfile::tempdir().unwrap();
+        let cellar = prefix.path().join("Cellar/foac/2.25.0/bin");
+        let link = prefix.path().join("bin/foac");
+        std::fs::create_dir_all(&cellar).unwrap();
+        std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::fs::write(cellar.join("foac"), "").unwrap();
+        std::os::unix::fs::symlink(cellar.join("foac"), &link).unwrap();
+
+        assert!(is_homebrew_managed(&link));
+        assert_eq!(upgrade_command(Some(&link)), "brew upgrade foac");
     }
 
     #[test]
