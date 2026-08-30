@@ -1,4 +1,8 @@
 ---
+<!-- foac-provider:axiom -->
+name: foac-axiom
+description: Use the foac CLI to interact with Axiom from the shell. Covers datasets, fields, APL queries, event ingestion, annotations, monitors, notifiers, users, and organizations.
+<!-- /foac-provider:axiom -->
 <!-- foac-provider:confluence -->
 name: foac-confluence
 description: Use the foac CLI to interact with Confluence from the shell. Covers spaces, pages, footer comments, and CQL search.
@@ -38,6 +42,9 @@ description: Use the foac CLI to interact with Vercel from the shell. Covers tea
 ---
 
 <!-- rumdl-disable MD022 MD025 -->
+<!-- foac-provider:axiom -->
+# foac-axiom
+<!-- /foac-provider:axiom -->
 <!-- foac-provider:confluence -->
 # foac-confluence
 <!-- /foac-provider:confluence -->
@@ -83,6 +90,10 @@ foac <provider> <resource> <verb> [flags]
 - A provider is the external product or API named by the first command segment.
   The top-level `--help` lists only authenticated, enabled providers, under a
   separate `Providers:` heading.
+<!-- foac-provider:axiom -->
+- `axiom`: datasets, fields, APL queries, event ingestion, annotations,
+  monitors, notifiers, users, and organizations.
+<!-- /foac-provider:axiom -->
 <!-- foac-provider:linear -->
 - `linear`: issues, projects, teams, users, cycles, labels, workflow states,
   documents, initiatives, milestones, status updates, and attachments.
@@ -158,6 +169,13 @@ foac <provider> <resource> <verb> [flags]
   before secret bytes are written on Unix. Settings use comment-preserving
   TOML. Missing files are valid first-run state; malformed stores fail closed
   independently with their path and cause.
+<!-- foac-provider:axiom -->
+- **Axiom auth precedence**: `AXIOM_TOKEN`, then the credentials file. An
+  API token (`xaat-`) carries its own organization; a personal access token
+  (`xapt-`) also needs the organization ID, from `--org-id` anywhere after
+  `axiom` or `AXIOM_ORG_ID`. `AXIOM_URL` overrides the API base URL for the
+  default instance only.
+<!-- /foac-provider:axiom -->
 <!-- foac-provider:linear -->
 - **Linear auth precedence**: `LINEAR_API_KEY`, then the credentials file.
 <!-- /foac-provider:linear -->
@@ -266,6 +284,34 @@ foac <provider> <resource> <verb> [flags]
   failure (auth, rate limit, network) prints its error JSON on stderr as it
   happens. The exit code is 0 when at least one get succeeded and the rest
   were misses, 1 when all missed or any get failed outright.
+<!-- foac-provider:axiom -->
+- **Axiom permissions**: create API tokens with Advanced permissions. On
+  All datasets (or individual ones): Ingest create for `ingest`, Query read
+  for `query`, Trim update for `dataset trim`. At org level: Datasets
+  create/read/update/delete for `dataset` and `field`, Annotations
+  create/read/update/delete for `annotation`, and read on Monitors,
+  Notifiers, and Users for `monitor`, `notifier`, and `user`. Grant only
+  what the commands you run need.
+- **Axiom queries**: `query "APL"` runs an APL query across datasets, e.g.
+  `['logs'] | where level == 'error' | summarize count() by bin(_time, 1h)`.
+  Put relative ranges in the query (`| where _time > ago(1h)`) or pass
+  `--start-time`/`--end-time` as RFC 3339. The default result is Axiom's
+  tabular format (`tables[].columns`); `--legacy` returns one object per
+  event under `matches[].data`, which is easier to read. Cursor paging:
+  sort by `_time`, then pass `status.maxCursor` (ascending) or
+  `status.minCursor` (descending) to `--cursor` until a page is short.
+  Use `field list --dataset NAME` to discover a dataset's columns first.
+- **Axiom ingest**: `ingest DATASET --events JSON` or
+  `--events-file PATH` (`-` for stdin) accepts a JSON array, one object, or
+  NDJSON and posts them as one batch; `--timestamp-field` names the field
+  holding each event's time. Datasets are identified by name everywhere.
+- **Axiom lists**: management lists (`dataset`, `field`, `annotation`,
+  `monitor`, `notifier`, `user`, `org`) are single-page
+  `{"items":[...],"pageInfo":{"hasNextPage":false}}`. Annotations filter
+  with repeatable `--dataset` plus `--start`/`--end`; `monitor history`
+  requires `--start-time` and `--end-time`. Monitors and notifiers are
+  read-only.
+<!-- /foac-provider:axiom -->
 <!-- foac-provider:linear -->
 - **Linear pagination**: `list` verbs take `--limit N` (default 50) and
   `--after CURSOR`; loop using `pageInfo.endCursor` while `hasNextPage` is true.
@@ -428,6 +474,20 @@ foac <provider> <resource> <verb> [flags]
   records, and environment variables are not covered.
 <!-- /foac-provider:vercel -->
 
+<!-- foac-provider:axiom -->
+## Axiom resources
+
+- Data: `dataset list|get|create|update|delete|trim`,
+  `field list|get` (both take `--dataset`), `query`, `ingest`.
+- Annotations: `annotation list|get|create|update|delete`.
+- Alerting (read-only): `monitor list|get|history`, `notifier list|get`.
+- Directory: `user list|get`, `org list|get`.
+
+Use `foac axiom <resource> --help` for flags and required arguments. API
+tokens, dashboards, virtual fields, saved queries, views, roles, live
+streaming, and CSV ingest are not covered.
+<!-- /foac-provider:axiom -->
+
 <!-- foac-provider:github -->
 ## GitHub resources
 
@@ -523,6 +583,18 @@ foac auth status
 foac linear user list | foac slack user get --from email
 foac github repo list | foac vercel project get --from name
 ```
+
+<!-- foac-provider:axiom -->
+
+```sh
+foac axiom dataset list
+foac axiom field list --dataset logs
+foac axiom query "['logs'] | where level == 'error' | where _time > ago(1h) | limit 20" --legacy
+foac axiom ingest logs --events-file events.ndjson --timestamp-field ts
+foac axiom annotation create --type deploy --dataset logs --title "v1.2.0" --url https://github.com/owner/repo/pull/42
+```
+
+<!-- /foac-provider:axiom -->
 
 <!-- foac-provider:linear -->
 

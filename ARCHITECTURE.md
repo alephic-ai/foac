@@ -1,7 +1,7 @@
 # foac
 
 foac, the Father Of All CLIs, wraps external SaaS APIs (Linear, GitHub, Jira,
-Confluence, Neon, Sentry, Slack, Vercel, Firecrawl, more to come) behind one
+Confluence, Neon, Sentry, Slack, Vercel, Firecrawl, Axiom, more to come) behind one
 command grammar: `foac <provider> <resource> <verb>`. The primary consumer is
 an LLM agent working in a shell. Humans at a TTY get a rendering layer on top
 of the same output. foac makes any provider's API discoverable, uniform, and
@@ -32,7 +32,8 @@ and output (JSON for machines, tables for humans, decided per invocation).
    ┌────────────┬────────────┬───────────────┬───────────────┬────────────┬───────────────┬─────────────┐
    │ linear.rs  │ github.rs  │ jira.rs       │ neon.rs       │ slack.rs   │ vercel.rs     │ auth.rs     │
    │ (GraphQL,  │ (REST,     │ confluence.rs │ sentry.rs     │ (REST,     │ firecrawl.rs  │ provider.rs │
-   │  codegen)  │  untyped)  │ (REST,untyped)│ (REST,untyped)│  untyped)  │ (REST,untyped)│ update.rs   │
+   │  codegen)  │  untyped)  │ (REST,untyped)│ (REST,untyped)│  untyped)  │ axiom.rs      │ update.rs   │
+   │            │            │               │               │            │ (REST,untyped)│             │
    └─────┬──────┴─────┬──────┴───────┬───────┴───────┬───────┴─────┬──────┴───────┬───────┴─────────────┘
          └────────────┴──────────────┴───────────────┴─────────────┴────────┬─────┘
                                                                             ▼
@@ -54,6 +55,7 @@ src/
 ├── github.rs    # GitHub provider: REST passthrough on rest.rs
 ├── jira.rs      # Jira provider: REST passthrough on rest.rs, Atlassian Basic auth
 ├── confluence.rs # Confluence provider: REST passthrough on rest.rs, Atlassian Basic auth
+├── axiom.rs     # Axiom provider: REST passthrough on rest.rs, v2 management + v1 APL query/ingest
 ├── atlassian.rs # Atlassian vendor code shared by Jira and Confluence: credential triple, login flow, Basic-auth Api
 ├── firecrawl.rs # Firecrawl provider: REST passthrough on rest.rs, sync scrapes plus polled jobs
 ├── neon.rs      # Neon provider: REST passthrough on rest.rs

@@ -126,6 +126,7 @@ pub fn resolve_instance(
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Credential {
+    Axiom,
     Linear,
     Firecrawl,
     /// The base URL of a self-hosted Firecrawl, stored with the instance's token.
@@ -150,6 +151,7 @@ impl Credential {
     /// `atlassian` vendor.
     pub(crate) fn vendor(self) -> &'static str {
         match self {
+            Self::Axiom => "axiom",
             Self::Linear => "linear",
             Self::Firecrawl | Self::FirecrawlUrl => "firecrawl",
             Self::Github => "github",
@@ -164,7 +166,8 @@ impl Credential {
     /// The field key inside an instance record.
     fn field(self) -> &'static str {
         match self {
-            Self::Linear
+            Self::Axiom
+            | Self::Linear
             | Self::Firecrawl
             | Self::Github
             | Self::Neon
@@ -1387,6 +1390,7 @@ mod tests {
                 &credentials
             ),
             json!({
+                "axiom": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "confluence": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "firecrawl": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "github": {"enabled": true, "authenticated": true, "skill_installed": false},

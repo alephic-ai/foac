@@ -221,7 +221,7 @@ pub(crate) fn fetch_identity(
     method: reqwest::Method,
     url: reqwest::Url,
     auth: &Auth,
-    headers: &'static [(&'static str, &'static str)],
+    headers: &[(&str, &str)],
 ) -> Result<(reqwest::StatusCode, Value), crate::auth::ValidationError> {
     let mut request = auth
         .apply(reqwest::blocking::Client::new().request(method, url))
@@ -244,7 +244,7 @@ pub(crate) fn fetch_identity(
 pub(crate) fn identity(
     url: reqwest::Url,
     auth: &Auth,
-    headers: &'static [(&'static str, &'static str)],
+    headers: &[(&str, &str)],
     rejected: &[reqwest::StatusCode],
 ) -> Result<Value, crate::auth::ValidationError> {
     let (status, body) = fetch_identity(reqwest::Method::GET, url, auth, headers)?;

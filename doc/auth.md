@@ -9,6 +9,9 @@ foac can validate every provider at once or manage each provider separately:
 
 ```sh
 foac auth status
+foac auth axiom status
+foac auth axiom login
+foac auth axiom logout
 foac auth linear status
 foac auth linear login
 foac auth linear logout
@@ -82,7 +85,7 @@ A provider command picks its instance in this order:
 
 **Environment tokens belong to the default instance only.** When a named
 instance is selected, `SLACK_BOT_TOKEN`, `GITHUB_TOKEN`, the `gh` CLI
-fallback, `SENTRY_URL`, `FIRECRAWL_API_URL`, and the rest never apply: a
+fallback, `SENTRY_URL`, `FIRECRAWL_API_URL`, `AXIOM_URL`, and the rest never apply: a
 named instance reads exactly its stored credentials, so an ambient token from
 workspace A can never leak into commands aimed at workspace B. Auth commands
 use the flag only — never folder defaults — so a `login` is never silently

@@ -4,6 +4,7 @@
 
 pub mod atlassian;
 pub mod auth;
+pub mod axiom;
 pub mod confluence;
 pub mod firecrawl;
 pub mod github;

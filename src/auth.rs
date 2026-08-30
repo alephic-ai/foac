@@ -18,6 +18,8 @@ pub struct Cmd {
 enum AuthCmd {
     /// Check authentication for every provider
     Status,
+    /// Configure Axiom authentication
+    Axiom(ProviderCmd),
     /// Configure Linear authentication
     Linear(ProviderCmd),
     /// Configure GitHub authentication
@@ -124,6 +126,7 @@ pub(crate) struct Info {
 /// skill rendering, and clap's possible values.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, clap::ValueEnum)]
 pub enum Provider {
+    Axiom,
     Confluence,
     Firecrawl,
     Github,
@@ -240,6 +243,7 @@ pub fn run(
             print_all_statuses(&store, format);
             Ok(())
         }
+        AuthCmd::Axiom(cmd) => run_provider(Provider::Axiom, cmd.command, &store, format, instance),
         AuthCmd::Linear(cmd) => {
             run_provider(Provider::Linear, cmd.command, &store, format, instance)
         }
@@ -283,6 +287,17 @@ fn run_hosted(
         HostedAction::Login { host } => login(provider, host, store, format, instance),
         HostedAction::Logout => logout(provider, store, format, instance),
     }
+}
+
+pub(crate) fn axiom_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
+    resolve_stored(
+        Provider::Axiom,
+        environment_token(Provider::Axiom),
+        &crate::provider::CredentialStore,
+        instance,
+    )
+    .map(|credential| credential.token)
+    .map_err(Into::into)
 }
 
 pub(crate) fn firecrawl_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -428,6 +443,13 @@ impl Provider {
     pub(crate) fn info(self) -> Info {
         use crate::provider::Credential;
         match self {
+            Self::Axiom => Info {
+                name: "axiom",
+                display: "Axiom",
+                env: "AXIOM_TOKEN",
+                credential: Credential::Axiom,
+                authenticated: crate::axiom::authenticated,
+            },
             Self::Confluence => Info {
                 name: "confluence",
                 display: "Confluence",
@@ -963,6 +985,8 @@ fn logout_summary(removed: bool) -> String {
 
 fn account_identity(provider: Provider, account: &Value) -> String {
     match provider {
+        // Same `name <email>` shape as Neon.
+        Provider::Axiom => neon_identity(account),
         Provider::Linear => linear_identity(account),
         Provider::Github => github_identity(account),
         Provider::Neon => neon_identity(account),
@@ -1092,7 +1116,8 @@ fn provider_status(provider: Provider, store: &dyn SecretStore, instance: &str) 
         };
     }
     let resolved = match provider {
-        Provider::Linear
+        Provider::Axiom
+        | Provider::Linear
         | Provider::Neon
         | Provider::Sentry
         | Provider::Vercel
@@ -1455,6 +1480,7 @@ fn validate(
     instance: &str,
 ) -> Result<Value, ValidationError> {
     match provider {
+        Provider::Axiom => crate::axiom::auth_identity(token, instance).map(axiom_account),
         Provider::Linear => crate::linear::auth_identity(token).map(linear_account),
         Provider::Github => crate::github::auth_identity(token).map(github_account),
         Provider::Neon => crate::neon::auth_identity(token).map(neon_account),
@@ -1480,6 +1506,18 @@ fn firecrawl_account(identity: Value) -> Value {
         "remainingCredits": usage["remainingCredits"],
         "planCredits": usage["planCredits"],
         "billingPeriodEnd": usage["billingPeriodEnd"],
+    })
+}
+
+fn axiom_account(identity: Value) -> Value {
+    json!({
+        "id": identity["id"],
+        "name": identity["name"],
+        "email": identity["email"],
+        "role": {
+            "id": identity["role"]["id"],
+            "name": identity["role"]["name"],
+        },
     })
 }
 
@@ -1626,6 +1664,9 @@ pub(crate) fn print_login_help(
     instance: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match provider {
+        Provider::Axiom => eprintln!(
+            "Create an API token in Axiom under Settings > API tokens with Advanced permissions: on All datasets, Ingest (create), Query (read), and Trim (update); at org level, Datasets and Annotations (create/read/update/delete) plus Monitors, Notifiers, and Users (read). Grant only what your foac commands need. A personal access token (Settings > Profile) also works but needs the organization ID in AXIOM_ORG_ID or --org-id."
+        ),
         Provider::Linear => eprintln!(
             "Create a personal API key at https://linear.app/settings/account/security and grant the permissions needed by your foac commands."
         ),

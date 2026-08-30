@@ -1,8 +1,8 @@
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
 use foac::{
-    auth, confluence, firecrawl, github, jira, linear, neon, output, provider, sentry, slack,
-    update, vercel,
+    auth, axiom, confluence, firecrawl, github, jira, linear, neon, output, provider, sentry,
+    slack, update, vercel,
 };
 
 #[derive(Parser)]
@@ -40,6 +40,8 @@ impl Provider {
 enum Command {
     /// Check and configure provider authentication
     Auth(auth::Cmd),
+    /// Interact with Axiom
+    Axiom(axiom::Cmd),
     /// Interact with Confluence
     Confluence(confluence::Cmd),
     /// Interact with Firecrawl
@@ -117,6 +119,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let skip_skill_refresh = matches!(command, Command::Update | Command::Skill(_));
     let result = match command {
         Command::Auth(cmd) => auth::run(cmd, format, instance_flag.clone()),
+        Command::Axiom(cmd) => axiom::run(cmd, format, &provider_instance("axiom")?),
         Command::Confluence(cmd) => confluence::run(cmd, format, &provider_instance("confluence")?),
         Command::Firecrawl(cmd) => firecrawl::run(cmd, format, &provider_instance("firecrawl")?),
         Command::Github(cmd) => github::run(cmd, format, &provider_instance("github")?),
@@ -535,6 +538,7 @@ mod tests {
     fn help_only_lists_authenticated_providers() {
         for expected in [
             vec![],
+            vec!["axiom"],
             vec!["linear"],
             vec!["github"],
             vec!["sentry"],
@@ -550,6 +554,7 @@ mod tests {
             for args in [vec!["foac"], vec!["foac", "--help"]] {
                 let help = parse_error(&providers, args).to_string();
                 for name in [
+                    "axiom",
                     "confluence",
                     "firecrawl",
                     "github",
@@ -599,6 +604,7 @@ mod tests {
     fn hidden_provider_help_remains_available() {
         let providers = test_providers(&[]);
         for (args, usage) in [
+            (vec!["foac", "axiom", "--help"], "Usage: foac axiom"),
             (
                 vec!["foac", "confluence", "--help"],
                 "Usage: foac confluence",
@@ -630,6 +636,7 @@ mod tests {
     #[test]
     fn skill_documents_one_provider() {
         let examples = [
+            ("axiom", "foac axiom query"),
             ("confluence", "foac confluence page list"),
             ("firecrawl", "foac firecrawl scrape"),
             ("github", "foac github issue list"),
@@ -662,6 +669,7 @@ mod tests {
     fn bare_auth_commands_display_help() {
         for args in [
             vec!["foac", "auth"],
+            vec!["foac", "auth", "axiom"],
             vec!["foac", "auth", "linear"],
             vec!["foac", "auth", "github"],
             vec!["foac", "auth", "neon"],
@@ -960,7 +968,7 @@ mod tests {
             .to_string();
         assert!(missing_provider.contains("<PROVIDER>"));
         assert!(missing_provider.contains(
-            "possible values: confluence, firecrawl, github, jira, linear, neon, sentry, slack"
+            "possible values: axiom, confluence, firecrawl, github, jira, linear, neon, sentry, slack"
         ));
         assert!(Cli::try_parse_from(["foac", "skill", "print", "nope"]).is_err());
         assert!(matches!(
