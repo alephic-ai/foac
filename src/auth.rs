@@ -1478,7 +1478,9 @@ fn all_provider_statuses(store: &dyn SecretStore) -> Value {
     for provider in providers {
         statuses.insert(
             provider.as_str().to_owned(),
-            provider_status(provider, store, DEFAULT_INSTANCE),
+            with_spinner(provider.as_str(), || {
+                provider_status(provider, store, DEFAULT_INSTANCE)
+            }),
         );
     }
     // One entry per stored named instance, keyed provider@instance.
@@ -1488,13 +1490,50 @@ fn all_provider_statuses(store: &dyn SecretStore) -> Value {
             if instance == DEFAULT_INSTANCE {
                 continue;
             }
-            statuses.insert(
-                status_key(provider, &instance),
-                provider_status(provider, store, &instance),
-            );
+            let key = status_key(provider, &instance);
+            let status = with_spinner(&key, || provider_status(provider, store, &instance));
+            statuses.insert(key, status);
         }
     }
     Value::Object(statuses)
+}
+
+/// Runs `check` with a live spinner on stderr, then replaces it with a green
+/// check or red cross. Silent when stderr is not a TTY so piped output stays
+/// clean; stdout (the JSON/table report) is never touched.
+fn with_spinner(label: &str, check: impl FnOnce() -> Value) -> Value {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    if !std::io::stderr().is_terminal() {
+        return check();
+    }
+    let done = Arc::new(AtomicBool::new(false));
+    let spinner = std::thread::spawn({
+        let done = Arc::clone(&done);
+        let label = label.to_owned();
+        move || {
+            for frame in "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏".chars().cycle() {
+                if done.load(Ordering::Relaxed) {
+                    break;
+                }
+                eprint!("\r{frame} {label}");
+                std::thread::sleep(std::time::Duration::from_millis(80));
+            }
+        }
+    });
+    let status = check();
+    done.store(true, Ordering::Relaxed);
+    let _ = spinner.join();
+    let color = std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty());
+    let mark = match (status["status"] == "authenticated", color) {
+        (true, true) => "\x1b[32m✔\x1b[0m",
+        (false, true) => "\x1b[31m✘\x1b[0m",
+        (true, false) => "✔",
+        (false, false) => "✘",
+    };
+    eprintln!("\r\x1b[2K{mark} {label}");
+    status
 }
 
 fn validate_and_store<F>(
