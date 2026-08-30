@@ -470,27 +470,12 @@ fn page_info(link: Option<&str>) -> Value {
 /// `<url>; rel="next"; results="true"; cursor="0:100:0"`; the cursor is only
 /// usable when `results` is true.
 fn link_cursor(link: Option<&str>, relation: &str) -> Option<String> {
-    link?.split(',').find_map(|part| {
-        let mut matches_relation = false;
-        let mut has_results = false;
-        let mut cursor = None;
-        for attribute in part.trim().split(';').skip(1) {
-            let attribute = attribute.trim();
-            if attribute == format!("rel=\"{relation}\"") {
-                matches_relation = true;
-            } else if attribute == "results=\"true\"" {
-                has_results = true;
-            } else if let Some(value) = attribute
-                .strip_prefix("cursor=\"")
-                .and_then(|value| value.strip_suffix('"'))
-            {
-                cursor = Some(value.to_owned());
-            }
-        }
-        (matches_relation && has_results)
-            .then_some(cursor)
-            .flatten()
-    })
+    let mut links = parse_link_header::parse_with_rel(link?).ok()?;
+    let params = links.remove(relation)?.params;
+    if params.get("results")? != "true" {
+        return None;
+    }
+    params.get("cursor").cloned()
 }
 
 #[cfg(test)]

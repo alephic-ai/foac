@@ -11,6 +11,7 @@ readme = "README.md"
 [dependencies]
 clap = { version = "4.6.6", features = ["derive"] }
 graphql_client = "0.16"
+parse_link_header = "0.4"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "query", "rustls"] } # query: RequestBuilder::query
 rpassword = "7.5.0"
 self_update = { version = "1.0.0-rc.6", features = ["archive-zip", "compression-zip-deflate", "checksums"] }

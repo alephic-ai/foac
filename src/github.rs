@@ -1979,22 +1979,13 @@ fn page_info(link: Option<&str>) -> Value {
 }
 
 fn link_page(link: Option<&str>, relation: &str) -> Option<u32> {
-    link?.split(',').find_map(|part| {
-        let (url, metadata) = part.trim().split_once(';')?;
-        if !metadata
-            .split(';')
-            .any(|item| item.trim() == format!("rel=\"{relation}\""))
-        {
-            return None;
-        }
-        reqwest::Url::parse(url.trim().trim_start_matches('<').trim_end_matches('>'))
-            .ok()?
-            .query_pairs()
-            .find(|(key, _)| key == "page")?
-            .1
-            .parse()
-            .ok()
-    })
+    parse_link_header::parse_with_rel(link?)
+        .ok()?
+        .get(relation)?
+        .queries
+        .get("page")?
+        .parse()
+        .ok()
 }
 
 fn full_ref(name: &str) -> String {
@@ -2044,6 +2035,15 @@ mod tests {
         );
         assert_eq!(page_info(Some(link))["nextPage"], 3);
         assert_eq!(page_info(Some(link))["previousPage"], 1);
+
+        // parse_link_header is all-or-nothing: one malformed entry (valueless
+        // query key) fails the whole header, so every relation reads as absent.
+        let malformed = concat!(
+            "<https://api.github.com/repositories/1/issues?page=3>; rel=\"next\", ",
+            "<https://api.github.com/repositories/1/issues?page=1&foo>; rel=\"prev\""
+        );
+        assert_eq!(page_info(Some(malformed))["hasNextPage"], false);
+        assert_eq!(page_info(Some(malformed))["nextPage"], Value::Null);
 
         let items = list_items(
             json!([
