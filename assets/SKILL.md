@@ -5,7 +5,7 @@ description: Use the foac CLI to interact with Confluence from the shell. Covers
 <!-- /foac-provider:confluence -->
 <!-- foac-provider:firecrawl -->
 name: foac-firecrawl
-description: Use the foac CLI to interact with Firecrawl from the shell. Covers web scraping, site maps, web search, crawl jobs, batch scrapes, browsing agents, and team usage.
+description: Use the foac CLI to interact with Firecrawl from the shell. Covers web scraping, site maps, web search, crawl jobs, batch scrapes, browsing agents, and team usage. Also use as the retry when a plain fetch of a public URL fails or returns unusable content — 403, bot check, paywall-shaped block, or a JS-rendered page — instead of retrying with curl.
 <!-- /foac-provider:firecrawl -->
 <!-- foac-provider:github -->
 name: foac-github
