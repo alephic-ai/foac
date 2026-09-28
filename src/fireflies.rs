@@ -328,6 +328,7 @@ pub fn run(
                         client_reference_id: None,
                         custom_language: None,
                         download_auth: None,
+                        meeting_date: None,
                         save_video: None,
                         webhook: None,
                     }),
