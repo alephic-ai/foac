@@ -1,7 +1,7 @@
 # foac
 
 foac, the Father Of All CLIs, wraps external SaaS APIs (Linear, GitHub, Jira,
-Confluence, Neon, Sentry, Slack, Vercel, Firecrawl, Axiom, more to come) behind one
+Confluence, Neon, Sentry, Slack, Vercel, Firecrawl, Axiom, Fireflies, more to come) behind one
 command grammar: `foac <provider> <resource> <verb>`. The primary consumer is
 an LLM agent working in a shell. Humans at a TTY get a rendering layer on top
 of the same output. foac makes any provider's API discoverable, uniform, and
@@ -29,14 +29,14 @@ and output (JSON for machines, tables for humans, decided per invocation).
 ```text
                  main.rs  (parse, dispatch, provider hiding, skill render)
                     │
-   ┌────────────┬────────────┬───────────────┬───────────────┬────────────┬───────────────┬─────────────┐
-   │ linear.rs  │ github.rs  │ jira.rs       │ neon.rs       │ slack.rs   │ vercel.rs     │ auth.rs     │
-   │ (GraphQL,  │ (REST,     │ confluence.rs │ sentry.rs     │ (REST,     │ firecrawl.rs  │ provider.rs │
-   │  codegen)  │  untyped)  │ (REST,untyped)│ (REST,untyped)│  untyped)  │ axiom.rs      │ update.rs   │
-   │            │            │               │               │            │ (REST,untyped)│             │
-   └─────┬──────┴─────┬──────┴───────┬───────┴───────┬───────┴─────┬──────┴───────┬───────┴─────────────┘
-         └────────────┴──────────────┴───────────────┴─────────────┴────────┬─────┘
-                                                                            ▼
+   ┌──────────────┬────────────┬───────────────┬───────────────┬────────────┬───────────────┬─────────────┐
+   │ linear.rs    │ github.rs  │ jira.rs       │ neon.rs       │ slack.rs   │ vercel.rs     │ auth.rs     │
+   │ fireflies.rs │ (REST,     │ confluence.rs │ sentry.rs     │ (REST,     │ firecrawl.rs  │ provider.rs │
+   │ (GraphQL,    │  untyped)  │ (REST,untyped)│ (REST,untyped)│  untyped)  │ axiom.rs      │ update.rs   │
+   │  codegen)    │            │               │               │            │ (REST,untyped)│             │
+   └─────┬────────┴─────┬──────┴───────┬───────┴───────┬───────┴─────┬──────┴───────┬───────┴─────────────┘
+         └──────────────┴──────────────┴───────────────┴─────────────┴────────┬─────┘
+                                                                              ▼
                         output.rs  (single shared printer: JSON | table)
 ```
 
@@ -52,6 +52,7 @@ machine-managed credentials in `~/.config/foac/credentials.json`.
 src/
 ├── main.rs      # CLI root: dispatch, hiding inactive providers, skill render/install
 ├── linear.rs    # Linear provider: GraphQL via graphql_client codegen
+├── fireflies.rs # Fireflies provider: GraphQL codegen like Linear, bare-array lists wrapped as {items, pageInfo}
 ├── github.rs    # GitHub provider: REST passthrough on rest.rs
 ├── jira.rs      # Jira provider: REST passthrough on rest.rs, Atlassian Basic auth
 ├── confluence.rs # Confluence provider: REST passthrough on rest.rs, Atlassian Basic auth
@@ -72,6 +73,7 @@ src/
 └── lib.rs       # Library target so tests/ and doc tests can link; main.rs is the only consumer
 assets/
 ├── graphql/linear/ # Vendored schema (51k lines; grep it) + queries.graphql (compile-time checked)
+├── graphql/fireflies/ # Vendored introspected schema + queries.graphql (compile-time checked)
 └── SKILL.md     # Agent skill, compiled into the binary; must track every CLI surface change
 ```
 

@@ -137,6 +137,7 @@ pub(crate) enum Credential {
     Firecrawl,
     /// The base URL of a self-hosted Firecrawl, stored with the instance's token.
     FirecrawlUrl,
+    Fireflies,
     Github,
     Neon,
     Sentry,
@@ -160,6 +161,7 @@ impl Credential {
             Self::Axiom | Self::AxiomOrg | Self::AxiomUrl => "axiom",
             Self::Linear => "linear",
             Self::Firecrawl | Self::FirecrawlUrl => "firecrawl",
+            Self::Fireflies => "fireflies",
             Self::Github => "github",
             Self::Neon => "neon",
             Self::Sentry | Self::SentryUrl => "sentry",
@@ -175,6 +177,7 @@ impl Credential {
             Self::Axiom
             | Self::Linear
             | Self::Firecrawl
+            | Self::Fireflies
             | Self::Github
             | Self::Neon
             | Self::Sentry
@@ -1400,6 +1403,7 @@ mod tests {
                 "axiom": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "confluence": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "firecrawl": {"enabled": true, "authenticated": false, "skill_installed": false},
+                "fireflies": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "github": {"enabled": true, "authenticated": true, "skill_installed": false},
                 "jira": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "linear": {"enabled": true, "authenticated": false, "skill_installed": true},

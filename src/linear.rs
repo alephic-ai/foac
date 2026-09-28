@@ -14,6 +14,12 @@ type JSONObject = serde_json::Value;
 #[allow(clippy::upper_case_acronyms)]
 type JSON = serde_json::Value;
 
+// The derive reads these files, but cargo does not track them; including
+// them makes an edited schema or query rebuild instead of reusing a stale
+// (and possibly no longer compiling) build.
+const _: &str = include_str!("../assets/graphql/linear/schema.graphql");
+const _: &str = include_str!("../assets/graphql/linear/queries.graphql");
+
 macro_rules! linear_query {
     ($($name:ident),+ $(,)?) => {$(
         #[derive(GraphQLQuery)]

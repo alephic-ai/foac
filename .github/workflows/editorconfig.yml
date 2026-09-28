@@ -21,6 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Set up editorconfig-checker
-        uses: editorconfig-checker/action-editorconfig-checker@v2.2.0
+        uses: editorconfig-checker/action-editorconfig-checker@v3.0.0
       - name: Check files
         run: editorconfig-checker -format github-actions

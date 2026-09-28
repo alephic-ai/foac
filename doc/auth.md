@@ -39,6 +39,9 @@ foac auth vercel logout
 foac auth firecrawl status
 foac auth firecrawl login
 foac auth firecrawl logout
+foac auth fireflies status
+foac auth fireflies login
+foac auth fireflies logout
 ```
 
 `login` prints a link and permission guidance, securely prompts for a personal

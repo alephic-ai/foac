@@ -70,6 +70,7 @@ fn provider_list_defaults_to_all_enabled_json() {
         "axiom",
         "confluence",
         "firecrawl",
+        "fireflies",
         "github",
         "jira",
         "linear",

@@ -1,0 +1,331 @@
+# Fireflies operations, checked against schema.graphql at compile time.
+# Plan-gated fields (audio_url, video_url, analytics) are left out: one
+# gated field fails the whole query on a Free plan.
+
+fragment UserFields on User {
+  user_id
+  email
+  name
+  is_admin
+  num_transcripts
+  minutes_consumed
+  recent_meeting
+  recent_transcript
+  integrations
+  user_groups {
+    id
+    name
+    handle
+  }
+}
+
+query UserGet($id: String) {
+  user(id: $id) {
+    ...UserFields
+  }
+}
+
+query UserList {
+  users {
+    ...UserFields
+  }
+}
+
+query TranscriptList(
+  $keyword: String
+  $scope: String
+  $fromDate: DateTime
+  $toDate: DateTime
+  $organizers: [String!]
+  $participants: [String!]
+  $user_id: String
+  $channel_id: String
+  $mine: Boolean
+  $limit: Int
+  $skip: Int
+) {
+  transcripts(
+    keyword: $keyword
+    scope: $scope
+    fromDate: $fromDate
+    toDate: $toDate
+    organizers: $organizers
+    participants: $participants
+    user_id: $user_id
+    channel_id: $channel_id
+    mine: $mine
+    limit: $limit
+    skip: $skip
+  ) {
+    id
+    title
+    dateString
+    duration
+    organizer_email
+    participants
+    privacy
+    meeting_link
+    transcript_url
+  }
+}
+
+query TranscriptGet($id: String!, $sentences: Boolean!) {
+  transcript(id: $id) {
+    id
+    title
+    date
+    dateString
+    duration
+    privacy
+    is_live
+    organizer_email
+    participants
+    fireflies_users
+    workspace_users
+    meeting_link
+    transcript_url
+    calendar_id
+    cal_id
+    calendar_type
+    user {
+      user_id
+      email
+      name
+    }
+    speakers {
+      id
+      name
+    }
+    meeting_attendees {
+      displayName
+      email
+      name
+    }
+    meeting_attendance {
+      name
+      join_time
+      leave_time
+    }
+    meeting_info {
+      fred_joined
+      silent_meeting
+      summary_status
+    }
+    channels {
+      id
+      title
+    }
+    summary {
+      keywords
+      action_items
+      outline
+      overview
+      short_overview
+      short_summary
+      bullet_gist
+      gist
+      shorthand_bullet
+      meeting_type
+      topics_discussed
+      transcript_chapters
+    }
+    sentences @include(if: $sentences) {
+      index
+      speaker_id
+      speaker_name
+      text
+      start_time
+      end_time
+    }
+  }
+}
+
+mutation TranscriptCreate($input: AudioUploadInput) {
+  uploadAudio(input: $input) {
+    success
+    title
+    message
+  }
+}
+
+mutation TranscriptUpdate($input: UpdateMeetingTitleInput!) {
+  updateMeetingTitle(input: $input) {
+    id
+    title
+  }
+}
+
+mutation TranscriptDelete($id: String!) {
+  deleteTranscript(id: $id) {
+    id
+    title
+    dateString
+    organizer_email
+    transcript_url
+  }
+}
+
+query BiteList(
+  $mine: Boolean
+  $my_team: Boolean
+  $transcript_id: ID
+  $limit: Int
+  $skip: Int
+) {
+  bites(
+    mine: $mine
+    my_team: $my_team
+    transcript_id: $transcript_id
+    limit: $limit
+    skip: $skip
+  ) {
+    id
+    name
+    transcript_id
+    start_time
+    end_time
+    status
+    summary
+    media_type
+    privacies
+    user_id
+    created_at
+  }
+}
+
+query BiteGet($id: ID!) {
+  bite(id: $id) {
+    id
+    name
+    transcript_id
+    start_time
+    end_time
+    status
+    summary
+    summary_status
+    media_type
+    privacies
+    thumbnail
+    preview
+    user_id
+    created_at
+    user {
+      id
+      name
+    }
+    created_from {
+      id
+      name
+      type
+      description
+      duration
+    }
+    captions {
+      index
+      speaker_id
+      speaker_name
+      text
+      start_time
+      end_time
+    }
+    sources {
+      src
+      type
+    }
+  }
+}
+
+fragment ChannelFields on Channel {
+  id
+  title
+  is_private
+  created_by
+  created_at
+  updated_at
+  members {
+    user_id
+    email
+    name
+  }
+}
+
+query ChannelList {
+  channels {
+    ...ChannelFields
+  }
+}
+
+query ChannelGet($id: ID!) {
+  channel(id: $id) {
+    ...ChannelFields
+  }
+}
+
+query ContactList {
+  contacts {
+    email
+    name
+    picture
+    last_meeting_date
+  }
+}
+
+query ThreadList($transcript_id: String) {
+  askfred_threads(transcript_id: $transcript_id) {
+    id
+    title
+    transcript_id
+    user_id
+    created_at
+  }
+}
+
+fragment MessageFields on AskFredMessage {
+  id
+  thread_id
+  query
+  answer
+  suggested_queries
+  status
+  created_at
+}
+
+query ThreadGet($id: String!) {
+  askfred_thread(id: $id) {
+    id
+    title
+    transcript_id
+    user_id
+    created_at
+    messages {
+      ...MessageFields
+      updated_at
+    }
+  }
+}
+
+mutation ThreadCreate($input: CreateAskFredThreadInput!) {
+  createAskFredThread(input: $input) {
+    message {
+      ...MessageFields
+    }
+  }
+}
+
+mutation ThreadContinue($input: ContinueAskFredThreadInput!) {
+  continueAskFredThread(input: $input) {
+    message {
+      ...MessageFields
+    }
+  }
+}
+
+mutation ThreadDelete($id: String!) {
+  deleteAskFredThread(id: $id) {
+    id
+    title
+    transcript_id
+    user_id
+    created_at
+  }
+}
