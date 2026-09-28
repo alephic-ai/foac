@@ -16,6 +16,10 @@ const API_URL: &str = "https://api.fireflies.ai/graphql";
 // Fireflies' one custom scalar, kept as the ISO 8601 string the user typed.
 type DateTime = String;
 
+// The derive reads these files, but cargo does not track them; see linear.rs.
+const _: &str = include_str!("../assets/graphql/fireflies/schema.graphql");
+const _: &str = include_str!("../assets/graphql/fireflies/queries.graphql");
+
 macro_rules! fireflies_query {
     ($($name:ident),+ $(,)?) => {$(
         #[derive(GraphQLQuery)]
