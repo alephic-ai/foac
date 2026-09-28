@@ -76,7 +76,7 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   `assets/graphql/fireflies/queries.graphql` are checked at compile time
   against the vendored `schema.graphql`. Fireflies publishes no schema file,
   and its introspection needs an API key, so refresh the schema with
-  `npx get-graphql-schema https://api.fireflies.ai/graphql -h "Authorization=Bearer $FIREFLIES_API_KEY"`;
+  `npx get-graphql-schema https://api.fireflies.ai/graphql -h "Authorization=Bearer $FIREFLIES_API_KEY" > assets/graphql/fireflies/schema.graphql`;
   the live schema wins over docs.fireflies.ai where they disagree (`scope`
   is a plain `String`). Auth is a bearer API key. Every failure, including a
   bad key (HTTP 500, code `auth_failed`), arrives as GraphQL `errors`, so

@@ -1,35 +1,38 @@
-# Fireflies GraphQL schema, introspected from https://api.fireflies.ai/graphql
-# (introspection needs an API key; see doc/layout.md to refresh it).
+"""Exposes a URL that specifies the behavior of this scalar."""
+directive @specifiedBy(
+  """The URL that specifies the behavior of this scalar."""
+  url: String!
+) on SCALAR
 
-schema {
-  query: Query
-  mutation: Mutation
-}
-
-type AIFilters {
-  date_and_time: String
-  metric: String
-  pricing: String
-  question: String
-  sentiment: String
-  task: String
-  text_cleanup: String
-}
+"""
+Indicates exactly one field must be supplied and this field must not be `null`.
+"""
+directive @oneOf on INPUT_OBJECT
 
 type ActiveMeeting {
-  end_time: String
   id: String
-  meeting_link: String
-  organizer_email: String
-  privacy: MeetingPrivacy
-  start_time: String
-  state: MeetingState
   title: String
+  organizer_email: String
+  meeting_link: String
+  start_time: String
+  end_time: String
+  privacy: MeetingPrivacy
+  state: MeetingState
 }
 
 type AddToLiveMeeting {
   message: String!
   success: Boolean!
+}
+
+type AIFilters {
+  text_cleanup: String
+  task: String
+  pricing: String
+  metric: String
+  question: String
+  date_and_time: String
+  sentiment: String
 }
 
 type Analytics {
@@ -38,33 +41,33 @@ type Analytics {
 }
 
 type AnalyticsCategories {
+  questions: Int
   date_times: Int
   metrics: Int
-  questions: Int
   tasks: Int
 }
 
 type AnalyticsSpeaker {
+  speaker_id: Int
+  name: String
   duration: Float
-  duration_pct: Float
-  filler_words: Int
+  word_count: Int
   longest_monologue: Float
   monologues_count: Int
-  name: String
+  filler_words: Int
   questions: Int
-  speaker_id: Int
-  word_count: Int
+  duration_pct: Float
   words_per_minute: Float
 }
 
 type AppOutput {
-  app_id: String
-  created_at: Float
-  prompt: String
-  response: String
-  title: String
   transcript_id: String
   user_id: String
+  app_id: String
+  created_at: Float
+  title: String
+  prompt: String
+  response: String
 }
 
 type Apps {
@@ -72,159 +75,154 @@ type Apps {
 }
 
 input AskFredMeetingFiltersInput {
-  channel_ids: [String!]
+  start_time: String
   end_time: String
+  channel_ids: [String!]
   organizers: [String!]
   participants: [String!]
-  start_time: String
   transcript_ids: [String!]
 }
 
 type AskFredMessage {
-  answer: String!
-  created_at: String!
   id: String!
-  query: String!
-  status: AskFredMessageStatus!
-  suggested_queries: [String!]
   thread_id: String!
+  query: String!
+  answer: String!
+  suggested_queries: [String!]
+  status: AskFredMessageStatus!
+  created_at: String!
   updated_at: String
 }
 
-"""
-The status of an AskFred message
-"""
+"""The status of an AskFred message"""
 enum AskFredMessageStatus {
+  processing
   completed
   failed
-  processing
 }
 
 type AskFredResponse {
-  cost: Float
-  """
-  The generated message response
-  """
+  """The generated message response"""
   message: AskFredMessage!
+  cost: Float
 }
 
 type AskFredThread {
-  created_at: String!
   id: String!
-  messages: [AskFredMessage!]!
   title: String!
   transcript_id: String
   user_id: String!
+  created_at: String!
+  messages: [AskFredMessage!]!
 }
 
 type AskFredThreadSummary {
-  created_at: String!
   id: String!
   title: String!
   transcript_id: String
   user_id: String!
+  created_at: String!
 }
 
 input AttendeeInput {
-  displayName: String
   email: String
   phoneNumber: String
+  displayName: String
 }
 
 input AudioUploadInput {
-  attendees: [AttendeeInput!]
-  bypass_size_check: Boolean
-  client_reference_id: String
-  custom_language: String
-  download_auth: DownloadAuthInput
-  save_video: Boolean
-  title: String
   url: String!
   webhook: String
+  title: String
+  attendees: [AttendeeInput!]
+  custom_language: String
+  client_reference_id: String
+  save_video: Boolean
+  bypass_size_check: Boolean
+  download_auth: DownloadAuthInput
+  meeting_date: String
 }
 
 type AudioUploadStatus {
-  message: String!
   success: Boolean!
   title: String!
+  message: String!
 }
 
 type AuditEvent {
-  action: AuditEventAction!
-  """
-  OCSF activity ID
-  """
-  activity_id: Int!
-  actor: AuditEventActor
-  category: AuditEventCategory!
-  """
-  OCSF class UID
-  """
-  class_uid: Int!
   id: String!
-  message: String
-  """
-  Additional event metadata as a JSON string of key-value pairs
-  """
-  metadata: String
-  resource: AuditEventResource
+
+  """ISO 8601 timestamp"""
+  time: String!
+  category: AuditEventCategory!
+  action: AuditEventAction!
   severity: String!
   status: String!
-  """
-  ISO 8601 timestamp
-  """
-  time: String!
-  """
-  OCSF type UID (class_uid * 100 + activity_id)
-  """
+  message: String
+
+  """OCSF class UID"""
+  class_uid: Int!
+
+  """OCSF activity ID"""
+  activity_id: Int!
+
+  """OCSF type UID (class_uid * 100 + activity_id)"""
   type_uid: Int!
+  actor: AuditEventActor
+  resource: AuditEventResource
+
+  """Additional event metadata as a JSON string of key-value pairs"""
+  metadata: String
 }
 
-"""
-Specific audit event action
-"""
+"""Specific audit event action"""
 enum AuditEventAction {
-  LOGIN
-  LOGOUT
   MEETING_DELETED
-  MEETING_DOWNLOADED
   MEETING_PRIVACY_UPDATED
-  MEETING_SHARED
   MEETING_VIEWED
-  SETTINGS_UPDATED
+  MEETING_SHARED
+  MEETING_ACCESS_REVOKED
+  MEETING_DOWNLOADED
+  MEETING_TITLE_UPDATED
+  MEETING_MOVED_TO_CHANNEL
+  SOUNDBITE_CREATED
   TEAMMATE_ADDED
   TEAMMATE_REMOVED
+  USER_ROLE_CHANGED
+  USER_GROUP_MEMBER_ADDED
+  USER_GROUP_MEMBER_REMOVED
+  SETTINGS_UPDATED
+  LOGIN
+  LOGOUT
 }
 
 type AuditEventActor {
+  user_id: String
   email: String
   full_name: String
   ip_address: String
-  user_id: String
 }
 
-"""
-Category of audit event
-"""
+"""Category of audit event"""
 enum AuditEventCategory {
-  AUTHENTICATION
   MEETING_OPERATIONS
   TEAM_OPERATIONS
   USER_OPERATIONS
+  AUTHENTICATION
 }
 
 input AuditEventFiltersInput {
-  action: AuditEventAction
-  actor_email: String
-  actor_user_id: String
   category: AuditEventCategory!
+  action: AuditEventAction
   date_from: String
   date_to: String
+  actor_user_id: String
+  actor_email: String
 }
 
 type AuditEventResource {
-  id: String!
   type: String!
+  id: String!
 }
 
 type AuditEventsResponse {
@@ -234,8 +232,8 @@ type AuditEventsResponse {
 }
 
 input BasicAuthInput {
-  password: String!
   username: String
+  password: String!
 }
 
 input BearerTokenAuthInput {
@@ -243,24 +241,24 @@ input BearerTokenAuthInput {
 }
 
 type Bite {
-  captions: [BiteCaption!]
-  created_at: String
-  created_from: BiteOrigin
-  end_time: Float!
-  id: ID!
-  media_type: String
+  transcript_id: String!
   name: String!
+  id: ID!
+  thumbnail: String
   preview: String
-  privacies: [BitePrivacy!]!
-  sources: [MediaSource!]
-  start_time: Float!
   status: String
   summary: String
-  summary_status: String
-  thumbnail: String
-  transcript_id: String!
-  user: BiteUser!
   user_id: String!
+  start_time: Float!
+  end_time: Float!
+  summary_status: String
+  media_type: String
+  created_at: String
+  created_from: BiteOrigin
+  captions: [BiteCaption!]
+  sources: [MediaSource!]
+  privacies: [BitePrivacy!]!
+  user: BiteUser!
 }
 
 type BiteCaption {
@@ -285,33 +283,33 @@ enum BiteOriginType {
 }
 
 enum BitePrivacy {
-  participants
   public
   team
+  participants
 }
 
 type BiteUser {
   first_name: String
-  id: ID!
   last_name: String
-  name: String!
   picture: String
+  name: String!
+  id: ID!
 }
 
 type Channel {
-  created_at: String
-  created_by: String
   id: ID!
-  is_private: Boolean
-  members: [ChannelMember!]!
-  title: String
+  created_at: String
   updated_at: String
+  created_by: String
+  is_private: Boolean
+  title: String
+  members: [ChannelMember!]!
 }
 
 type ChannelMember {
+  user_id: String!
   email: String!
   name: String!
-  user_id: String!
 }
 
 input ConfirmUploadInput {
@@ -319,33 +317,33 @@ input ConfirmUploadInput {
 }
 
 type ConfirmUploadResponse {
+  success: Boolean!
   meeting_id: String!
   message: String!
-  success: Boolean!
 }
 
 type Contact {
   email: String!
-  last_meeting_date: String
   name: String!
   picture: String
+  last_meeting_date: String
 }
 
 input ContinueAskFredThreadInput {
-  format_mode: FormatMode
-  generate_suggestions: Boolean
+  thread_id: String!
   query: String!
   response_language: String
-  thread_id: String!
+  format_mode: FormatMode
+  generate_suggestions: Boolean
 }
 
 input CreateAskFredThreadInput {
+  query: String!
+  transcript_id: String
   filters: AskFredMeetingFiltersInput
+  response_language: String
   format_mode: FormatMode
   generate_suggestions: Boolean
-  query: String!
-  response_language: String
-  transcript_id: String
 }
 
 input CreateLiveActionItemInput {
@@ -354,9 +352,7 @@ input CreateLiveActionItemInput {
 }
 
 type CreateLiveActionItemResult {
-  """
-  Whether the action item was created successfully
-  """
+  """Whether the action item was created successfully"""
   success: Boolean!
 }
 
@@ -366,18 +362,16 @@ input CreateLiveSoundbiteInput {
 }
 
 type CreateLiveSoundbiteResult {
-  """
-  Whether the soundbite was created successfully
-  """
+  """Whether the soundbite was created successfully"""
   success: Boolean!
 }
 
 input CreateUploadUrlInput {
-  attendees: [AttendeeInput!]
-  content_type: String!
-  custom_language: String
-  file_size: Int!
   title: String
+  content_type: String!
+  file_size: Int!
+  custom_language: String
+  attendees: [AttendeeInput!]
 }
 
 """
@@ -386,23 +380,19 @@ A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date
 scalar DateTime
 
 input DownloadAuthInput {
-  basic: BasicAuthInput
-  bearer: BearerTokenAuthInput
   type: DownloadAuthType!
+  bearer: BearerTokenAuthInput
+  basic: BasicAuthInput
 }
 
-"""
-Authentication method for downloading the audio/video file
-"""
+"""Authentication method for downloading the audio/video file"""
 enum DownloadAuthType {
-  basic_auth
-  bearer_token
   none
+  bearer_token
+  basic_auth
 }
 
-"""
-Output format mode for AskFred responses
-"""
+"""Output format mode for AskFred responses"""
 enum FormatMode {
   markdown
   plaintext
@@ -410,6 +400,7 @@ enum FormatMode {
 
 input GetActiveMeetingsInput {
   email: String
+
   """
   Filter by meeting states. Returns both active and paused meetings by default.
   """
@@ -417,8 +408,8 @@ input GetActiveMeetingsInput {
 }
 
 type LiveActionItem {
-  action_item: String!
   name: String
+  action_item: String!
 }
 
 type MediaSource {
@@ -427,192 +418,129 @@ type MediaSource {
 }
 
 type MeetingAnalytics {
-  categories: AnalyticsCategories
   sentiments: Sentiments
+  categories: AnalyticsCategories
   speakers: [AnalyticsSpeaker!]
 }
 
 type MeetingAttendance {
+  name: String!
   join_time: String!
   leave_time: String
-  name: String!
 }
 
 type MeetingAttendeeModel {
   displayName: String
   email: String
-  location: String
-  name: String
   phoneNumber: String
+  name: String
+  location: String
 }
 
 type MeetingInfo {
-  fred_joined: Boolean
   silent_meeting: Boolean
   summary_status: SummaryStatus
+  fred_joined: Boolean
 }
 
-"""
-Meeting privacy levels
-"""
+"""Meeting privacy levels"""
 enum MeetingPrivacy {
   link
   owner
   participants
   participatingteammates
-  teammates
   teammatesandparticipants
+  teammates
 }
 
-"""
-Meeting state values
-"""
+"""Meeting state values"""
 enum MeetingState {
   active
   paused
 }
 
-"""
-Actions that can be performed to change meeting state
-"""
+"""Actions that can be performed to change meeting state"""
 enum MeetingStateAction {
   pause_recording
   resume_recording
 }
 
 type Mutation {
-  addToLiveMeeting(
-    attendees: [AttendeeInput!]
-    duration: Int
-    language: String
-    meeting_link: String!
-    meeting_password: String
-    title: String
-  ): AddToLiveMeeting!
-  confirmUpload(input: ConfirmUploadInput!): ConfirmUploadResponse!
-  """
-  Continue an existing AskFred conversation thread
-  """
+  updateMeetingTitle(input: UpdateMeetingTitleInput!): Transcript!
+  updateMeetingPrivacy(input: UpdateMeetingPrivacyInput!): Transcript!
+  updateMeetingChannel(input: UpdateMeetingChannelInput!): [Transcript!]!
+  deleteTranscript(id: String!): Transcript!
+  addToLiveMeeting(meeting_link: String!, title: String, meeting_password: String, duration: Int, language: String, attendees: [AttendeeInput!]): AddToLiveMeeting!
+  uploadAudio(input: AudioUploadInput): AudioUploadStatus!
+  shareMeeting(input: ShareMeetingInput!): ShareMeetingResponse!
+  revokeSharedMeetingAccess(input: RevokeSharedMeetingAccessInput!): RevokeSharedMeetingAccessResponse!
+  setUserRole(user_id: String!, role: Role!): User!
+  addUserToUserGroup(group_id: String!, user_email: String!): UserGroup!
+  removeUserFromUserGroup(group_id: String!, user_email: String!): UserGroup!
+  createBite(transcript_Id: ID!, name: String, start_time: Float!, end_time: Float!, media_type: String, privacies: [BitePrivacy!], summary: String): Bite!
+
+  """Continue an existing AskFred conversation thread"""
   continueAskFredThread(input: ContinueAskFredThreadInput!): AskFredResponse!
+
   """
   Create a new AskFred thread with a question. Can be about a specific meeting or across multiple meetings with filters.
   """
   createAskFredThread(input: CreateAskFredThreadInput!): AskFredResponse!
-  createBite(
-    end_time: Float!
-    media_type: String
-    name: String
-    privacies: [BitePrivacy!]
-    start_time: Float!
-    summary: String
-    transcript_Id: ID!
-  ): Bite!
-  """
-  Create a live action item for a meeting
-  """
-  createLiveActionItem(
-    input: CreateLiveActionItemInput!
-  ): CreateLiveActionItemResult!
-  """
-  Create a live soundbite for a meeting
-  """
-  createLiveSoundbite(
-    input: CreateLiveSoundbiteInput!
-  ): CreateLiveSoundbiteResult!
-  createUploadUrl(input: CreateUploadUrlInput!): UploadUrlResponse!
-  """
-  Delete an AskFred thread and all its messages
-  """
+
+  """Delete an AskFred thread and all its messages"""
   deleteAskFredThread(id: String!): AskFredThread!
-  deleteTranscript(id: String!): Transcript!
-  revokeSharedMeetingAccess(
-    input: RevokeSharedMeetingAccessInput!
-  ): RevokeSharedMeetingAccessResponse!
-  setUserRole(role: Role!, user_id: String!): User!
-  shareMeeting(input: ShareMeetingInput!): ShareMeetingResponse!
-  updateMeetingChannel(input: UpdateMeetingChannelInput!): [Transcript!]!
-  updateMeetingPrivacy(input: UpdateMeetingPrivacyInput!): Transcript!
-  """
-  Update meeting state (pause or resume recording)
-  """
+
+  """Update meeting state (pause or resume recording)"""
   updateMeetingState(input: UpdateMeetingStateInput!): UpdateMeetingStateResult!
-  updateMeetingTitle(input: UpdateMeetingTitleInput!): Transcript!
-  uploadAudio(input: AudioUploadInput): AudioUploadStatus!
+
+  """Create a live action item for a meeting"""
+  createLiveActionItem(input: CreateLiveActionItemInput!): CreateLiveActionItemResult!
+
+  """Create a live soundbite for a meeting"""
+  createLiveSoundbite(input: CreateLiveSoundbiteInput!): CreateLiveSoundbiteResult!
+  createUploadUrl(input: CreateUploadUrlInput!): UploadUrlResponse!
+  confirmUpload(input: ConfirmUploadInput!): ConfirmUploadResponse!
 }
 
 type Query {
+  apps(app_id: String, transcript_id: String, skip: Float, limit: Float): Apps
+  transcripts(title: String, keyword: String, scope: String, date: Float, fromDate: DateTime, toDate: DateTime, limit: Int = 50, skip: Int = 0, user_id: String, mine: Boolean, organizers: [String!], participants: [String!], channel_id: String, host_email: String, organizer_email: String, participant_email: String): [Transcript!]
+  transcript(id: String!): Transcript
   active_meetings(input: GetActiveMeetingsInput): [ActiveMeeting!]
-  analytics(end_time: String, start_time: String): Analytics!
-  apps(app_id: String, limit: Float, skip: Float, transcript_id: String): Apps
-  """
-  Get a specific thread by ID with all its messages
-  """
-  askfred_thread(id: String!): AskFredThread
-  """
-  Get a summary of all threads for the current user
-  """
+  users: [User!]
+  user(id: String): User
+  user_groups(mine: Boolean): [UserGroup!]
+  analytics(start_time: String, end_time: String): Analytics!
+  channels: [Channel!]!
+  channel(id: ID!): Channel
+  contacts: [Contact!]!
+  bites(mine: Boolean, transcript_id: ID, limit: Int, my_team: Boolean, skip: Int): [Bite!]!
+  bite(id: ID!): Bite
+
+  """Get a summary of all threads for the current user"""
   askfred_threads(transcript_id: String): [AskFredThreadSummary!]
+
+  """Get a specific thread by ID with all its messages"""
+  askfred_thread(id: String!): AskFredThread
+
+  """Get live action items for a meeting"""
+  live_action_items(meeting_id: ID!): [LiveActionItem!]!
+  rule_executions_by_meeting(limit: Int = 10, cursor: String, logs_per_meeting: Int = 5, filters: RuleExecutionFiltersInput): RuleExecutionsByMeetingResponse!
+
   """
   List audit events for the authenticated user's team. Enterprise plan and admin role required.
   """
-  auditEvents(
-    cursor: String
-    filters: AuditEventFiltersInput!
-    limit: Int = 20
-  ): AuditEventsResponse!
-  bite(id: ID!): Bite
-  bites(
-    limit: Int
-    mine: Boolean
-    my_team: Boolean
-    skip: Int
-    transcript_id: ID
-  ): [Bite!]!
-  channel(id: ID!): Channel
-  channels: [Channel!]!
-  contacts: [Contact!]!
-  """
-  Get live action items for a meeting
-  """
-  live_action_items(meeting_id: ID!): [LiveActionItem!]!
-  rule_executions_by_meeting(
-    cursor: String
-    filters: RuleExecutionFiltersInput
-    limit: Int = 10
-    logs_per_meeting: Int = 5
-  ): RuleExecutionsByMeetingResponse!
-  transcript(id: String!): Transcript
-  transcripts(
-    channel_id: String
-    date: Float
-    fromDate: DateTime
-    host_email: String
-    keyword: String
-    limit: Int = 50
-    mine: Boolean
-    organizer_email: String
-    organizers: [String!]
-    participant_email: String
-    participants: [String!]
-    scope: String
-    skip: Int = 0
-    title: String
-    toDate: DateTime
-    user_id: String
-  ): [Transcript!]
-  user(id: String): User
-  user_groups(mine: Boolean): [UserGroup!]
-  users: [User!]
+  auditEvents(limit: Int = 20, cursor: String, filters: AuditEventFiltersInput!): AuditEventsResponse!
 }
 
 input RevokeSharedMeetingAccessInput {
-  email: String!
   meeting_id: ID!
+  email: String!
 }
 
 type RevokeSharedMeetingAccessResponse {
-  message: String
   success: Boolean!
+  message: String
 }
 
 enum Role {
@@ -621,16 +549,16 @@ enum Role {
 }
 
 type RuleExecution {
-  channel: RuleExecutionChannel
+  meeting_id: String
   extension_id: String!
   extension_title: String!
-  meeting: RuleExecutionMeeting
-  meeting_id: String
-  meeting_privacy: RuleExecutionMeetingPrivacy
-  resource_attributes: RuleExecutionResourceAttributes
-  share: RuleExecutionShare
   stopped_at: String
   user_name: String
+  meeting: RuleExecutionMeeting
+  resource_attributes: RuleExecutionResourceAttributes
+  share: RuleExecutionShare
+  channel: RuleExecutionChannel
+  meeting_privacy: RuleExecutionMeetingPrivacy
 }
 
 type RuleExecutionChannel {
@@ -638,27 +566,29 @@ type RuleExecutionChannel {
 }
 
 input RuleExecutionFiltersInput {
+  rule_id: String
+  meeting_id: String
   date_from: String
   date_to: String
+
   """
-  Filter by test evaluations. When true, returns only test logs. When false, returns only non-test logs. When not provided, returns all logs.
+  Filter by test evaluations. When true, returns only test logs. When false,
+  returns only non-test logs. When not provided, returns all logs.
   """
   is_test: Boolean
-  meeting_id: String
-  rule_id: String
 }
 
 type RuleExecutionMeeting {
   id: String!
-  organizer_email: String
   title: String
+  organizer_email: String
 }
 
 type RuleExecutionMeetingGroup {
-  executions: [RuleExecution!]!
-  meeting: RuleExecutionMeeting
   meeting_id: String!
+  meeting: RuleExecutionMeeting
   resource_attributes: RuleExecutionResourceAttributes
+  executions: [RuleExecution!]!
 }
 
 type RuleExecutionMeetingPrivacy {
@@ -666,34 +596,34 @@ type RuleExecutionMeetingPrivacy {
 }
 
 type RuleExecutionResourceAttributes {
-  attendees: [String!]
-  external: Boolean
   host: String
-  host_user_group_ids: [String!]
-  organizer_email: String
-  title: String
   type: String
+  title: String
+  external: Boolean
+  attendees: [String!]
+  organizer_email: String
   user_group_ids: [String!]
+  host_user_group_ids: [String!]
+}
+
+type RuleExecutionsByMeetingResponse {
+  meetings: [RuleExecutionMeetingGroup!]!
+  has_more: Boolean!
+  next_cursor: String
 }
 
 type RuleExecutionShare {
   group_ids: String
 }
 
-type RuleExecutionsByMeetingResponse {
-  has_more: Boolean!
-  meetings: [RuleExecutionMeetingGroup!]!
-  next_cursor: String
-}
-
 type Sentence {
-  ai_filters: AIFilters
-  end_time: Float
   index: Int
-  raw_text: String
-  speaker_id: Int
   speaker_name: String
+  speaker_id: Int
+  raw_text: String
   start_time: Float
+  end_time: Float
+  ai_filters: AIFilters
   text: String
 }
 
@@ -703,22 +633,35 @@ type Sentiments {
   positive_pct: Float
 }
 
+type SharedWith {
+  email: String
+  name: String
+  photo_url: String
+  expires_at: String
+}
+
 input ShareMeetingInput {
+  meeting_id: ID!
   emails: [String!]!
   expiry_days: Int
-  meeting_id: ID!
+  share_type: ShareMeetingType
+  password: String
 }
 
 type ShareMeetingResponse {
-  message: String
   success: Boolean!
+  message: String
+  share_slug: String
 }
 
-type SharedWith {
-  email: String
-  expires_at: String
-  name: String
-  photo_url: String
+"""
+How a meeting is shared. EMAIL shares directly with the given recipients.
+PASSWORD_LINK creates a password-protected link that people can open without a
+Fireflies account.
+"""
+enum ShareMeetingType {
+  EMAIL
+  PASSWORD_LINK
 }
 
 type Speaker {
@@ -727,33 +670,33 @@ type Speaker {
 }
 
 type Summary {
-  action_items: String
-  bullet_gist: String
-  extended_sections: [SummarySection!]
-  gist: String
   keywords: [String!]
-  meeting_type: String
-  notes: String
+  action_items: String
   outline: String
-  overview: String
-  short_overview: String
-  short_summary: String
   shorthand_bullet: String
+  overview: String
+  bullet_gist: String
+  notes: String
+  gist: String
+  short_summary: String
+  short_overview: String
+  meeting_type: String
   topics_discussed: [String!]
   transcript_chapters: [String!]
+  extended_sections: [SummarySection!]
 }
 
 type SummarySection {
-  content: String!
   title: String!
+  content: String!
 }
 
 enum SummaryStatus {
-  default
-  failed
-  processed
   processing
+  processed
+  failed
   skipped
+  default
 }
 
 type TeamAnalytics {
@@ -773,15 +716,15 @@ type TeamConversationStats {
   average_silence_duration_diff_pct: Int
   average_talk_listen_ratio: Float!
   average_words_per_minute: Float!
-  longest_monologue_duration_diff_pct: Int
   longest_monologue_duration_sec: Int!
-  teammates_count: Int!
+  longest_monologue_duration_diff_pct: Int
   total_filler_words: Int!
   total_filler_words_diff_pct: Int
   total_meeting_notes_count: Int!
   total_meetings_count: Int!
   total_monologues_count: Int!
   total_monologues_diff_pct: Int
+  teammates_count: Int!
   total_questions: Int!
   total_questions_diff_pct: Int
   total_silence_duration: Float!
@@ -789,52 +732,52 @@ type TeamConversationStats {
 }
 
 type TeamMeetingStats {
-  average_count: Int!
-  average_count_diff_pct: Int
-  average_duration: Int!
-  average_duration_diff_pct: Int
   count: Int!
   count_diff_pct: Int
   duration: Float!
   duration_diff_pct: Int
+  average_count: Int!
+  average_count_diff_pct: Int
+  average_duration: Int!
+  average_duration_diff_pct: Int
 }
 
 type Transcript {
-  analytics: MeetingAnalytics
-  apps_preview: Apps
-  audio_url: String
-  cal_id: String
-  calendar_id: String
-  calendar_type: String
-  channels: [Channel!]!
-  date: Float
-  dateString: String
-  duration: Float
-  fireflies_users: [String!]
-  host_email: String
   id: String
-  is_live: Boolean
-  meeting_attendance: [MeetingAttendance!]
-  meeting_attendees: [MeetingAttendeeModel!]
-  meeting_info: MeetingInfo
-  meeting_link: String
-  organizer_email: String
-  participants: [String!]
-  privacy: String
   sentences: [Sentence!]
-  shared_with: [SharedWith!]
-  speakers: [Speaker!]
-  summary: Summary
   title: String
-  transcript_url: String
+  host_email: String
+  organizer_email: String
   user: User
+  privacy: String
+  participants: [String!]
+  date: Float
+  duration: Float
+  summary: Summary
+  meeting_info: MeetingInfo
+  is_live: Boolean
+  transcript_url: String
+  audio_url: String
   video_url: String
+  dateString: String
+  apps_preview: Apps
+  meeting_attendees: [MeetingAttendeeModel!]
+  meeting_attendance: [MeetingAttendance!]
+  speakers: [Speaker!]
+  calendar_id: String
+  cal_id: String
+  calendar_type: String
+  meeting_link: String
+  analytics: MeetingAnalytics
+  fireflies_users: [String!]
   workspace_users: [String!]
+  channels: [Channel!]!
+  shared_with: [SharedWith!]
 }
 
 input UpdateMeetingChannelInput {
-  channel_id: ID!
   transcript_ids: [String!]!
+  channel_id: ID!
 }
 
 input UpdateMeetingPrivacyInput {
@@ -843,55 +786,51 @@ input UpdateMeetingPrivacyInput {
 }
 
 input UpdateMeetingStateInput {
-  """
-  The state action to execute (pause_recording or resume_recording)
-  """
-  action: MeetingStateAction!
   meeting_id: ID!
+
+  """The state action to execute (pause_recording or resume_recording)"""
+  action: MeetingStateAction!
 }
 
 type UpdateMeetingStateResult {
-  """
-  The action that was executed
-  """
-  action: MeetingStateAction!
-  """
-  Whether the action was executed successfully
-  """
+  """Whether the action was executed successfully"""
   success: Boolean!
+
+  """The action that was executed"""
+  action: MeetingStateAction!
 }
 
 input UpdateMeetingTitleInput {
-  id: String!
   title: String!
+  id: String!
 }
 
 type UploadUrlResponse {
-  expires_at: String!
-  meeting_id: String!
   upload_url: String!
+  meeting_id: String!
+  expires_at: String!
 }
 
 type User {
+  user_id: String
   email: String
   integrations: [String!]
-  is_admin: Boolean
+  user_groups: [UserGroup!]
   is_calendar_in_sync: Boolean
-  minutes_consumed: Float
   name: String
   num_transcripts: Float
-  recent_meeting: String
   recent_transcript: String
-  user_groups: [UserGroup!]
-  user_id: String
+  recent_meeting: String
+  minutes_consumed: Float
+  is_admin: Boolean
 }
 
 type UserAnalytics {
-  conversation: UserConversationStats!
-  meeting: UserMeetingStats!
-  user_email: String!
   user_id: String!
   user_name: String!
+  user_email: String!
+  conversation: UserConversationStats!
+  meeting: UserMeetingStats!
 }
 
 type UserConversationStats {
@@ -907,9 +846,9 @@ type UserConversationStats {
   user_filler_words: Int!
   user_filler_words_compare_to: Int!
   user_filler_words_diff_pct: Int
+  user_longest_monologue_sec: Int!
   user_longest_monologue_compare_to: Int!
   user_longest_monologue_diff_pct: Int
-  user_longest_monologue_sec: Int!
   user_monologues_count: Int!
   user_monologues_count_compare_to: Int!
   user_monologues_count_diff_pct: Int
@@ -924,17 +863,17 @@ type UserConversationStats {
 }
 
 type UserGroup {
-  handle: String!
   id: String!
-  members: [UserGroupMember!]
   name: String!
+  handle: String!
+  members: [UserGroupMember!]
 }
 
 type UserGroupMember {
-  email: String!
+  user_id: String!
   first_name: String!
   last_name: String!
-  user_id: String!
+  email: String!
 }
 
 type UserMeetingStats {
@@ -947,3 +886,4 @@ type UserMeetingStats {
   duration_diff_compared_to: Int!
   duration_diff_pct: Int
 }
+
