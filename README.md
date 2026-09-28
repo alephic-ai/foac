@@ -7,8 +7,8 @@
 # foac
 
 foac, the Father Of All CLIs: one CLI for all your SaaS providers (Linear,
-GitHub, Jira, Confluence, Neon, Sentry, Slack, Vercel, Firecrawl, Axiom, and
-more on the way), built for the coding agents on your machine rather than for you.
+GitHub, Jira, Confluence, Neon, Sentry, Slack, Vercel, Firecrawl, Axiom,
+Fireflies, and more on the way), built for the coding agents on your machine rather than for you.
 Install it once, log in once, and every harness (Claude Code, Cursor, Codex,
 Gemini CLI, Grok Build, ...) can use all your providers without any setup of
 its own. Humans at a TTY get readable tables from the same commands.
@@ -166,6 +166,7 @@ graph LR
 | Axiom | Datasets, fields, APL queries, event ingestion, annotations, monitors, notifiers, users, organizations | [doc/axiom.md](doc/axiom.md) |
 | Confluence | Spaces, pages, footer comments, CQL search | [doc/confluence.md](doc/confluence.md) |
 | Firecrawl | Web scraping, site maps, web search, crawl jobs, batch scrapes, browsing agents, team usage | [doc/firecrawl.md](doc/firecrawl.md) |
+| Fireflies | Meeting transcripts, summaries, AskFred questions, bites, channels, contacts, users | [doc/fireflies.md](doc/fireflies.md) |
 | GitHub | Repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, collaborators | [doc/github.md](doc/github.md) |
 | Jira | Issues, comments, projects, sprints, users, workflow transitions | [doc/jira.md](doc/jira.md) |
 | Linear | Issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, attachments | [doc/linear.md](doc/linear.md) |

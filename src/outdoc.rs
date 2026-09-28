@@ -89,6 +89,18 @@ pub(crate) fn linear_delete(field: &str) -> String {
     ])
 }
 
+/// A Fireflies get or mutation: the raw GraphQL `data`, one root field. An
+/// empty `id` omits the identifier line.
+pub(crate) fn fireflies(key: &str, id: &str) -> String {
+    let envelope = format!(r#"{{"{key}": {{...}}}}"#);
+    let raw = "Raw Fireflies GraphQL data; foac adds no envelope";
+    if id.is_empty() {
+        section(&[&envelope, raw])
+    } else {
+        section(&[&envelope, &format!("Primary identifier: {id}"), raw])
+    }
+}
+
 /// How one REST provider's `pageInfo` looks and how to fetch the next page.
 pub(crate) struct Pagination {
     example: &'static str,

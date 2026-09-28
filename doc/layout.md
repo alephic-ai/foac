@@ -72,6 +72,19 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   Nothing paginates with cursors: `map`, `search`, and `crawl list` print
   single-page lists, and a job status carries a `next` URL whose `skip`
   value feeds `get --skip`.
+- Fireflies is GraphQL like Linear: operations in
+  `assets/graphql/fireflies/queries.graphql` are checked at compile time
+  against the vendored `schema.graphql`. Fireflies publishes no schema file,
+  and its introspection needs an API key, so refresh the schema with
+  `npx get-graphql-schema https://api.fireflies.ai/graphql -h "Authorization=Bearer $FIREFLIES_API_KEY"`;
+  the live schema wins over docs.fireflies.ai where they disagree (`scope`
+  is a plain `String`). Auth is a bearer API key. Every failure, including a
+  bad key (HTTP 500, code `auth_failed`), arrives as GraphQL `errors`, so
+  error codes decide, not the HTTP status. Lists are bare arrays; foac wraps
+  them in `{items, pageInfo}`, with `limit`/`skip` exposed as `--limit`/`--start-at`
+  and a full-page heuristic for `hasNextPage`. Plan-gated fields
+  (`audio_url`, `video_url`, `analytics`) are never selected: one gated field
+  fails the whole query on a Free plan.
 - Vercel uses bearer-authenticated REST endpoints against
   `https://api.vercel.com`; API versions vary by endpoint. Team-owned
   resources add `teamId`, and list responses use `pagination.next` as the

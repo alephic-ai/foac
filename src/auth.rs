@@ -38,6 +38,8 @@ enum AuthCmd {
     Vercel(ProviderCmd),
     /// Configure Firecrawl authentication
     Firecrawl(HostedCmd),
+    /// Configure Fireflies authentication
+    Fireflies(ProviderCmd),
 }
 
 #[derive(Args)]
@@ -156,6 +158,7 @@ pub enum Provider {
     Axiom,
     Confluence,
     Firecrawl,
+    Fireflies,
     Github,
     Jira,
     Linear,
@@ -305,6 +308,9 @@ pub fn run(
         AuthCmd::Firecrawl(cmd) => {
             run_hosted(Provider::Firecrawl, cmd.command, &store, format, instance)
         }
+        AuthCmd::Fireflies(cmd) => {
+            run_provider(Provider::Fireflies, cmd.command, &store, format, instance)
+        }
     }
 }
 
@@ -340,6 +346,17 @@ pub(crate) fn firecrawl_token(instance: &str) -> Result<String, Box<dyn std::err
     resolve_stored(
         Provider::Firecrawl,
         environment_token(Provider::Firecrawl),
+        &crate::provider::CredentialStore,
+        instance,
+    )
+    .map(|credential| credential.token)
+    .map_err(Into::into)
+}
+
+pub(crate) fn fireflies_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
+    resolve_stored(
+        Provider::Fireflies,
+        environment_token(Provider::Fireflies),
         &crate::provider::CredentialStore,
         instance,
     )
@@ -500,6 +517,13 @@ impl Provider {
                 env: "FIRECRAWL_API_KEY",
                 credential: Credential::Firecrawl,
                 authenticated: crate::firecrawl::authenticated,
+            },
+            Self::Fireflies => Info {
+                name: "fireflies",
+                display: "Fireflies",
+                env: "FIREFLIES_API_KEY",
+                credential: Credential::Fireflies,
+                authenticated: crate::fireflies::authenticated,
             },
             Self::Github => Info {
                 name: "github",
@@ -1055,6 +1079,7 @@ fn account_identity(provider: Provider, account: &Value) -> String {
         Provider::Sentry => sentry_identity(account),
         Provider::Vercel => vercel_identity(account),
         Provider::Firecrawl => firecrawl_identity(account),
+        Provider::Fireflies => fireflies_identity(account),
     }
 }
 
@@ -1091,6 +1116,14 @@ fn github_identity(account: &Value) -> String {
 fn neon_identity(account: &Value) -> String {
     let name = text_field(account, "name").or_else(|| text_field(account, "login"));
     person_identity(name, text_field(account, "email"), None)
+}
+
+fn fireflies_identity(account: &Value) -> String {
+    person_identity(
+        text_field(account, "name"),
+        text_field(account, "email"),
+        None,
+    )
 }
 
 fn vercel_identity(account: &Value) -> String {
@@ -1193,7 +1226,8 @@ fn provider_status(provider: Provider, store: &dyn SecretStore, instance: &str) 
         | Provider::Neon
         | Provider::Sentry
         | Provider::Vercel
-        | Provider::Firecrawl => {
+        | Provider::Firecrawl
+        | Provider::Fireflies => {
             resolve_stored(provider, environment_token(provider), store, instance)
         }
         Provider::Github => resolve_github(
@@ -1572,6 +1606,7 @@ fn validate(
         Provider::Firecrawl => {
             crate::firecrawl::auth_identity(token, url_override, instance).map(firecrawl_account)
         }
+        Provider::Fireflies => crate::fireflies::auth_identity(token).map(fireflies_account),
     }
 }
 
@@ -1631,6 +1666,15 @@ fn neon_account(identity: Value) -> Value {
         "login": identity["login"],
         "name": identity["name"],
         "email": identity["email"],
+    })
+}
+
+fn fireflies_account(identity: Value) -> Value {
+    let user = &identity["user"];
+    json!({
+        "user_id": user["user_id"],
+        "name": user["name"],
+        "email": user["email"],
     })
 }
 
@@ -1791,6 +1835,9 @@ pub(crate) fn print_login_help(
         ),
         Provider::Firecrawl => eprintln!(
             "Create an API key at https://www.firecrawl.dev/app/api-keys. A self-hosted Firecrawl with authentication disabled accepts any non-empty value."
+        ),
+        Provider::Fireflies => eprintln!(
+            "Copy your API key from https://app.fireflies.ai/integrations/custom/fireflies (Integrations > Fireflies API)."
         ),
     }
     Ok(())
@@ -2491,6 +2538,18 @@ pub(crate) mod tests {
         }));
         assert_eq!(
             account_identity(Provider::Neon, &neon),
+            "Lolo <lolo@example.com>"
+        );
+
+        let fireflies = fireflies_account(json!({
+            "user": {"user_id": "u1", "name": "Lolo", "email": "lolo@example.com", "is_admin": true},
+        }));
+        assert_eq!(
+            fireflies,
+            json!({"user_id": "u1", "name": "Lolo", "email": "lolo@example.com"})
+        );
+        assert_eq!(
+            account_identity(Provider::Fireflies, &fireflies),
             "Lolo <lolo@example.com>"
         );
 

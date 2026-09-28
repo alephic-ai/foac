@@ -11,6 +11,10 @@ description: Use the foac CLI to interact with Confluence from the shell. Covers
 name: foac-firecrawl
 description: Use the foac CLI to interact with Firecrawl from the shell. Covers web scraping, site maps, web search, crawl jobs, batch scrapes, browsing agents, and team usage. Also use as the retry when a plain fetch of a public URL fails or returns unusable content — 403, bot check, paywall-shaped block, or a JS-rendered page — instead of retrying with curl.
 <!-- /foac-provider:firecrawl -->
+<!-- foac-provider:fireflies -->
+name: foac-fireflies
+description: Use the foac CLI to interact with Fireflies.ai from the shell. Covers meeting transcripts, summaries and action items, AskFred questions about meetings, bites, channels, contacts, and users.
+<!-- /foac-provider:fireflies -->
 <!-- foac-provider:github -->
 name: foac-github
 description: Use the foac CLI to interact with GitHub from the shell. Covers repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, and collaborators.
@@ -51,6 +55,9 @@ description: Use the foac CLI to interact with Vercel from the shell. Covers tea
 <!-- foac-provider:firecrawl -->
 # foac-firecrawl
 <!-- /foac-provider:firecrawl -->
+<!-- foac-provider:fireflies -->
+# foac-fireflies
+<!-- /foac-provider:fireflies -->
 <!-- foac-provider:github -->
 # foac-github
 <!-- /foac-provider:github -->
@@ -109,6 +116,10 @@ foac <provider> <resource> <verb> [flags]
 - `firecrawl`: web scraping, site maps, web search, crawl jobs, batch
   scrapes, browsing agents, and team usage.
 <!-- /foac-provider:firecrawl -->
+<!-- foac-provider:fireflies -->
+- `fireflies`: meeting transcripts, summaries, AskFred questions, bites,
+  channels, contacts, and users.
+<!-- /foac-provider:fireflies -->
 <!-- foac-provider:jira -->
 - `jira`: issues, comments, projects, sprints, users, and workflow
   transitions.
@@ -218,6 +229,10 @@ foac <provider> <resource> <verb> [flags]
   `FIRECRAWL_API_URL` overrides the saved host for the default instance
   only.
 <!-- /foac-provider:firecrawl -->
+<!-- foac-provider:fireflies -->
+- **Fireflies auth precedence**: `FIREFLIES_API_KEY`, then the credentials
+  file.
+<!-- /foac-provider:fireflies -->
 <!-- foac-provider:neon -->
 - **Neon auth precedence**: `NEON_API_KEY`, then the credentials file.
 <!-- /foac-provider:neon -->
@@ -412,6 +427,32 @@ foac <provider> <resource> <verb> [flags]
   [--max-credits N]` runs a browsing agent; results land in `data` once
   `completed`. Agents spend tokens (`team token-usage`) on top of credits.
 <!-- /foac-provider:firecrawl -->
+<!-- foac-provider:fireflies -->
+- **Fireflies transcripts**: `transcript list` returns meeting metadata only;
+  `transcript get ID` adds attendees, channels, and the AI `summary`
+  (overview, `action_items`, keywords, outline). Add `--sentences` to include
+  the spoken transcript, which is large. Audio and video URLs and meeting
+  analytics are not fetched: they need a paid plan, and one gated field
+  fails the whole request on a Free plan.
+- **Fireflies pagination**: `transcript list` and `bite list` take `--limit N`
+  (at most 50, the default) and `--start-at N`; output is
+  `{"items":[...],"pageInfo":{"hasNextPage":...,"nextStartAt":...}}`. Follow
+  `pageInfo.nextStartAt` while `hasNextPage` is true. Other lists return
+  everything in one page. Fireflies rate-limits hard (50 requests a day on
+  Free, 500 on Pro), so filter lists instead of paging through everything.
+- **Fireflies search**: `transcript list --keyword WORD` searches titles;
+  `--scope sentences|all` searches what was said. Filter with
+  `--from-date`/`--to-date` (ISO 8601), repeatable `--organizer` and
+  `--participant` emails, `--channel ID`, `--user ID`, or `--mine`.
+- **Fireflies AskFred**: `askfred create "QUESTION"` answers from your
+  meetings. Pin it to one meeting with `--transcript ID`, or filter with
+  `--start-time`/`--end-time` (ISO 8601; the window defaults to the 30 days
+  before the end time) and repeatable `--organizer`, `--participant`, and
+  `--channel`. The answer is in `message.answer`, and
+  `message.thread_id` feeds `askfred continue THREAD_ID "FOLLOW-UP"`.
+- **Fireflies identifiers**: transcripts, threads, bites, and channels use
+  opaque string IDs from their lists; `user get me` is the API key's owner.
+<!-- /foac-provider:fireflies -->
 <!-- foac-provider:neon -->
 - **Neon project**: pass `--project ID` anywhere after `neon`, or set
   `NEON_PROJECT_ID`; only `org list` and `project list` work without it. Neon
@@ -550,6 +591,21 @@ Use `foac firecrawl <resource> --help` for flags. Local file parsing,
 monitors, browser sessions, and page interaction are not covered.
 <!-- /foac-provider:firecrawl -->
 
+<!-- foac-provider:fireflies -->
+## Fireflies resources
+
+- Meetings: `transcript list|get|create|update|delete` (`create --url`
+  transcribes a public media URL on a paid plan; `update --title` renames).
+- Questions: `askfred list|get|create|continue|delete`.
+- Clips: `bite list|get`.
+- Directory: `channel list|get`, `contact list`, `user list|get`.
+
+Use `foac fireflies <resource> --help` for flags and required arguments.
+Live meetings (add the bot, pause recording, live action items), sharing and
+privacy changes, AI App outputs, analytics, audit events, and webhooks are
+not covered.
+<!-- /foac-provider:fireflies -->
+
 <!-- foac-provider:slack -->
 ## Slack resources
 
@@ -655,6 +711,18 @@ foac firecrawl agent create "List the pricing tiers and their monthly prices" --
 ```
 
 <!-- /foac-provider:firecrawl -->
+
+<!-- foac-provider:fireflies -->
+
+```sh
+foac fireflies transcript list --from-date 2026-09-01T00:00:00.000Z --participant alex@example.com
+foac fireflies transcript get 01K2EXAMPLE
+foac fireflies transcript list --keyword pricing --scope sentences --limit 5 | foac fireflies transcript get --from id
+foac fireflies askfred create "What did we decide about the Q4 launch?" --start-time 2026-09-01T00:00:00Z
+foac fireflies askfred continue THREAD_ID "Who owns the follow-ups?"
+```
+
+<!-- /foac-provider:fireflies -->
 
 <!-- foac-provider:neon -->
 
