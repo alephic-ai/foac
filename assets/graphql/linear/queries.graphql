@@ -238,6 +238,16 @@ query IssueGet($id: String!) {
       id
       displayName
     }
+    relations {
+      nodes {
+        ...RelationFields
+      }
+    }
+    inverseRelations {
+      nodes {
+        ...RelationFields
+      }
+    }
   }
 }
 
@@ -647,6 +657,34 @@ mutation AttachmentCreate($input: AttachmentCreateInput!) {
 
 mutation AttachmentDelete($id: String!) {
   attachmentDelete(id: $id) {
+    success
+  }
+}
+
+fragment RelationFields on IssueRelation {
+  id
+  type
+  issue {
+    id
+    identifier
+  }
+  relatedIssue {
+    id
+    identifier
+  }
+}
+
+mutation RelationCreate($input: IssueRelationCreateInput!) {
+  issueRelationCreate(input: $input) {
+    success
+    issueRelation {
+      ...RelationFields
+    }
+  }
+}
+
+mutation RelationDelete($id: String!) {
+  issueRelationDelete(id: $id) {
     success
   }
 }

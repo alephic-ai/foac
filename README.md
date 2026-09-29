@@ -169,7 +169,7 @@ graph LR
 | Fireflies | Meeting transcripts, summaries, AskFred questions, bites, channels, contacts, users | [doc/fireflies.md](doc/fireflies.md) |
 | GitHub | Repositories, issues, pull requests, reviews, Actions, branches, commits, checks, releases, labels, artifacts, collaborators | [doc/github.md](doc/github.md) |
 | Jira | Issues, comments, projects, sprints, users, workflow transitions | [doc/jira.md](doc/jira.md) |
-| Linear | Issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, attachments | [doc/linear.md](doc/linear.md) |
+| Linear | Issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, attachments, issue relations | [doc/linear.md](doc/linear.md) |
 | Neon | Organizations, projects, branches, databases, roles, compute endpoints, operations, connection URIs | [doc/neon.md](doc/neon.md) |
 | Sentry | Organizations, projects, issues, error events, releases | [doc/sentry.md](doc/sentry.md) |
 | Slack | Conversations, messages, threads, users, message search, reactions | [doc/slack.md](doc/slack.md) |

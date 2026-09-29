@@ -25,7 +25,7 @@ description: Use the foac CLI to interact with Jira from the shell. Covers issue
 <!-- /foac-provider:jira -->
 <!-- foac-provider:linear -->
 name: foac-linear
-description: Use the foac CLI to interact with Linear from the shell. Covers issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, and attachments.
+description: Use the foac CLI to interact with Linear from the shell. Covers issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, attachments, and issue relations (blocking dependencies).
 <!-- /foac-provider:linear -->
 <!-- foac-provider:neon -->
 name: foac-neon
@@ -103,7 +103,8 @@ foac <provider> <resource> <verb> [flags]
 <!-- /foac-provider:axiom -->
 <!-- foac-provider:linear -->
 - `linear`: issues, projects, teams, users, cycles, labels, workflow states,
-  documents, initiatives, milestones, status updates, and attachments.
+  documents, initiatives, milestones, status updates, attachments, and issue
+  relations (blocking dependencies).
 <!-- /foac-provider:linear -->
 <!-- foac-provider:github -->
 - `github`: repositories, issues, pull requests, reviews, Actions, branches,
@@ -663,6 +664,9 @@ foac axiom annotation create --type deploy --dataset logs --title "v1.2.0" --url
 foac linear issue list --team ENG --state "In Progress"
 foac linear issue create --team <TEAM_UUID> --title "Fix login" --description "..."
 foac linear comment create --issue ENG-123 --body "Done, see PR #42"
+# ENG-1 blocks ENG-2 (ENG-2 depends on ENG-1); `issue get` lists them under
+# relations (outgoing) and inverseRelations (incoming, e.g. blocked by)
+foac linear relation create --issue ENG-1 --type blocks --related ENG-2
 ```
 
 <!-- /foac-provider:linear -->
