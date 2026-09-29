@@ -80,7 +80,18 @@ linear_query!(
     AttachmentGet,
     AttachmentCreate,
     AttachmentDelete,
+    RelationDelete,
 );
+
+// Outside the macro: its required IssueRelationType enum has no Default.
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "assets/graphql/linear/schema.graphql",
+    query_path = "assets/graphql/linear/queries.graphql",
+    variables_derives = "Clone",
+    skip_serializing_none
+)]
+struct RelationCreate;
 
 /// Build `<Filter> { id: {eq} }` when the value looks like a UUID, else
 /// `<Filter> { <alt field>: {eq} }` — lets flags accept an ID or a human name/key.
@@ -158,6 +169,9 @@ pub enum Cmd {
     /// Issue attachments (links)
     #[command(subcommand)]
     Attachment(AttachmentCmd),
+    /// Issue relations (blocks, duplicate, related, similar)
+    #[command(subcommand)]
+    Relation(RelationCmd),
 }
 
 #[derive(clap::Args)]
@@ -719,6 +733,27 @@ pub enum AttachmentCmd {
     },
     /// Delete an attachment
     #[command(after_long_help = outdoc::linear_delete("attachmentDelete"))]
+    Delete { id: String },
+}
+
+#[derive(clap::Subcommand)]
+pub enum RelationCmd {
+    /// Relate two issues; reads as "<issue> <type> <related>", so
+    /// `--issue ENG-1 --type blocks --related ENG-2` makes ENG-1 block ENG-2
+    #[command(after_long_help = outdoc::linear_mutation("issueRelationCreate", "issueRelation"))]
+    Create {
+        /// Issue UUID or identifier like ENG-123
+        #[arg(long)]
+        issue: String,
+        /// blocks, duplicate, related, or similar
+        #[arg(long = "type", value_name = "TYPE", value_parser = ["blocks", "duplicate", "related", "similar"])]
+        kind: String,
+        /// Related issue UUID or identifier like ENG-123
+        #[arg(long)]
+        related: String,
+    },
+    /// Delete a relation by its UUID (from `issue get`: relations or inverseRelations)
+    #[command(after_long_help = outdoc::linear_delete("issueRelationDelete"))]
     Delete { id: String },
 }
 
@@ -1440,6 +1475,29 @@ pub fn run(
                 exec::<AttachmentDelete>(instance, attachment_delete::Variables { id })
             }
         },
+        Cmd::Relation(cmd) => match cmd {
+            RelationCmd::Create {
+                issue,
+                kind,
+                related,
+            } => {
+                use relation_create::*;
+                exec::<RelationCreate>(
+                    instance,
+                    Variables {
+                        input: IssueRelationCreateInput {
+                            issue_id: issue,
+                            related_issue_id: related,
+                            type_: parse_enum(kind)?,
+                            id: None,
+                        },
+                    },
+                )
+            }
+            RelationCmd::Delete { id } => {
+                exec::<RelationDelete>(instance, relation_delete::Variables { id })
+            }
+        },
     }?;
     crate::output::print(&data, format);
     Ok(())
@@ -1544,6 +1602,23 @@ mod tests {
         // null values in update inputs would wipe data server-side.
         assert_eq!(filter.as_object().unwrap().len(), 3);
         assert!(v["variables"].get("after").is_none());
+    }
+
+    #[test]
+    fn relation_type_serializes_as_the_graphql_enum() {
+        let q = RelationCreate::build_query(relation_create::Variables {
+            input: relation_create::IssueRelationCreateInput {
+                id: None,
+                issue_id: "ENG-1".into(),
+                related_issue_id: "ENG-2".into(),
+                type_: parse_enum("blocks".into()).unwrap(),
+            },
+        });
+        let v = serde_json::to_value(&q).unwrap();
+        assert_eq!(
+            v["variables"]["input"],
+            serde_json::json!({"issueId": "ENG-1", "relatedIssueId": "ENG-2", "type": "blocks"})
+        );
     }
 
     #[test]

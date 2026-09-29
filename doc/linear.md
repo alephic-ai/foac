@@ -37,6 +37,7 @@ erDiagram
     ISSUE }o--o| CYCLE : "scheduled in"
     ISSUE }o--o{ LABEL : "tagged with"
     ISSUE |o--o{ ISSUE : "parent of"
+    ISSUE }o--o{ ISSUE : "blocks / relates to"
     ISSUE ||--o{ COMMENT : has
     ISSUE ||--o{ ATTACHMENT : has
     COMMENT }o--|| USER : "written by"
