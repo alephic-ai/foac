@@ -31,6 +31,10 @@ description: Use the foac CLI to interact with Linear from the shell. Covers iss
 name: foac-neon
 description: Use the foac CLI to interact with Neon from the shell. Covers organizations, projects, branches, databases, roles, compute endpoints, operations, and connection URIs.
 <!-- /foac-provider:neon -->
+<!-- foac-provider:notion -->
+name: foac-notion
+description: Use the foac CLI to interact with Notion from the shell. Covers pages and their Markdown content, databases, data sources and their rows, blocks, comments, search, and users.
+<!-- /foac-provider:notion -->
 <!-- foac-provider:sentry -->
 name: foac-sentry
 description: Use the foac CLI to interact with Sentry from the shell. Covers organizations, projects, issues, error events, and releases.
@@ -70,6 +74,9 @@ description: Use the foac CLI to interact with Vercel from the shell. Covers tea
 <!-- foac-provider:neon -->
 # foac-neon
 <!-- /foac-provider:neon -->
+<!-- foac-provider:notion -->
+# foac-notion
+<!-- /foac-provider:notion -->
 <!-- foac-provider:sentry -->
 # foac-sentry
 <!-- /foac-provider:sentry -->
@@ -129,6 +136,10 @@ foac <provider> <resource> <verb> [flags]
 - `neon`: organizations, projects, branches, databases, roles, compute
   endpoints, operations, and connection URIs.
 <!-- /foac-provider:neon -->
+<!-- foac-provider:notion -->
+- `notion`: pages and their Markdown content, databases, data sources and
+  their rows, blocks, comments, search, and users.
+<!-- /foac-provider:notion -->
 <!-- foac-provider:sentry -->
 - `sentry`: organizations, projects, issues, error events, and releases.
 <!-- /foac-provider:sentry -->
@@ -237,6 +248,12 @@ foac <provider> <resource> <verb> [flags]
 <!-- foac-provider:neon -->
 - **Neon auth precedence**: `NEON_API_KEY`, then the credentials file.
 <!-- /foac-provider:neon -->
+<!-- foac-provider:notion -->
+- **Notion auth precedence**: `NOTION_API_KEY`, then the credentials file.
+  The token is an internal integration secret or a personal access token; an
+  integration only sees pages and databases shared with it, so a 404
+  `object_not_found` usually means "not shared".
+<!-- /foac-provider:notion -->
 <!-- foac-provider:sentry -->
 - **Sentry auth precedence**: `SENTRY_AUTH_TOKEN`, then the credentials file.
 <!-- /foac-provider:sentry -->
@@ -473,6 +490,38 @@ foac <provider> <resource> <verb> [flags]
   `operation get ID` until `status` is `finished` before using the result.
   `branch delete` refuses the default branch and branches with children.
 <!-- /foac-provider:neon -->
+<!-- foac-provider:notion -->
+- **Notion content**: page bodies are Notion's enhanced Markdown.
+  `page get ID --markdown` returns `{"object": "page_markdown", "markdown":
+  ...}`; without it, `page get` returns the page object (properties only).
+  `page create` and `page update` take `--body`/`--body-file`; on update the
+  body replaces all page content (Notion refuses if that would delete child
+  pages or databases). On create, a leading `# Heading` becomes the page
+  title and is dropped from the content. Blocks stay Notion-native JSON:
+  `block append ID --children '[{"paragraph": {"rich_text": [{"text":
+  {"content": "Hi"}}]}}]'` (or `--children-file`), with `--after BLOCK_ID`
+  to insert mid-page.
+- **Notion databases**: a database is a container of one or more data
+  sources; rows live in data sources. `database get ID` lists
+  `data_sources[].id`; `data-source query ID` reads rows, with Notion's raw
+  `--filter` object and `--sorts` array as JSON. `data-source get ID` shows
+  the property schema. Create a row with
+  `page create --data-source ID --title ... --properties JSON`, keys being
+  property names or IDs.
+- **Notion properties**: `--title` sets the title property whatever the
+  column is named; `--properties` takes Notion's raw property-value object,
+  e.g. `{"Status": {"status": {"name": "Done"}}}`.
+- **Notion pagination**: every list takes `--limit N` (default 50, at most
+  100) and an opaque `--after CURSOR`; output is
+  `{"items":[...],"pageInfo":{"hasNextPage":...,"endCursor":...}}`. Follow
+  `pageInfo.endCursor` while `hasNextPage` is true. `block list` returns one
+  level; list a block with `has_children: true` to go deeper.
+- **Notion identifiers**: IDs are UUIDs, with or without dashes; the 32-hex
+  suffix of a Notion URL is the page or database ID. `page list`,
+  `data-source list`, and `search` are title searches over what the token
+  can see. Comments: `comment list PAGE_OR_BLOCK_ID` shows open comments;
+  reply with `comment create --discussion DISCUSSION_ID`.
+<!-- /foac-provider:notion -->
 <!-- foac-provider:sentry -->
 - **Sentry organization**: pass `--org SLUG` anywhere after `sentry`, or set
   `SENTRY_ORG`; only `org list` works without it. `--org` and `--project`
@@ -607,6 +656,23 @@ privacy changes, AI App outputs, analytics, audit events, and webhooks are
 not covered.
 <!-- /foac-provider:fireflies -->
 
+<!-- foac-provider:notion -->
+## Notion resources
+
+- Pages: `page list|get|create|update|delete` (`delete` moves to the trash;
+  `create` takes `--parent PAGE_ID` or `--data-source ID`, or neither for a
+  private workspace page with a personal access token).
+- Databases: `database get`; rows: `data-source list|get|query`.
+- Content: `block list|get|append`.
+- Discussion: `comment list|create`.
+- Discovery and directory: `search`, `user list|get` (`user get me` is the
+  token's bot user; personal access tokens cannot list users).
+
+Use `foac notion <resource> --help` for flags and required arguments. File
+uploads, views, data source and database schema changes, block updates and
+deletes, and webhooks are not covered.
+<!-- /foac-provider:notion -->
+
 <!-- foac-provider:slack -->
 ## Slack resources
 
@@ -738,6 +804,19 @@ foac neon connection-uri --project proj-1 --database app --role app_owner
 ```
 
 <!-- /foac-provider:neon -->
+
+<!-- foac-provider:notion -->
+
+```sh
+foac notion search "launch spec"
+foac notion page get 1a2b3c4d5e6f47a8b9c0d1e2f3a4b5c6 --markdown
+foac notion page create --parent 1a2b3c4d5e6f47a8b9c0d1e2f3a4b5c6 --title "Runbook" --body-file /tmp/runbook.md
+foac notion database get 2b3c4d5e6f7a48b9c0d1e2f3a4b5c6d7
+foac notion data-source query 3c4d5e6f7a8b49c0d1e2f3a4b5c6d7e8 --filter '{"property": "Status", "status": {"equals": "In progress"}}'
+foac notion comment create --page 1a2b3c4d5e6f47a8b9c0d1e2f3a4b5c6 --body "Updated, see PR #42"
+```
+
+<!-- /foac-provider:notion -->
 
 <!-- foac-provider:sentry -->
 

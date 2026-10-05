@@ -1,8 +1,8 @@
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
 use foac::{
-    auth, axiom, confluence, firecrawl, fireflies, github, jira, linear, neon, output, provider,
-    sentry, slack, update, vercel,
+    auth, axiom, confluence, firecrawl, fireflies, github, jira, linear, neon, notion, output,
+    provider, sentry, slack, update, vercel,
 };
 
 #[derive(Parser)]
@@ -58,6 +58,8 @@ enum Command {
     Linear(linear::Cmd),
     /// Interact with Neon
     Neon(neon::Cmd),
+    /// Interact with Notion
+    Notion(notion::Cmd),
     /// Interact with Sentry
     Sentry(sentry::Cmd),
     /// Interact with Slack
@@ -130,6 +132,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Command::Jira(cmd) => jira::run(cmd, format, &provider_instance("jira")?),
         Command::Linear(cmd) => linear::run(cmd, format, &provider_instance("linear")?),
         Command::Neon(cmd) => neon::run(cmd, format, &provider_instance("neon")?),
+        Command::Notion(cmd) => notion::run(cmd, format, &provider_instance("notion")?),
         Command::Sentry(cmd) => sentry::run(cmd, format, &provider_instance("sentry")?),
         Command::Slack(cmd) => slack::run(cmd, format, &provider_instance("slack")?),
         Command::Vercel(cmd) => vercel::run(cmd, format, &provider_instance("vercel")?),
@@ -553,6 +556,7 @@ mod tests {
             vec!["firecrawl"],
             vec!["fireflies"],
             vec!["neon"],
+            vec!["notion"],
             vec!["vercel"],
             auth::Provider::all().iter().map(|p| p.as_str()).collect(),
         ] {
@@ -568,6 +572,7 @@ mod tests {
                     "jira",
                     "linear",
                     "neon",
+                    "notion",
                     "sentry",
                     "slack",
                     "vercel",
@@ -601,6 +606,7 @@ mod tests {
             vec!["foac", "jira", "issue", "list", "--jql", "project = ENG"],
             vec!["foac", "linear", "team", "list"],
             vec!["foac", "neon", "project", "list"],
+            vec!["foac", "notion", "page", "list"],
             vec!["foac", "sentry", "issue", "list", "--org", "acme"],
             vec!["foac", "slack", "conversation", "list"],
             vec!["foac", "vercel", "project", "list"],
@@ -624,6 +630,7 @@ mod tests {
             (vec!["foac", "jira", "--help"], "Usage: foac jira"),
             (vec!["foac", "linear", "--help"], "Usage: foac linear"),
             (vec!["foac", "neon", "--help"], "Usage: foac neon"),
+            (vec!["foac", "notion", "--help"], "Usage: foac notion"),
             (vec!["foac", "sentry", "--help"], "Usage: foac sentry"),
             (vec!["foac", "slack", "--help"], "Usage: foac slack"),
             (vec!["foac", "vercel", "--help"], "Usage: foac vercel"),
@@ -654,6 +661,7 @@ mod tests {
             ("jira", "foac jira issue list"),
             ("linear", "foac linear issue list"),
             ("neon", "foac neon branch list"),
+            ("notion", "foac notion search"),
             ("sentry", "foac sentry issue list"),
             ("slack", "foac slack search"),
             ("vercel", "foac vercel project list"),
@@ -684,6 +692,7 @@ mod tests {
             vec!["foac", "auth", "linear"],
             vec!["foac", "auth", "github"],
             vec!["foac", "auth", "neon"],
+            vec!["foac", "auth", "notion"],
             vec!["foac", "auth", "jira"],
             vec!["foac", "auth", "confluence"],
             vec!["foac", "auth", "firecrawl"],
@@ -719,6 +728,9 @@ mod tests {
             vec!["foac", "auth", "neon", "status"],
             vec!["foac", "auth", "neon", "login"],
             vec!["foac", "auth", "neon", "logout"],
+            vec!["foac", "auth", "notion", "status"],
+            vec!["foac", "auth", "notion", "login"],
+            vec!["foac", "auth", "notion", "logout"],
             vec!["foac", "auth", "jira", "status"],
             vec!["foac", "auth", "jira", "login"],
             vec![
@@ -792,7 +804,15 @@ mod tests {
         }
         // --host is a Sentry, Firecrawl, and Atlassian login flag; clap
         // rejects it elsewhere.
-        for provider in ["fireflies", "linear", "github", "neon", "slack", "vercel"] {
+        for provider in [
+            "fireflies",
+            "linear",
+            "github",
+            "neon",
+            "notion",
+            "slack",
+            "vercel",
+        ] {
             let parsed =
                 Cli::try_parse_from(["foac", "auth", provider, "login", "--host", "example.com"]);
             assert!(parsed.is_err());
@@ -825,6 +845,8 @@ mod tests {
             vec!["foac", "provider", "disable", "confluence"],
             vec!["foac", "provider", "enable", "neon"],
             vec!["foac", "provider", "disable", "neon"],
+            vec!["foac", "provider", "enable", "notion"],
+            vec!["foac", "provider", "disable", "notion"],
             vec!["foac", "provider", "enable", "sentry"],
             vec!["foac", "provider", "disable", "sentry"],
             vec!["foac", "provider", "enable", "slack"],
@@ -963,6 +985,7 @@ mod tests {
             vec!["foac", "firecrawl", "crawl", "get", "--from", "id"],
             vec!["foac", "neon", "branch", "get", "--from", "id"],
             vec!["foac", "fireflies", "transcript", "get", "--from", "id"],
+            vec!["foac", "notion", "page", "get", "--from", "id"],
             vec![
                 "foac", "sentry", "issue", "get", "--org", "acme", "--from", "shortId",
             ],
@@ -997,7 +1020,7 @@ mod tests {
             .to_string();
         assert!(missing_provider.contains("<PROVIDER>"));
         assert!(missing_provider.contains(
-            "possible values: axiom, confluence, firecrawl, fireflies, github, jira, linear, neon, sentry, slack"
+            "possible values: axiom, confluence, firecrawl, fireflies, github, jira, linear, neon, notion, sentry"
         ));
         assert!(Cli::try_parse_from(["foac", "skill", "print", "nope"]).is_err());
         assert!(matches!(

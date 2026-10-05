@@ -12,6 +12,7 @@ pub mod github;
 pub mod jira;
 pub mod linear;
 pub mod neon;
+pub mod notion;
 pub mod outdoc;
 pub mod output;
 pub mod pipe;

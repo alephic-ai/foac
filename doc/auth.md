@@ -42,6 +42,9 @@ foac auth firecrawl logout
 foac auth fireflies status
 foac auth fireflies login
 foac auth fireflies logout
+foac auth notion status
+foac auth notion login
+foac auth notion logout
 ```
 
 `login` prints a link and permission guidance, securely prompts for a personal
