@@ -202,6 +202,35 @@ pub(crate) fn insert_opt<T: Into<Value>>(
     }
 }
 
+/// Parse an optional JSON flag value, naming the flag in the error.
+pub(crate) fn parse_json(
+    text: Option<String>,
+    flag: &str,
+) -> Result<Option<Value>, Box<dyn std::error::Error>> {
+    text.map(|text| {
+        serde_json::from_str(&text)
+            .map_err(|error| format!("{flag} is not valid JSON: {error}").into())
+    })
+    .transpose()
+}
+
+/// A JSON flag given inline or as `<flag>-file`; errors name the flag and path.
+pub(crate) fn read_json(
+    inline: Option<String>,
+    file: Option<std::path::PathBuf>,
+    flag: &str,
+) -> Result<Option<Value>, Box<dyn std::error::Error>> {
+    match file {
+        Some(path) => {
+            let flag = format!("{flag}-file");
+            let text = std::fs::read_to_string(&path)
+                .map_err(|error| format!("{flag} {}: {error}", path.display()))?;
+            parse_json(Some(text), &flag)
+        }
+        None => parse_json(inline, flag),
+    }
+}
+
 /// Whether user input is an all-digits ID rather than a key or name.
 pub(crate) fn is_numeric_id(value: &str) -> bool {
     !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
@@ -429,6 +458,35 @@ mod tests {
         assert_eq!(offset_page_info(0, 2, 2, None, None)["hasNextPage"], true);
         assert_eq!(offset_page_info(0, 2, 1, None, None)["hasNextPage"], false);
         assert_eq!(offset_page_info(0, 0, 0, None, None)["hasNextPage"], false);
+    }
+
+    #[test]
+    fn read_json_names_the_file_flag_and_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("schema.json");
+        let error = read_json(None, Some(missing.clone()), "--schema").unwrap_err();
+        assert!(error.to_string().starts_with("--schema-file "));
+        assert!(error.to_string().contains(&missing.display().to_string()));
+
+        std::fs::write(&missing, "{not json").unwrap();
+        let error = read_json(None, Some(missing.clone()), "--schema").unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .starts_with("--schema-file is not valid JSON")
+        );
+
+        std::fs::write(&missing, r#"{"type":"object"}"#).unwrap();
+        assert_eq!(
+            read_json(None, Some(missing), "--schema").unwrap(),
+            Some(json!({ "type": "object" }))
+        );
+        assert!(
+            read_json(Some("nope".into()), None, "--schema")
+                .unwrap_err()
+                .to_string()
+                .starts_with("--schema is not valid JSON")
+        );
     }
 
     #[test]

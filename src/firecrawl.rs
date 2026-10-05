@@ -12,7 +12,7 @@ use serde_json::{Map, Value, json};
 
 use crate::outdoc;
 use crate::pipe::{self, FromFlag};
-use crate::rest::{self, Api, Auth, insert_opt, push_query};
+use crate::rest::{self, Api, Auth, insert_opt, parse_json, push_query, read_json};
 
 pub(crate) const DEFAULT_HOST: &str = "api.firecrawl.dev";
 const DEFAULT_URL: &str = "https://api.firecrawl.dev";
@@ -841,33 +841,6 @@ fn scrape_options(
     Ok(payload)
 }
 
-fn parse_json(
-    text: Option<String>,
-    flag: &str,
-) -> Result<Option<Value>, Box<dyn std::error::Error>> {
-    text.map(|text| {
-        serde_json::from_str(&text)
-            .map_err(|error| format!("{flag} is not valid JSON: {error}").into())
-    })
-    .transpose()
-}
-
-fn read_json(
-    inline: Option<String>,
-    file: Option<PathBuf>,
-    flag: &str,
-) -> Result<Option<Value>, Box<dyn std::error::Error>> {
-    match file {
-        Some(path) => {
-            let flag = format!("{flag}-file");
-            let text = std::fs::read_to_string(&path)
-                .map_err(|error| format!("{flag} {}: {error}", path.display()))?;
-            parse_json(Some(text), &flag)
-        }
-        None => parse_json(inline, flag),
-    }
-}
-
 fn insert_flag(object: &mut Map<String, Value>, name: &str, flag: bool) {
     if flag {
         object.insert(name.to_owned(), json!(true));
@@ -1071,35 +1044,6 @@ mod tests {
         assert_eq!(
             finish_job(&created, json!("not an object")),
             json!("not an object")
-        );
-    }
-
-    #[test]
-    fn read_json_names_the_file_flag_and_path() {
-        let dir = tempfile::tempdir().unwrap();
-        let missing = dir.path().join("schema.json");
-        let error = read_json(None, Some(missing.clone()), "--schema").unwrap_err();
-        assert!(error.to_string().starts_with("--schema-file "));
-        assert!(error.to_string().contains(&missing.display().to_string()));
-
-        std::fs::write(&missing, "{not json").unwrap();
-        let error = read_json(None, Some(missing.clone()), "--schema").unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .starts_with("--schema-file is not valid JSON")
-        );
-
-        std::fs::write(&missing, r#"{"type":"object"}"#).unwrap();
-        assert_eq!(
-            read_json(None, Some(missing), "--schema").unwrap(),
-            Some(json!({ "type": "object" }))
-        );
-        assert!(
-            read_json(Some("nope".into()), None, "--schema")
-                .unwrap_err()
-                .to_string()
-                .starts_with("--schema is not valid JSON")
         );
     }
 

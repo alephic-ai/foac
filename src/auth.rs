@@ -40,6 +40,8 @@ enum AuthCmd {
     Firecrawl(HostedCmd),
     /// Configure Fireflies authentication
     Fireflies(ProviderCmd),
+    /// Configure Notion authentication
+    Notion(ProviderCmd),
 }
 
 #[derive(Args)]
@@ -163,6 +165,7 @@ pub enum Provider {
     Jira,
     Linear,
     Neon,
+    Notion,
     Sentry,
     Slack,
     Vercel,
@@ -311,6 +314,9 @@ pub fn run(
         AuthCmd::Fireflies(cmd) => {
             run_provider(Provider::Fireflies, cmd.command, &store, format, instance)
         }
+        AuthCmd::Notion(cmd) => {
+            run_provider(Provider::Notion, cmd.command, &store, format, instance)
+        }
     }
 }
 
@@ -379,6 +385,17 @@ pub(crate) fn neon_token(instance: &str) -> Result<String, Box<dyn std::error::E
     resolve_stored(
         Provider::Neon,
         environment_token(Provider::Neon),
+        &crate::provider::CredentialStore,
+        instance,
+    )
+    .map(|credential| credential.token)
+    .map_err(Into::into)
+}
+
+pub(crate) fn notion_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
+    resolve_stored(
+        Provider::Notion,
+        environment_token(Provider::Notion),
         &crate::provider::CredentialStore,
         instance,
     )
@@ -552,6 +569,13 @@ impl Provider {
                 env: "NEON_API_KEY",
                 credential: Credential::Neon,
                 authenticated: crate::neon::authenticated,
+            },
+            Self::Notion => Info {
+                name: "notion",
+                display: "Notion",
+                env: "NOTION_API_KEY",
+                credential: Credential::Notion,
+                authenticated: crate::notion::authenticated,
             },
             Self::Sentry => Info {
                 name: "sentry",
@@ -1074,6 +1098,7 @@ fn account_identity(provider: Provider, account: &Value) -> String {
         Provider::Linear => linear_identity(account),
         Provider::Github => github_identity(account),
         Provider::Neon => neon_identity(account),
+        Provider::Notion => notion_identity(account),
         Provider::Jira | Provider::Confluence => crate::atlassian::jira_identity(account),
         Provider::Slack => slack_identity(account),
         Provider::Sentry => sentry_identity(account),
@@ -1116,6 +1141,14 @@ fn github_identity(account: &Value) -> String {
 fn neon_identity(account: &Value) -> String {
     let name = text_field(account, "name").or_else(|| text_field(account, "login"));
     person_identity(name, text_field(account, "email"), None)
+}
+
+fn notion_identity(account: &Value) -> String {
+    person_identity(
+        text_field(account, "name"),
+        None,
+        text_field(account, "workspace_name"),
+    )
 }
 
 fn fireflies_identity(account: &Value) -> String {
@@ -1224,6 +1257,7 @@ fn provider_status(provider: Provider, store: &dyn SecretStore, instance: &str) 
         Provider::Axiom
         | Provider::Linear
         | Provider::Neon
+        | Provider::Notion
         | Provider::Sentry
         | Provider::Vercel
         | Provider::Firecrawl
@@ -1595,6 +1629,7 @@ fn validate(
         Provider::Linear => crate::linear::auth_identity(token).map(linear_account),
         Provider::Github => crate::github::auth_identity(token).map(github_account),
         Provider::Neon => crate::neon::auth_identity(token).map(neon_account),
+        Provider::Notion => crate::notion::auth_identity(token).map(notion_account),
         Provider::Jira | Provider::Confluence => {
             unreachable!("Atlassian providers validate with host and email, not one token")
         }
@@ -1666,6 +1701,15 @@ fn neon_account(identity: Value) -> Value {
         "login": identity["login"],
         "name": identity["name"],
         "email": identity["email"],
+    })
+}
+
+/// The token's bot user; its workspace is the useful identity detail.
+fn notion_account(identity: Value) -> Value {
+    json!({
+        "id": identity["id"],
+        "name": identity["name"],
+        "workspace_name": identity["bot"]["workspace_name"],
     })
 }
 
@@ -1815,6 +1859,9 @@ pub(crate) fn print_login_help(
         Provider::Neon => {
             eprintln!("Create an API key at https://console.neon.tech/app/settings/api-keys.")
         }
+        Provider::Notion => eprintln!(
+            "Create an internal integration or a personal access token at https://www.notion.so/profile/integrations. An integration only sees the pages and databases shared with it (page menu > Connections)."
+        ),
         Provider::Jira | Provider::Confluence => eprintln!(
             "Create an Atlassian API token at https://id.atlassian.com/manage-profile/security/api-tokens (the token covers Jira and Confluence), and have your site host (like acme.atlassian.net) and account email ready."
         ),
@@ -2540,6 +2587,16 @@ pub(crate) mod tests {
             account_identity(Provider::Neon, &neon),
             "Lolo <lolo@example.com>"
         );
+
+        let notion = notion_account(json!({
+            "object": "user", "id": "bot-1", "name": "foac", "type": "bot",
+            "bot": {"owner": {"type": "workspace"}, "workspace_name": "Acme"},
+        }));
+        assert_eq!(
+            notion,
+            json!({"id": "bot-1", "name": "foac", "workspace_name": "Acme"})
+        );
+        assert_eq!(account_identity(Provider::Notion, &notion), "foac  Acme");
 
         let fireflies = fireflies_account(json!({
             "user": {"user_id": "u1", "name": "Lolo", "email": "lolo@example.com", "is_admin": true},

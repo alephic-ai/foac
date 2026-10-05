@@ -140,6 +140,7 @@ pub(crate) enum Credential {
     Fireflies,
     Github,
     Neon,
+    Notion,
     Sentry,
     /// The base URL of a self-hosted Sentry, stored with the instance's token.
     SentryUrl,
@@ -164,6 +165,7 @@ impl Credential {
             Self::Fireflies => "fireflies",
             Self::Github => "github",
             Self::Neon => "neon",
+            Self::Notion => "notion",
             Self::Sentry | Self::SentryUrl => "sentry",
             Self::SlackBot | Self::SlackUser => "slack",
             Self::Vercel => "vercel",
@@ -180,6 +182,7 @@ impl Credential {
             | Self::Fireflies
             | Self::Github
             | Self::Neon
+            | Self::Notion
             | Self::Sentry
             | Self::Vercel => "token",
             Self::SentryUrl | Self::FirecrawlUrl | Self::AxiomUrl => "url",
@@ -1408,6 +1411,7 @@ mod tests {
                 "jira": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "linear": {"enabled": true, "authenticated": false, "skill_installed": true},
                 "neon": {"enabled": true, "authenticated": false, "skill_installed": false},
+                "notion": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "sentry": {"enabled": false, "authenticated": false, "skill_installed": false},
                 "slack": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "slack@workb": {"enabled": false, "authenticated": true, "skill_installed": false},

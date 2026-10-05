@@ -85,6 +85,17 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   and a full-page heuristic for `hasNextPage`. Plan-gated fields
   (`audio_url`, `video_url`, `analytics`) are never selected: one gated field
   fails the whole query on a Free plan.
+- Notion uses bearer-authenticated REST against `https://api.notion.com/v1`
+  with `Notion-Version: 2026-03-11` sent as an `Api::headers` entry. That
+  version splits databases into data sources (rows are queried through
+  `/v1/data_sources/{id}/query`; search filters on `page` or `data_source`)
+  and only accepts `in_trash`. Page bodies use Notion's own Markdown
+  endpoints (`markdown` on create, `GET`/`PATCH /v1/pages/{id}/markdown`),
+  so foac has no block converter; `page update` with both properties and a
+  body sends two requests and prints the Markdown response. Lists are
+  `{results, has_more, next_cursor}`, paged with `page_size`/`start_cursor`
+  in the query string for GETs and in the JSON body for POSTs (search,
+  data source query).
 - Vercel uses bearer-authenticated REST endpoints against
   `https://api.vercel.com`; API versions vary by endpoint. Team-owned
   resources add `teamId`, and list responses use `pagination.next` as the

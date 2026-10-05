@@ -75,6 +75,7 @@ fn provider_list_defaults_to_all_enabled_json() {
         "jira",
         "linear",
         "neon",
+        "notion",
         "sentry",
         "slack",
         "vercel",
