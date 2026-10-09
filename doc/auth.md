@@ -45,6 +45,9 @@ foac auth fireflies logout
 foac auth notion status
 foac auth notion login
 foac auth notion logout
+foac auth airtable status
+foac auth airtable login
+foac auth airtable logout
 ```
 
 `login` prints a link and permission guidance, securely prompts for a personal

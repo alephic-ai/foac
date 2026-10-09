@@ -137,7 +137,7 @@ pub(crate) const SINGLE_PAGE: Pagination = Pagination {
     next: "All results are returned in one page",
 };
 
-pub(crate) const NEON_SINGLE_PAGE: Pagination = Pagination {
+pub(crate) const SINGLE_PAGE_NULL_CURSOR: Pagination = Pagination {
     example: r#"{"hasNextPage": false, "endCursor": null}"#,
     next: "All results are returned in one page",
 };

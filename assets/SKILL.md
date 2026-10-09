@@ -1,4 +1,8 @@
 ---
+<!-- foac-provider:airtable -->
+name: foac-airtable
+description: Use the foac CLI to interact with Airtable from the shell. Covers bases, table schemas (fields and views), records, and record comments.
+<!-- /foac-provider:airtable -->
 <!-- foac-provider:axiom -->
 name: foac-axiom
 description: Use the foac CLI to interact with Axiom from the shell. Covers datasets, fields, APL queries, event ingestion, annotations, monitors, notifiers, users, and organizations.
@@ -50,6 +54,9 @@ description: Use the foac CLI to interact with Vercel from the shell. Covers tea
 ---
 
 <!-- rumdl-disable MD022 MD025 -->
+<!-- foac-provider:airtable -->
+# foac-airtable
+<!-- /foac-provider:airtable -->
 <!-- foac-provider:axiom -->
 # foac-axiom
 <!-- /foac-provider:axiom -->
@@ -103,7 +110,11 @@ foac <provider> <resource> <verb> [flags]
 
 - A provider is the external product or API named by the first command segment.
   The top-level `--help` lists only authenticated, enabled providers, under a
-  separate `Providers:` heading.
+  separate `Providers:` heading; `foac auth --help` lists every provider
+  there, since logging in is how one becomes active.
+<!-- foac-provider:airtable -->
+- `airtable`: bases, table schemas, records, and record comments.
+<!-- /foac-provider:airtable -->
 <!-- foac-provider:axiom -->
 - `axiom`: datasets, fields, APL queries, event ingestion, annotations,
   monitors, notifiers, users, and organizations.
@@ -192,6 +203,14 @@ foac <provider> <resource> <verb> [flags]
   before secret bytes are written on Unix. Settings use comment-preserving
   TOML. Missing files are valid first-run state; malformed stores fail closed
   independently with their path and cause.
+<!-- foac-provider:airtable -->
+- **Airtable auth precedence**: `AIRTABLE_API_KEY`, then the credentials
+  file. The token is a personal access token; it only sees the bases it was
+  granted, and only within its scopes (`data.records:read`/`write`,
+  `data.recordComments:read`/`write`, `schema.bases:read`). A base or table
+  the token cannot reach, or a missing scope, answers 403
+  `INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND`, not 401.
+<!-- /foac-provider:airtable -->
 <!-- foac-provider:axiom -->
 - **Axiom auth precedence**: `AXIOM_TOKEN`, then the credentials file. An
   API token (`xaat-`) carries its own organization; a personal access token
@@ -319,6 +338,26 @@ foac <provider> <resource> <verb> [flags]
   failure (auth, rate limit, network) prints its error JSON on stderr as it
   happens. The exit code is 0 when at least one get succeeded and the rest
   were misses, 1 when all missed or any get failed outright.
+<!-- foac-provider:airtable -->
+- **Airtable addressing**: records and comments need `--base APP_ID` and
+  `--table TABLE`, a table ID (`tbl...`) or name; prefer IDs, which survive
+  renames. `base list` gives base IDs; `table list --base APP_ID` gives the
+  schema: table IDs, `fields[]` (name, type, options), and `views[]`.
+- **Airtable records**: `fields` is keyed by field name and omits empty
+  cells. `record list` takes `--view NAME_OR_ID`, `--formula` (Airtable
+  formula, e.g. `AND({Status} = 'Todo', {Due} < TODAY())`), `--sort` as a
+  JSON array of `{"field": NAME, "direction": "asc"|"desc"}`, and repeated
+  `--field NAME` to fetch fewer columns. `record create` and `record update`
+  take `--fields JSON` (or `--fields-file`); update only touches the given
+  fields. `--typecast` converts strings to the field type and adds missing
+  select options. Linked-record cells are arrays of record IDs.
+- **Airtable pagination**: `record list` and `comment list` take `--limit N`
+  (default 50, at most 100); `base list`, `record list`, and `comment list`
+  take an opaque `--after CURSOR`.
+  Output is `{"items":[...],"pageInfo":{"hasNextPage":...,"endCursor":...}}`;
+  follow `pageInfo.endCursor` while `hasNextPage` is true. `table list` is
+  one page.
+<!-- /foac-provider:airtable -->
 <!-- foac-provider:axiom -->
 - **Axiom permissions**: create API tokens with Advanced permissions. On
   All datasets (or individual ones): Ingest create for `ingest`, Query read
@@ -570,6 +609,18 @@ foac <provider> <resource> <verb> [flags]
   records, and environment variables are not covered.
 <!-- /foac-provider:vercel -->
 
+<!-- foac-provider:airtable -->
+## Airtable resources
+
+- Discovery: `base list`, `table list --base APP_ID` (the schema).
+- Data: `record list|get|create|update|delete`.
+- Discussion: `comment list|create` (`--parent COMMENT_ID` replies).
+
+Use `foac airtable <resource> --help` for flags and required arguments. Base,
+table, and field creation or changes, batch and upsert writes, attachment
+uploads, comment edits and deletes, and webhooks are not covered.
+<!-- /foac-provider:airtable -->
+
 <!-- foac-provider:axiom -->
 ## Axiom resources
 
@@ -711,6 +762,19 @@ foac auth status
 foac linear user list | foac slack user get --from email
 foac github repo list | foac vercel project get --from name
 ```
+
+<!-- foac-provider:airtable -->
+
+```sh
+foac airtable base list
+foac airtable table list --base appAbc123
+foac airtable record list --base appAbc123 --table Tasks --view "Open" --formula "{Owner} = 'Lolo'" --field Name --field Due
+foac airtable record create --base appAbc123 --table Tasks --fields '{"Name": "Ship it", "Status": "Todo"}' --typecast
+foac airtable record update --base appAbc123 --table Tasks recXyz789 --fields '{"Status": "Done"}'
+foac airtable comment create --base appAbc123 --table Tasks recXyz789 --body "Done, see PR #42"
+```
+
+<!-- /foac-provider:airtable -->
 
 <!-- foac-provider:axiom -->
 

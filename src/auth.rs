@@ -18,30 +18,32 @@ pub struct Cmd {
 enum AuthCmd {
     /// Check authentication for every provider
     Status,
+    /// Configure Airtable authentication
+    Airtable(ProviderCmd),
     /// Configure Axiom authentication
     Axiom(AxiomCmd),
-    /// Configure Linear authentication
-    Linear(ProviderCmd),
-    /// Configure GitHub authentication
-    Github(ProviderCmd),
-    /// Configure Neon authentication
-    Neon(ProviderCmd),
-    /// Configure Jira (Atlassian) authentication
-    Jira(crate::atlassian::AtlassianCmd),
     /// Configure Confluence (Atlassian) authentication
     Confluence(crate::atlassian::AtlassianCmd),
-    /// Configure Slack authentication
-    Slack(SlackCmd),
-    /// Configure Sentry authentication
-    Sentry(HostedCmd),
-    /// Configure Vercel authentication
-    Vercel(ProviderCmd),
     /// Configure Firecrawl authentication
     Firecrawl(HostedCmd),
     /// Configure Fireflies authentication
     Fireflies(ProviderCmd),
+    /// Configure GitHub authentication
+    Github(ProviderCmd),
+    /// Configure Jira (Atlassian) authentication
+    Jira(crate::atlassian::AtlassianCmd),
+    /// Configure Linear authentication
+    Linear(ProviderCmd),
+    /// Configure Neon authentication
+    Neon(ProviderCmd),
     /// Configure Notion authentication
     Notion(ProviderCmd),
+    /// Configure Sentry authentication
+    Sentry(HostedCmd),
+    /// Configure Slack authentication
+    Slack(SlackCmd),
+    /// Configure Vercel authentication
+    Vercel(ProviderCmd),
 }
 
 #[derive(Args)]
@@ -157,6 +159,7 @@ pub(crate) struct Info {
 /// skill rendering, and clap's possible values.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, clap::ValueEnum)]
 pub enum Provider {
+    Airtable,
     Axiom,
     Confluence,
     Firecrawl,
@@ -317,6 +320,9 @@ pub fn run(
         AuthCmd::Notion(cmd) => {
             run_provider(Provider::Notion, cmd.command, &store, format, instance)
         }
+        AuthCmd::Airtable(cmd) => {
+            run_provider(Provider::Airtable, cmd.command, &store, format, instance)
+        }
     }
 }
 
@@ -335,6 +341,17 @@ fn run_hosted(
         HostedAction::Login { host } => login(provider, host, None, store, format, instance),
         HostedAction::Logout => logout(provider, store, format, instance),
     }
+}
+
+pub(crate) fn airtable_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
+    resolve_stored(
+        Provider::Airtable,
+        environment_token(Provider::Airtable),
+        &crate::provider::CredentialStore,
+        instance,
+    )
+    .map(|credential| credential.token)
+    .map_err(Into::into)
 }
 
 pub(crate) fn axiom_token(instance: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -514,6 +531,13 @@ impl Provider {
     pub(crate) fn info(self) -> Info {
         use crate::provider::Credential;
         match self {
+            Self::Airtable => Info {
+                name: "airtable",
+                display: "Airtable",
+                env: "AIRTABLE_API_KEY",
+                credential: Credential::Airtable,
+                authenticated: crate::airtable::authenticated,
+            },
             Self::Axiom => Info {
                 name: "axiom",
                 display: "Axiom",
@@ -1094,6 +1118,7 @@ fn logout_summary(removed: bool) -> String {
 
 fn account_identity(provider: Provider, account: &Value) -> String {
     match provider {
+        Provider::Airtable => airtable_identity(account),
         Provider::Axiom => axiom_identity(account),
         Provider::Linear => linear_identity(account),
         Provider::Github => github_identity(account),
@@ -1141,6 +1166,15 @@ fn github_identity(account: &Value) -> String {
 fn neon_identity(account: &Value) -> String {
     let name = text_field(account, "name").or_else(|| text_field(account, "login"));
     person_identity(name, text_field(account, "email"), None)
+}
+
+/// The email needs the `user.email:read` scope; the user ID always comes back.
+fn airtable_identity(account: &Value) -> String {
+    person_identity(
+        None,
+        text_field(account, "email").or_else(|| text_field(account, "id")),
+        None,
+    )
 }
 
 fn notion_identity(account: &Value) -> String {
@@ -1254,7 +1288,8 @@ fn provider_status(provider: Provider, store: &dyn SecretStore, instance: &str) 
         };
     }
     let resolved = match provider {
-        Provider::Axiom
+        Provider::Airtable
+        | Provider::Axiom
         | Provider::Linear
         | Provider::Neon
         | Provider::Notion
@@ -1630,6 +1665,7 @@ fn validate(
         Provider::Github => crate::github::auth_identity(token).map(github_account),
         Provider::Neon => crate::neon::auth_identity(token).map(neon_account),
         Provider::Notion => crate::notion::auth_identity(token).map(notion_account),
+        Provider::Airtable => crate::airtable::auth_identity(token).map(airtable_account),
         Provider::Jira | Provider::Confluence => {
             unreachable!("Atlassian providers validate with host and email, not one token")
         }
@@ -1702,6 +1738,10 @@ fn neon_account(identity: Value) -> Value {
         "name": identity["name"],
         "email": identity["email"],
     })
+}
+
+fn airtable_account(identity: Value) -> Value {
+    json!({ "id": identity["id"], "email": identity["email"] })
 }
 
 /// The token's bot user; its workspace is the useful identity detail.
@@ -1859,6 +1899,9 @@ pub(crate) fn print_login_help(
         Provider::Neon => {
             eprintln!("Create an API key at https://console.neon.tech/app/settings/api-keys.")
         }
+        Provider::Airtable => eprintln!(
+            "Create a personal access token at https://airtable.com/create/tokens with the scopes your foac commands need (data.records:read, data.records:write, data.recordComments:read, data.recordComments:write, schema.bases:read, and user.email:read to show your email here), and give it access to your bases or workspaces."
+        ),
         Provider::Notion => eprintln!(
             "Create an internal integration or a personal access token at https://www.notion.so/profile/integrations. An integration only sees the pages and databases shared with it (page menu > Connections)."
         ),
@@ -2597,6 +2640,15 @@ pub(crate) mod tests {
             json!({"id": "bot-1", "name": "foac", "workspace_name": "Acme"})
         );
         assert_eq!(account_identity(Provider::Notion, &notion), "foac  Acme");
+
+        let airtable = airtable_account(json!({"id": "usr1", "email": "lolo@example.com"}));
+        assert_eq!(
+            account_identity(Provider::Airtable, &airtable),
+            "lolo@example.com"
+        );
+        let airtable = airtable_account(json!({"id": "usr1"}));
+        assert_eq!(airtable, json!({"id": "usr1", "email": null}));
+        assert_eq!(account_identity(Provider::Airtable, &airtable), "usr1");
 
         let fireflies = fireflies_account(json!({
             "user": {"user_id": "u1", "name": "Lolo", "email": "lolo@example.com", "is_admin": true},

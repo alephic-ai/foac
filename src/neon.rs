@@ -81,7 +81,7 @@ struct Cursor {
 #[derive(Subcommand)]
 enum OrgCmd {
     /// List the current user's organizations
-    #[command(after_long_help = outdoc::rest_list("raw Neon organization objects", &[], &outdoc::NEON_SINGLE_PAGE))]
+    #[command(after_long_help = outdoc::rest_list("raw Neon organization objects", &[], &outdoc::SINGLE_PAGE_NULL_CURSOR))]
     List,
 }
 
@@ -160,7 +160,7 @@ enum BranchCmd {
 #[derive(Subcommand)]
 enum DatabaseCmd {
     /// List a branch's databases
-    #[command(after_long_help = outdoc::rest_list("raw Neon database objects", &[], &outdoc::NEON_SINGLE_PAGE))]
+    #[command(after_long_help = outdoc::rest_list("raw Neon database objects", &[], &outdoc::SINGLE_PAGE_NULL_CURSOR))]
     List {
         /// Branch ID
         #[arg(long)]
@@ -171,7 +171,7 @@ enum DatabaseCmd {
 #[derive(Subcommand)]
 enum RoleCmd {
     /// List a branch's Postgres roles
-    #[command(after_long_help = outdoc::rest_list("raw Neon role objects", &[], &outdoc::NEON_SINGLE_PAGE))]
+    #[command(after_long_help = outdoc::rest_list("raw Neon role objects", &[], &outdoc::SINGLE_PAGE_NULL_CURSOR))]
     List {
         /// Branch ID
         #[arg(long)]
@@ -182,7 +182,7 @@ enum RoleCmd {
 #[derive(Subcommand)]
 enum EndpointCmd {
     /// List the project's compute endpoints
-    #[command(after_long_help = outdoc::rest_list("raw Neon compute endpoint objects", &["id"], &outdoc::NEON_SINGLE_PAGE))]
+    #[command(after_long_help = outdoc::rest_list("raw Neon compute endpoint objects", &["id"], &outdoc::SINGLE_PAGE_NULL_CURSOR))]
     List,
     /// Get an endpoint by ID like ep-...
     #[command(after_long_help = outdoc::lines(&[

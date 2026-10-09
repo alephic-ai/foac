@@ -133,6 +133,7 @@ pub(crate) enum Credential {
     /// The base URL of a regional or dedicated Axiom deployment, stored with
     /// the instance's token.
     AxiomUrl,
+    Airtable,
     Linear,
     Firecrawl,
     /// The base URL of a self-hosted Firecrawl, stored with the instance's token.
@@ -159,6 +160,7 @@ impl Credential {
     /// `atlassian` vendor.
     pub(crate) fn vendor(self) -> &'static str {
         match self {
+            Self::Airtable => "airtable",
             Self::Axiom | Self::AxiomOrg | Self::AxiomUrl => "axiom",
             Self::Linear => "linear",
             Self::Firecrawl | Self::FirecrawlUrl => "firecrawl",
@@ -176,7 +178,8 @@ impl Credential {
     /// The field key inside an instance record.
     fn field(self) -> &'static str {
         match self {
-            Self::Axiom
+            Self::Airtable
+            | Self::Axiom
             | Self::Linear
             | Self::Firecrawl
             | Self::Fireflies
@@ -1403,6 +1406,7 @@ mod tests {
                 &credentials
             ),
             json!({
+                "airtable": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "axiom": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "confluence": {"enabled": true, "authenticated": false, "skill_installed": false},
                 "firecrawl": {"enabled": true, "authenticated": false, "skill_installed": false},
