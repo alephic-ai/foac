@@ -87,7 +87,7 @@ enum BaseCmd {
 #[derive(Subcommand)]
 enum TableCmd {
     /// List a base's tables with their fields and views (the base schema)
-    #[command(after_long_help = outdoc::rest_list("raw Airtable table objects with fields[] and views[]", &["id", "name"], &outdoc::NEON_SINGLE_PAGE))]
+    #[command(after_long_help = outdoc::rest_list("raw Airtable table objects with fields[] and views[]", &["id", "name"], &outdoc::SINGLE_PAGE_NULL_CURSOR))]
     List {
         /// Base ID (app...)
         #[arg(long)]
