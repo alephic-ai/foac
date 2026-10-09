@@ -9,15 +9,15 @@ repository = "https://github.com/alephic-ai/foac"
 readme = "README.md"
 
 [dependencies]
-clap = { version = "4.6.6", features = ["derive"] }
+clap = { version = "4.6.7", features = ["derive"] }
 graphql_client = "0.16"
 parse_link_header = "0.4"
-reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "query", "rustls"] } # query: RequestBuilder::query
-rpassword = "7.5.0"
-self_update = { version = "1.0.0-rc.6", features = ["archive-zip", "compression-zip-deflate", "checksums"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "json", "query", "rustls"] } # query: RequestBuilder::query
+rpassword = "7.5.4"
+self_update = { version = "1.3.0", features = ["archive-zip", "compression-zip-deflate", "checksums"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
-tabled = { version = "0.21.0", default-features = false, features = ["std"] }
+tabled = { version = "0.22.0", default-features = false, features = ["std"] }
 tempfile = "3.27.0"
 terminal_size = "0.4.4"
-toml_edit = "0.25.13"
+toml_edit = "0.25.17"
