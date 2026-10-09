@@ -239,21 +239,20 @@ fn cli_command(providers: &[Provider]) -> clap::Command {
         .filter(|provider| provider.active)
         .map(|provider| provider.name)
         .collect();
+    let names: Vec<&str> = providers.iter().map(|provider| provider.name).collect();
     let command = Cli::command();
-    let command = command
-        .clone()
-        .help_template(help_template(&providers_section(&command, &active)));
+    let section = providers_section(&command, &active);
     // Every provider is listed under `auth`, active or not: logging in is
     // how an unauthenticated provider becomes active.
-    let command = command.mut_subcommand("auth", |auth| {
-        let names: Vec<&str> = auth::Provider::all().iter().map(|p| p.as_str()).collect();
-        let section = providers_section(&auth, &names);
-        hide_subcommands(auth.help_template(help_template(&section)), &names)
-    });
+    let command = command
+        .help_template(help_template(&section))
+        .mut_subcommand("auth", |auth_cmd| {
+            let section = providers_section(&auth_cmd, &names);
+            hide_subcommands(auth_cmd.help_template(help_template(&section)), &names)
+        });
     // Hide every provider from the Commands list: active ones are listed in
     // the providers section instead, and hiding doesn't affect parsing or typo
     // suggestions (remove_hidden_provider_suggestions keys off `active`).
-    let names: Vec<&str> = providers.iter().map(|provider| provider.name).collect();
     hide_subcommands(command, &names)
 }
 
@@ -311,6 +310,12 @@ where
 fn remove_hidden_provider_suggestions(error: &mut clap::Error, providers: &[Provider]) {
     use clap::error::{ContextKind, ContextValue};
 
+    // `auth` lists every provider, so only suggestions elsewhere are filtered.
+    if let Some(ContextValue::StyledStr(usage)) = error.get(ContextKind::Usage)
+        && usage.to_string().contains("foac auth ")
+    {
+        return;
+    }
     let Some(ContextValue::Strings(mut suggestions)) =
         error.remove(ContextKind::SuggestedSubcommand)
     else {
@@ -617,7 +622,6 @@ mod tests {
 
     #[test]
     fn auth_help_lists_every_provider_apart_from_its_commands() {
-        // Inactive providers too: logging in is how they become active.
         let help = parse_error(&test_providers(&[]), ["foac", "auth", "--help"]).to_string();
         let (providers, commands) = help.split_once("Commands:").unwrap();
         let providers = providers.split_once("Providers:").unwrap().1;
@@ -684,6 +688,15 @@ mod tests {
 
         let error = parse_error(&test_providers(&["github"]), ["foac", "githu"]).to_string();
         assert!(error.contains("github"));
+    }
+
+    #[test]
+    fn inactive_providers_are_suggested_under_auth() {
+        let error = parse_error(
+            &test_providers(&[]),
+            ["foac", "--format", "json", "auth", "githu"],
+        );
+        assert!(error.to_string().contains("github"));
     }
 
     #[test]

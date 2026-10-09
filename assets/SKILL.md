@@ -352,7 +352,8 @@ foac <provider> <resource> <verb> [flags]
   fields. `--typecast` converts strings to the field type and adds missing
   select options. Linked-record cells are arrays of record IDs.
 - **Airtable pagination**: `record list` and `comment list` take `--limit N`
-  (default 50, at most 100); every list takes an opaque `--after CURSOR`.
+  (default 50, at most 100); `base list`, `record list`, and `comment list`
+  take an opaque `--after CURSOR`.
   Output is `{"items":[...],"pageInfo":{"hasNextPage":...,"endCursor":...}}`;
   follow `pageInfo.endCursor` while `hasNextPage` is true. `table list` is
   one page.

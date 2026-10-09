@@ -33,10 +33,11 @@ foac airtable --help
 `record update` sends a PATCH: only the given fields change. `--typecast`
 converts string values to the field type and creates missing select options.
 
-Every list prints `{"items":[...],"pageInfo":{...}}` and paginates with
-`--after` using `pageInfo.endCursor`; `record list` and `comment list` also
-take `--limit` (default 50, at most 100). `base list` pages are 1000 bases;
-`table list` is one page.
+Every list prints `{"items":[...],"pageInfo":{...}}`. `base list`,
+`record list`, and `comment list` paginate with `--after` using
+`pageInfo.endCursor`; `record list` and `comment list` also take `--limit`
+(default 50, at most 100). `base list` pages are 1000 bases; `table list` is
+one page.
 
 Not covered: base, table, and field creation or changes, batch and upsert
 writes, attachment uploads, comment edits and deletes, interfaces, and
