@@ -96,6 +96,14 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   `{results, has_more, next_cursor}`, paged with `page_size`/`start_cursor`
   in the query string for GETs and in the JSON body for POSTs (search,
   data source query).
+- Airtable uses bearer-authenticated REST (personal access tokens) against
+  `https://api.airtable.com/v0`. Records live at `/v0/{base}/{table}` and
+  comments under each record; base and table metadata at `/v0/meta/bases`.
+  `record list` uses `POST /v0/{base}/{table}/listRecords`, which takes the
+  GET options as a JSON body (no 16k-character URL limit, no
+  `sort[0][field]` query encoding). Lists are `{<key>: [...], offset}`, the
+  `offset` present only while more pages exist; `table list` (the base
+  schema) is one page. Auth validates against `/v0/meta/whoami`.
 - Vercel uses bearer-authenticated REST endpoints against
   `https://api.vercel.com`; API versions vary by endpoint. Team-owned
   resources add `teamId`, and list responses use `pagination.next` as the

@@ -1,8 +1,8 @@
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
 use foac::{
-    auth, axiom, confluence, firecrawl, fireflies, github, jira, linear, neon, notion, output,
-    provider, sentry, slack, update, vercel,
+    airtable, auth, axiom, confluence, firecrawl, fireflies, github, jira, linear, neon, notion,
+    output, provider, sentry, slack, update, vercel,
 };
 
 #[derive(Parser)]
@@ -40,6 +40,8 @@ impl Provider {
 enum Command {
     /// Check and configure provider authentication
     Auth(auth::Cmd),
+    /// Interact with Airtable
+    Airtable(airtable::Cmd),
     /// Interact with Axiom
     Axiom(axiom::Cmd),
     /// Interact with Confluence
@@ -124,6 +126,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let skip_skill_refresh = matches!(command, Command::Update | Command::Skill(_));
     let result = match command {
         Command::Auth(cmd) => auth::run(cmd, format, instance_flag.clone()),
+        Command::Airtable(cmd) => airtable::run(cmd, format, &provider_instance("airtable")?),
         Command::Axiom(cmd) => axiom::run(cmd, format, &provider_instance("axiom")?),
         Command::Confluence(cmd) => confluence::run(cmd, format, &provider_instance("confluence")?),
         Command::Firecrawl(cmd) => firecrawl::run(cmd, format, &provider_instance("firecrawl")?),
@@ -231,45 +234,61 @@ fn providers_where(enabled: impl Fn(&str) -> bool) -> Vec<Provider> {
 }
 
 fn cli_command(providers: &[Provider]) -> clap::Command {
-    let command = Cli::command().help_template(format!(
-        // clap's default template with the providers section inserted; clap
-        // cannot split subcommands under two headings, so providers are hidden
-        // from {all-args} and rendered by hand.
-        "{{before-help}}{{about-with-newline}}\n{{usage-heading}} {{usage}}\n\n{}{{all-args}}{{after-help}}",
-        providers_help_section(providers)
-    ));
+    let active: Vec<&str> = providers
+        .iter()
+        .filter(|provider| provider.active)
+        .map(|provider| provider.name)
+        .collect();
+    let command = Cli::command();
+    let command = command
+        .clone()
+        .help_template(help_template(&providers_section(&command, &active)));
+    // Every provider is listed under `auth`, active or not: logging in is
+    // how an unauthenticated provider becomes active.
+    let command = command.mut_subcommand("auth", |auth| {
+        let names: Vec<&str> = auth::Provider::all().iter().map(|p| p.as_str()).collect();
+        let section = providers_section(&auth, &names);
+        hide_subcommands(auth.help_template(help_template(&section)), &names)
+    });
     // Hide every provider from the Commands list: active ones are listed in
     // the providers section instead, and hiding doesn't affect parsing or typo
     // suggestions (remove_hidden_provider_suggestions keys off `active`).
-    providers.iter().fold(command, |command, provider| {
-        command.mut_subcommand(provider.name, |subcommand| subcommand.hide(true))
+    let names: Vec<&str> = providers.iter().map(|provider| provider.name).collect();
+    hide_subcommands(command, &names)
+}
+
+/// clap's default template with a providers section inserted; clap cannot
+/// split subcommands under two headings, so providers are hidden from
+/// {all-args} and rendered by hand.
+fn help_template(providers_section: &str) -> String {
+    format!(
+        "{{before-help}}{{about-with-newline}}\n{{usage-heading}} {{usage}}\n\n{providers_section}{{all-args}}{{after-help}}"
+    )
+}
+
+fn hide_subcommands(command: clap::Command, names: &[&str]) -> clap::Command {
+    names.iter().fold(command, |command, name| {
+        command.mut_subcommand(name, |subcommand| subcommand.hide(true))
     })
 }
 
-fn providers_help_section(providers: &[Provider]) -> String {
-    let command = Cli::command();
+/// A `Providers:` heading listing `names`, subcommands of `command`, with
+/// their about text; empty when there are none.
+fn providers_section(command: &clap::Command, names: &[&str]) -> String {
     let styles = command.get_styles();
     let (header, literal) = (styles.get_header(), styles.get_literal());
-    let active: Vec<&Provider> = providers
-        .iter()
-        .filter(|provider| provider.active)
-        .collect();
-    let width = active.iter().map(|provider| provider.name.len()).max();
-    let Some(width) = width else {
+    let Some(width) = names.iter().map(|name| name.len()).max() else {
         return String::new();
     };
     let mut section = format!("{header}Providers:{header:#}\n");
-    for provider in active {
+    for name in names {
         let about = command
-            .find_subcommand(provider.name)
+            .find_subcommand(name)
             .and_then(clap::Command::get_about)
             .map(ToString::to_string)
             .unwrap_or_default();
         // Pad the plain name so the ANSI codes don't skew the column.
-        section.push_str(&format!(
-            "  {literal}{name:width$}{literal:#}  {about}\n",
-            name = provider.name
-        ));
+        section.push_str(&format!("  {literal}{name:width$}{literal:#}  {about}\n"));
     }
     section.push('\n');
     section
@@ -546,6 +565,7 @@ mod tests {
     fn help_only_lists_authenticated_providers() {
         for expected in [
             vec![],
+            vec!["airtable"],
             vec!["axiom"],
             vec!["linear"],
             vec!["github"],
@@ -564,6 +584,7 @@ mod tests {
             for args in [vec!["foac"], vec!["foac", "--help"]] {
                 let help = parse_error(&providers, args).to_string();
                 for name in [
+                    "airtable",
                     "axiom",
                     "confluence",
                     "firecrawl",
@@ -595,9 +616,23 @@ mod tests {
     }
 
     #[test]
+    fn auth_help_lists_every_provider_apart_from_its_commands() {
+        // Inactive providers too: logging in is how they become active.
+        let help = parse_error(&test_providers(&[]), ["foac", "auth", "--help"]).to_string();
+        let (providers, commands) = help.split_once("Commands:").unwrap();
+        let providers = providers.split_once("Providers:").unwrap().1;
+        for provider in auth::Provider::all() {
+            assert!(help_lists(providers, provider.as_str()));
+            assert!(!help_lists(commands, provider.as_str()));
+        }
+        assert!(help_lists(commands, "status"));
+    }
+
+    #[test]
     fn hidden_providers_still_parse() {
         let providers = test_providers(&[]);
         for args in [
+            vec!["foac", "airtable", "base", "list"],
             vec!["foac", "axiom", "dataset", "list"],
             vec!["foac", "confluence", "page", "list"],
             vec!["foac", "firecrawl", "scrape", "https://example.com"],
@@ -619,6 +654,7 @@ mod tests {
     fn hidden_provider_help_remains_available() {
         let providers = test_providers(&[]);
         for (args, usage) in [
+            (vec!["foac", "airtable", "--help"], "Usage: foac airtable"),
             (vec!["foac", "axiom", "--help"], "Usage: foac axiom"),
             (
                 vec!["foac", "confluence", "--help"],
@@ -653,6 +689,7 @@ mod tests {
     #[test]
     fn skill_documents_one_provider() {
         let examples = [
+            ("airtable", "foac airtable record list"),
             ("axiom", "foac axiom query"),
             ("confluence", "foac confluence page list"),
             ("firecrawl", "foac firecrawl scrape"),
@@ -688,6 +725,7 @@ mod tests {
     fn bare_auth_commands_display_help() {
         for args in [
             vec!["foac", "auth"],
+            vec!["foac", "auth", "airtable"],
             vec!["foac", "auth", "axiom"],
             vec!["foac", "auth", "linear"],
             vec!["foac", "auth", "github"],
@@ -731,6 +769,9 @@ mod tests {
             vec!["foac", "auth", "notion", "status"],
             vec!["foac", "auth", "notion", "login"],
             vec!["foac", "auth", "notion", "logout"],
+            vec!["foac", "auth", "airtable", "status"],
+            vec!["foac", "auth", "airtable", "login"],
+            vec!["foac", "auth", "airtable", "logout"],
             vec!["foac", "auth", "jira", "status"],
             vec!["foac", "auth", "jira", "login"],
             vec![
@@ -805,6 +846,7 @@ mod tests {
         // --host is a Sentry, Firecrawl, and Atlassian login flag; clap
         // rejects it elsewhere.
         for provider in [
+            "airtable",
             "fireflies",
             "linear",
             "github",
@@ -847,6 +889,8 @@ mod tests {
             vec!["foac", "provider", "disable", "neon"],
             vec!["foac", "provider", "enable", "notion"],
             vec!["foac", "provider", "disable", "notion"],
+            vec!["foac", "provider", "enable", "airtable"],
+            vec!["foac", "provider", "disable", "airtable"],
             vec!["foac", "provider", "enable", "sentry"],
             vec!["foac", "provider", "disable", "sentry"],
             vec!["foac", "provider", "enable", "slack"],
@@ -987,6 +1031,10 @@ mod tests {
             vec!["foac", "fireflies", "transcript", "get", "--from", "id"],
             vec!["foac", "notion", "page", "get", "--from", "id"],
             vec![
+                "foac", "airtable", "record", "get", "--base", "app1", "--table", "Tasks",
+                "--from", "id",
+            ],
+            vec![
                 "foac", "sentry", "issue", "get", "--org", "acme", "--from", "shortId",
             ],
             vec!["foac", "slack", "user", "get", "--from", "email"],
@@ -1020,7 +1068,7 @@ mod tests {
             .to_string();
         assert!(missing_provider.contains("<PROVIDER>"));
         assert!(missing_provider.contains(
-            "possible values: axiom, confluence, firecrawl, fireflies, github, jira, linear, neon, notion, sentry"
+            "possible values: airtable, axiom, confluence, firecrawl, fireflies, github, jira, linear, neon, notion"
         ));
         assert!(Cli::try_parse_from(["foac", "skill", "print", "nope"]).is_err());
         assert!(matches!(
