@@ -229,6 +229,22 @@ query IssueGet($id: String!) {
       id
       identifier
     }
+    children {
+      nodes {
+        id
+        identifier
+        title
+        state {
+          id
+          name
+          type
+        }
+        assignee {
+          id
+          displayName
+        }
+      }
+    }
     cycle {
       id
       name

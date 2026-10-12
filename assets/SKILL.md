@@ -399,6 +399,9 @@ foac <provider> <resource> <verb> [flags]
   (`--assignee`, `--state`, `--project`, ...) require UUIDs. Look them up first
   with the matching `list` command. Issues are the exception: `get`, `update`,
   and `--issue` flags accept an identifier like `ENG-123` as well.
+- **Linear sub-issues**: `issue get` includes `parent` and `children` (the
+  first 50 sub-issues, with state and assignee). For the full, paginated
+  list, or to filter sub-issues, use `issue list --parent ENG-123`.
 - **Updates are partial**: `update` verbs only change the flags you pass;
   omitted flags keep their value. Fields cannot be cleared to null.
 <!-- /foac-provider:linear -->
@@ -792,6 +795,7 @@ foac axiom annotation create --type deploy --dataset logs --title "v1.2.0" --url
 
 ```sh
 foac linear issue list --team ENG --state "In Progress"
+foac linear issue list --parent ENG-123   # sub-issues of ENG-123
 foac linear issue create --team <TEAM_UUID> --title "Fix login" --description "..."
 foac linear comment create --issue ENG-123 --body "Done, see PR #42"
 # ENG-1 blocks ENG-2 (ENG-2 depends on ENG-1); `issue get` lists them under

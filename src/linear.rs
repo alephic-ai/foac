@@ -240,6 +240,9 @@ pub enum IssueCmd {
         /// Label (UUID or exact name)
         #[arg(long)]
         label: Option<String>,
+        /// Parent issue (UUID or identifier like ENG-123), to list its sub-issues
+        #[arg(long)]
+        parent: Option<String>,
         /// Full-text match on title/description
         #[arg(long)]
         query: Option<String>,
@@ -763,6 +766,7 @@ fn issue_filter(
     state: Option<String>,
     project: Option<String>,
     label: Option<String>,
+    parent: Option<String>,
     query: Option<String>,
 ) -> issue_list::IssueFilter {
     use issue_list::*;
@@ -809,6 +813,14 @@ fn issue_filter(
             ))),
             ..Default::default()
         })),
+        // IssueIDComparator takes a UUID or an identifier like ENG-123 as is.
+        parent: Box::new(parent.map(|v| NullableIssueFilter {
+            id: Some(IssueIDComparator {
+                eq: Some(v),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })),
         searchable_content: query.map(|v| ContentComparator {
             contains: Some(v),
             ..Default::default()
@@ -830,6 +842,7 @@ pub fn run(
                 state,
                 project,
                 label,
+                parent,
                 query,
                 page,
             } => exec::<IssueList>(
@@ -837,7 +850,9 @@ pub fn run(
                 issue_list::Variables {
                     first: Some(page.limit),
                     after: page.after,
-                    filter: Some(issue_filter(team, assignee, state, project, label, query)),
+                    filter: Some(issue_filter(
+                        team, assignee, state, project, label, parent, query,
+                    )),
                 },
             ),
             IssueCmd::Get { id, from } => {
@@ -1590,6 +1605,7 @@ mod tests {
                 None,
                 None,
                 Some("Bug".into()),
+                Some("ENG-123".into()),
                 None,
             )),
         });
@@ -1598,9 +1614,10 @@ mod tests {
         assert_eq!(filter["team"]["key"]["eq"], "ENG");
         assert_eq!(filter["assignee"]["email"]["eq"], "someone@example.com");
         assert_eq!(filter["labels"]["some"]["name"]["eq"], "Bug");
+        assert_eq!(filter["parent"]["id"]["eq"], "ENG-123");
         // Unset optional fields must be omitted entirely, not sent as null:
         // null values in update inputs would wipe data server-side.
-        assert_eq!(filter.as_object().unwrap().len(), 3);
+        assert_eq!(filter.as_object().unwrap().len(), 4);
         assert!(v["variables"].get("after").is_none());
     }
 
