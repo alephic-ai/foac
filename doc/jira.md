@@ -25,6 +25,13 @@ foac jira issue transition ENG-123 --to "In Progress"
 foac jira --help
 ```
 
+Attachments belong to issues: `attachment create --issue ENG-123 --file
+PATH` uploads, `attachment list --issue ENG-123` finds their IDs, and
+`attachment download ID --output PATH` saves one and prints a
+`{path, size, contentType}` summary instead of the bytes.
+`comment create --file PATH` attaches files and references them in the
+comment's wiki markup.
+
 Issues use keys like `ENG-123`; projects accept a key or numeric ID; issue
 types and priorities a name or numeric ID; assignees are account IDs
 (`foac jira user list --query someone@example.com`); `sprint list --board`

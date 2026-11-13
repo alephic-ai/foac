@@ -168,8 +168,9 @@ not duplication.
   summary, so every command still prints exactly one JSON document and an
   agent opens the saved file to read it. A download sends credentials only
   to the provider's own file host (Linear: `uploads.linear.app`), never to an
-  arbitrary URL an attachment points at. `src/file.rs` holds the shared
-  read/save halves; providers keep their own upload protocol.
+  arbitrary URL an attachment points at; on REST, reqwest drops the auth
+  header when a download redirects off the API host. `src/file.rs` holds
+  the shared read/save halves; providers keep their own upload protocol.
 - On Linear mutations, omitted means untouched. Unset optional fields are
   omitted from GraphQL variables (`skip_serializing_none`), never sent as
   `null`, because null wipes the field server-side. There is a test asserting
@@ -224,9 +225,11 @@ not duplication.
   preemptively.
 - Deeper coverage of existing providers (new resources/verbs) follows
   `doc/adding-a-command.md`.
-- Binary transfer exists for Linear files (`file upload|download`, `--file`
-  on `attachment create` and `comment create`); other providers extend it
-  through `src/file.rs` under the same stdout rule. Log streaming is on the
+- Binary transfer exists for Linear files (`file upload|download`) and Jira
+  attachments (`attachment create|download`), plus `--file` on both
+  providers' `comment create`; other providers extend it through
+  `src/file.rs` and `Api::send_form`/`Api::download` under the same stdout
+  rule. Log streaming is on the
   backlog: add it if it can be made explicit and discoverable in the command
   grammar.
 

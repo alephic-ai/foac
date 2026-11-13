@@ -25,7 +25,7 @@ description: Use the foac CLI to interact with GitHub from the shell. Covers rep
 <!-- /foac-provider:github -->
 <!-- foac-provider:jira -->
 name: foac-jira
-description: Use the foac CLI to interact with Jira from the shell. Covers issues, comments, projects, sprints, users, and workflow transitions.
+description: Use the foac CLI to interact with Jira from the shell. Covers issues, comments, attachments (upload and download files and images), projects, sprints, users, and workflow transitions.
 <!-- /foac-provider:jira -->
 <!-- foac-provider:linear -->
 name: foac-linear
@@ -140,8 +140,8 @@ foac <provider> <resource> <verb> [flags]
   channels, contacts, and users.
 <!-- /foac-provider:fireflies -->
 <!-- foac-provider:jira -->
-- `jira`: issues, comments, projects, sprints, users, and workflow
-  transitions.
+- `jira`: issues, comments, attachments (file upload and download),
+  projects, sprints, users, and workflow transitions.
 <!-- /foac-provider:jira -->
 <!-- foac-provider:neon -->
 - `neon`: organizations, projects, branches, databases, roles, compute
@@ -451,6 +451,14 @@ foac <provider> <resource> <verb> [flags]
   `issue transition ENG-123 --to <transition id, transition name, or destination status name>`.
 - **Jira text**: issue descriptions and comments accept mutually exclusive
   `--body` and `--body-file` (plain text or Jira wiki markup).
+- **Jira files**: attachments belong to the issue. `attachment create --issue
+  ENG-123 --file PATH` (repeatable) uploads files and prints the created
+  attachment array. `comment create --file PATH` (repeatable; the body becomes
+  optional) attaches the files to the issue and references them at the end of
+  the comment, images as `!name|thumbnail!`, others as `[^name]`. To read one,
+  find its numeric `id` with `attachment list --issue ENG-123`, then
+  `attachment download ID --output PATH`; stdout gets only
+  `{"path", "size", "contentType"}`, so open the saved file to see it.
 <!-- /foac-provider:jira -->
 <!-- foac-provider:confluence -->
 - **Confluence pagination**: `space`, `page`, and `comment` lists take
@@ -670,8 +678,9 @@ then use `review submit`.
 <!-- foac-provider:jira -->
 ## Jira resources
 
-- Issues: `issue list|get|create|update|transition` and
-  `comment list|create|update|delete`.
+- Issues: `issue list|get|create|update|transition`,
+  `comment list|create|update|delete`, and
+  `attachment list|get|create|download|delete`.
 - Structure: `project list|get` and `sprint list|get` (sprints need
   `--board`).
 - Directory and workflow: `user list|get` and `transition list`.
@@ -838,6 +847,9 @@ foac jira issue list --jql 'project = ENG AND statusCategory != Done'
 foac jira issue create --project ENG --type Task --summary "Fix login" --body "Steps..."
 foac jira issue transition ENG-123 --to "In Progress"
 foac jira comment create --issue ENG-123 --body "Done, see PR #42"
+foac jira comment create --issue ENG-123 --body "Repro:" --file ./shot.png
+foac jira attachment list --issue ENG-123
+foac jira attachment download 10001 --output ./shot.png
 ```
 
 <!-- /foac-provider:jira -->

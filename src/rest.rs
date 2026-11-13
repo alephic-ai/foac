@@ -74,6 +74,45 @@ impl Api {
         query: &[(&'static str, String)],
         body: Option<Value>,
     ) -> Result<ApiResponse, Box<dyn std::error::Error>> {
+        let mut request = self.request(method, segments, query)?;
+        if let Some(body) = body {
+            request = request.json(&body);
+        }
+        Self::finish(request.send()?)
+    }
+
+    /// POST a multipart form (file uploads) and parse the JSON response.
+    pub(crate) fn send_form(
+        &self,
+        segments: &[String],
+        headers: &[(&'static str, &str)],
+        form: reqwest::blocking::multipart::Form,
+    ) -> Result<ApiResponse, Box<dyn std::error::Error>> {
+        let mut request = self.request(reqwest::Method::POST, segments, &[])?;
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        Self::finish(request.multipart(form).send()?)
+    }
+
+    /// GET a binary resource and save it to `output`; returns the summary
+    /// from `file::save`. reqwest drops the auth header if a redirect leaves
+    /// the API host, so a signed storage URL never sees the credentials.
+    pub(crate) fn download(
+        &self,
+        segments: &[String],
+        output: &std::path::Path,
+    ) -> Result<Value, Box<dyn std::error::Error>> {
+        let response = self.request(reqwest::Method::GET, segments, &[])?.send()?;
+        crate::file::save(response, output)
+    }
+
+    fn request(
+        &self,
+        method: reqwest::Method,
+        segments: &[String],
+        query: &[(&'static str, String)],
+    ) -> Result<reqwest::blocking::RequestBuilder, Box<dyn std::error::Error>> {
         let mut request = self
             .auth
             .apply(self.client.request(method, self.url(segments)?))
@@ -82,10 +121,12 @@ impl Api {
         for (name, value) in &self.headers {
             request = request.header(*name, value.as_str());
         }
-        if let Some(body) = body {
-            request = request.json(&body);
-        }
-        let response = request.send()?;
+        Ok(request)
+    }
+
+    fn finish(
+        response: reqwest::blocking::Response,
+    ) -> Result<ApiResponse, Box<dyn std::error::Error>> {
         let status = response.status();
         let link = response
             .headers()

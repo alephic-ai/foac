@@ -119,7 +119,12 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
 - Jira uses REST API v2 (plain-text bodies; v3 requires Atlassian Document
   Format) plus the Agile 1.0 API for sprints, authenticated with HTTP Basic
   (email + API token) against the tenant host. Issue search paginates with
-  `nextPageToken`; other lists use `startAt`/`maxResults`.
+  `nextPageToken`; other lists use `startAt`/`maxResults`. Attachments
+  upload as one multipart POST to `/issue/{key}/attachments` (field `file`,
+  repeated per file) with `X-Atlassian-Token: no-check`, which Jira requires
+  to accept the upload; `attachment list` reads the issue's `attachment`
+  field; `attachment download` GETs `/attachment/content/{id}`, which
+  redirects to Atlassian's media store.
 - Jira and Confluence share the Atlassian vendor, and `src/atlassian.rs`
   holds everything that is the vendor's rather than either provider's: the
   host/email/API-token triple stored under vendor-level `atlassian_*` keys,
