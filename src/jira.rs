@@ -3,6 +3,8 @@
 //! for sprints. Auth is HTTP Basic: account email + API token against the
 //! tenant host, shared at the Atlassian vendor level with Confluence.
 
+use std::path::PathBuf;
+
 use clap::{Args, Subcommand};
 use reqwest::Method;
 use serde_json::{Map, Value, json};
@@ -31,6 +33,9 @@ enum Resource {
     /// Issue comments
     #[command(subcommand)]
     Comment(CommentCmd),
+    /// Files attached to issues: upload, list, download, delete
+    #[command(subcommand)]
+    Attachment(AttachmentCmd),
     /// Projects
     #[command(subcommand)]
     Project(ProjectCmd),
@@ -170,6 +175,10 @@ enum CommentCmd {
         issue: String,
         #[command(flatten)]
         body: BodyInput,
+        /// Local file to attach to the issue and reference at the end of the
+        /// comment (images render inline), repeatable
+        #[arg(long = "file", value_name = "PATH")]
+        files: Vec<PathBuf>,
     },
     /// Update a comment
     #[command(after_long_help = outdoc::rest_obj("raw Jira comment object", "id (numeric)"))]
@@ -189,6 +198,54 @@ enum CommentCmd {
         #[arg(long)]
         issue: String,
     },
+}
+
+#[derive(Subcommand)]
+enum AttachmentCmd {
+    /// List an issue's attachments
+    #[command(after_long_help = outdoc::rest_list(
+        "raw Jira attachment objects (the issue's attachment field)",
+        &["id"],
+        &outdoc::SINGLE_PAGE,
+    ))]
+    List {
+        /// Issue key like ENG-123
+        #[arg(long)]
+        issue: String,
+    },
+    /// Get an attachment's metadata by numeric ID
+    #[command(after_long_help = outdoc::rest_obj(
+        "raw Jira attachment object (metadata; download fetches the bytes)",
+        "id (numeric)",
+    ))]
+    Get {
+        id: Option<String>,
+        #[command(flatten)]
+        from: FromFlag,
+    },
+    /// Upload local files and attach them to an issue
+    #[command(after_long_help = outdoc::lines(&[
+        "[<attachment>, ...]: the raw Jira array of created attachment objects, one per --file",
+        "Primary identifier: [].id (numeric); reference one in wiki markup as !filename! (image) or [^filename]",
+    ]))]
+    Create {
+        /// Issue key like ENG-123
+        #[arg(long)]
+        issue: String,
+        /// Local file to upload, repeatable
+        #[arg(long = "file", value_name = "PATH", required = true)]
+        files: Vec<PathBuf>,
+    },
+    /// Download an attachment's file by numeric ID
+    #[command(after_long_help = outdoc::download())]
+    Download {
+        id: String,
+        #[command(flatten)]
+        output: crate::file::OutputPath,
+    },
+    /// Delete an attachment
+    #[command(after_long_help = outdoc::rest_delete())]
+    Delete { id: String },
 }
 
 #[derive(Subcommand)]
@@ -314,6 +371,7 @@ pub fn run(
     match command {
         Resource::Issue(cmd) => run_issue(&api, cmd),
         Resource::Comment(cmd) => run_comment(&api, cmd),
+        Resource::Attachment(cmd) => run_attachment(&api, cmd),
         Resource::Project(cmd) => run_project(&api, cmd),
         Resource::Sprint(cmd) => run_sprint(&api, cmd),
         Resource::User(cmd) => run_user(&api, cmd),
@@ -421,12 +479,23 @@ fn run_comment(api: &Api, cmd: CommentCmd) -> Result<(), Box<dyn std::error::Err
             page,
             Some("comments"),
         ),
-        CommentCmd::Create { issue, body } => api.print(
-            Method::POST,
-            path!["issue", issue, "comment"],
-            Vec::new(),
-            Some(json!({ "body": body.required()? })),
-        ),
+        CommentCmd::Create { issue, body, files } => {
+            let body = body.read()?;
+            if body.is_none() && files.is_empty() {
+                return Err("one of --body, --body-file, or --file is required".into());
+            }
+            let mut parts: Vec<String> = body.into_iter().collect();
+            if !files.is_empty() {
+                let attached = attach(api, &issue, &files)?;
+                parts.extend(attached.iter().map(attachment_markup));
+            }
+            api.print(
+                Method::POST,
+                path!["issue", issue, "comment"],
+                Vec::new(),
+                Some(json!({ "body": parts.join("\n\n") })),
+            )
+        }
         CommentCmd::Update { id, issue, body } => api.print(
             Method::PUT,
             path!["issue", issue, "comment", id],
@@ -439,6 +508,84 @@ fn run_comment(api: &Api, cmd: CommentCmd) -> Result<(), Box<dyn std::error::Err
             Vec::new(),
             None,
         ),
+    }
+}
+
+fn run_attachment(api: &Api, cmd: AttachmentCmd) -> Result<(), Box<dyn std::error::Error>> {
+    match cmd {
+        AttachmentCmd::List { issue } => {
+            let body = api.get_body(
+                path!["issue", issue],
+                vec![("fields", "attachment".to_owned())],
+            )?;
+            let items = body["fields"]["attachment"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            crate::output::print(
+                &rest::wrap_list(items, json!({ "hasNextPage": false })),
+                api.format,
+            );
+            Ok(())
+        }
+        AttachmentCmd::Get { id, from } => pipe::run_get(id, from, api.format, |id| {
+            api.get_body(path!["attachment", id], Vec::new())
+        }),
+        AttachmentCmd::Create { issue, files } => {
+            crate::output::print(&Value::Array(attach(api, &issue, &files)?), api.format);
+            Ok(())
+        }
+        AttachmentCmd::Download { id, output } => {
+            let summary = api.download(&path!["attachment", "content", id], &output.output)?;
+            crate::output::print(&summary, api.format);
+            Ok(())
+        }
+        AttachmentCmd::Delete { id } => {
+            api.print(Method::DELETE, path!["attachment", id], Vec::new(), None)
+        }
+    }
+}
+
+/// Upload files to an issue in one multipart request; returns Jira's array
+/// of created attachment objects. Jira rejects the upload as a CSRF attempt
+/// without `X-Atlassian-Token: no-check`.
+fn attach(
+    api: &Api,
+    issue: &str,
+    files: &[PathBuf],
+) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
+    use reqwest::blocking::multipart::{Form, Part};
+    let mut form = Form::new();
+    for path in files {
+        let file = crate::file::Upload::read(path)?;
+        let part = Part::bytes(file.bytes)
+            .file_name(file.filename)
+            .mime_str(&file.content_type)?;
+        form = form.part("file", part);
+    }
+    let response = api.send_form(
+        &path!["issue", issue, "attachments"],
+        &[("X-Atlassian-Token", "no-check")],
+        form,
+    )?;
+    response
+        .body
+        .as_array()
+        .cloned()
+        .ok_or_else(|| format!("Jira returned no attachment array: {}", response.body).into())
+}
+
+/// Wiki markup referencing an attachment by file name, the way Jira's
+/// editor does: images as an inline thumbnail, anything else as a link.
+fn attachment_markup(attachment: &Value) -> String {
+    let name = attachment["filename"].as_str().unwrap_or_default();
+    let image = attachment["mimeType"]
+        .as_str()
+        .is_some_and(|mime| mime.starts_with("image/"));
+    if image {
+        format!("!{name}|thumbnail!")
+    } else {
+        format!("[^{name}]")
     }
 }
 
@@ -742,6 +889,61 @@ mod tests {
                 "assignee": { "accountId": "5b10a2844c20165700ede21g" },
                 "labels": ["auth"],
             }})
+        );
+    }
+
+    #[test]
+    fn attachment_create_posts_multipart_with_the_csrf_header() {
+        let dir = tempfile::tempdir().unwrap();
+        let png = dir.path().join("shot.png");
+        std::fs::write(&png, b"png-bytes").unwrap();
+        let (api, request_rx, server) = test_api(
+            "200 OK",
+            r#"[{"id":"10001","filename":"shot.png","mimeType":"image/png"}]"#,
+        );
+        let created = attach(&api, "ENG-1", &[png]).unwrap();
+        server.join().unwrap();
+        assert_eq!(created[0]["id"], "10001");
+
+        let request = request_rx.recv().unwrap();
+        let lower = request.to_ascii_lowercase();
+        assert!(request.starts_with("POST /rest/api/2/issue/ENG-1/attachments "));
+        assert!(lower.contains("x-atlassian-token: no-check"));
+        assert!(lower.contains("content-type: multipart/form-data; boundary="));
+        assert!(lower.contains("authorization: basic "));
+        assert!(request.contains(r#"name="file"; filename="shot.png""#));
+        assert!(lower.contains("content-type: image/png"));
+        assert!(request.contains("png-bytes"));
+    }
+
+    #[test]
+    fn attachment_download_saves_the_content_endpoint_body() {
+        let (api, request_rx, server) = test_api("200 OK", "file-bytes");
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("out.bin");
+        let summary = api
+            .download(&path!["attachment", "content", "10001"], &output)
+            .unwrap();
+        server.join().unwrap();
+        assert!(
+            request_rx
+                .recv()
+                .unwrap()
+                .starts_with("GET /rest/api/2/attachment/content/10001 ")
+        );
+        assert_eq!(std::fs::read(&output).unwrap(), b"file-bytes");
+        assert_eq!(summary["size"], 10);
+    }
+
+    #[test]
+    fn attachment_markup_inlines_images_and_links_other_files() {
+        assert_eq!(
+            attachment_markup(&json!({ "filename": "shot.png", "mimeType": "image/png" })),
+            "!shot.png|thumbnail!"
+        );
+        assert_eq!(
+            attachment_markup(&json!({ "filename": "trace.log", "mimeType": "text/plain" })),
+            "[^trace.log]"
         );
     }
 
