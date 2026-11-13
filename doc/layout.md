@@ -22,6 +22,14 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   identity string. Version, update, and skill output bypass the printer.
 - For Linear, `list` filter flags accept a UUID or a human name (see
   `eq_filter`), while `create`/`update` flags require UUIDs.
+- Linear uploads take two requests: the `fileUpload` mutation reserves a
+  signed slot (`uploadUrl` plus required `headers`), then the bytes are PUT
+  there with `Content-Type` and `Cache-Control`. foac drops the spent
+  `uploadUrl` and `headers` from the printed data, since they would let
+  anyone holding them overwrite the file until they expire. Files are served
+  from `uploads.linear.app` and need the API key even when the API hands out
+  a `?signature=` URL; `file download` refuses any other host so the key
+  never leaves Linear.
 - Every provider verb carries
   `#[command(after_long_help = outdoc::...)]`, rendering an Output section in
   `--help` (`-h` stays compact) from the shape-family templates in

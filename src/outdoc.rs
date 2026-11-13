@@ -101,6 +101,15 @@ pub(crate) fn fireflies(key: &str, id: &str) -> String {
     }
 }
 
+/// A download verb: the bytes go to `--output`, stdout gets foac's summary.
+pub(crate) fn download() -> String {
+    section(&[
+        r#"{"path": "/absolute/path/to/file", "size": 1234, "contentType": "image/png"}"#,
+        "The file's bytes are written to --output; stdout carries only this summary",
+        "The summary is foac's, not provider data; contentType is null when the server sent none",
+    ])
+}
+
 /// How one REST provider's `pageInfo` looks and how to fetch the next page.
 pub(crate) struct Pagination {
     example: &'static str,

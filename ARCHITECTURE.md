@@ -53,6 +53,7 @@ machine-managed credentials in `~/.config/foac/credentials.json`.
 src/
 ├── main.rs      # CLI root: dispatch, hiding inactive providers, skill render/install
 ├── linear.rs    # Linear provider: GraphQL via graphql_client codegen
+├── file.rs      # Binary transfer: local files read for upload, downloads saved to --output
 ├── fireflies.rs # Fireflies provider: GraphQL codegen like Linear, bare-array lists wrapped as {items, pageInfo}
 ├── github.rs    # GitHub provider: REST passthrough on rest.rs
 ├── jira.rs      # Jira provider: REST passthrough on rest.rs, Atlassian Basic auth
@@ -162,6 +163,13 @@ not duplication.
 - Commands never print success output. They return response JSON to their
   `run`, which prints once through `output.rs`. Table rendering is a heuristic
   over JSON shapes in one place, never per-command formatting.
+- Files never touch stdout. Uploads take a local path; downloads write to a
+  required `--output` and print foac's own `{path, size, contentType}`
+  summary, so every command still prints exactly one JSON document and an
+  agent opens the saved file to read it. A download sends credentials only
+  to the provider's own file host (Linear: `uploads.linear.app`), never to an
+  arbitrary URL an attachment points at. `src/file.rs` holds the shared
+  read/save halves; providers keep their own upload protocol.
 - On Linear mutations, omitted means untouched. Unset optional fields are
   omitted from GraphQL variables (`skip_serializing_none`), never sent as
   `null`, because null wipes the field server-side. There is a test asserting
@@ -216,9 +224,11 @@ not duplication.
   preemptively.
 - Deeper coverage of existing providers (new resources/verbs) follows
   `doc/adding-a-command.md`.
-- Binary transfer and log streaming are on the backlog. Add them if they can
-  be made explicit and discoverable in the command grammar (today's commands
-  are JSON metadata only).
+- Binary transfer exists for Linear files (`file upload|download`, `--file`
+  on `attachment create` and `comment create`); other providers extend it
+  through `src/file.rs` under the same stdout rule. Log streaming is on the
+  backlog: add it if it can be made explicit and discoverable in the command
+  grammar.
 
 ## Development
 

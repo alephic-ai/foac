@@ -264,6 +264,15 @@ query IssueGet($id: String!) {
         ...RelationFields
       }
     }
+    attachments {
+      nodes {
+        id
+        title
+        subtitle
+        url
+        createdAt
+      }
+    }
   }
 }
 
@@ -674,6 +683,23 @@ mutation AttachmentCreate($input: AttachmentCreateInput!) {
 mutation AttachmentDelete($id: String!) {
   attachmentDelete(id: $id) {
     success
+  }
+}
+
+mutation FileUpload($contentType: String!, $filename: String!, $size: Int!) {
+  fileUpload(contentType: $contentType, filename: $filename, size: $size) {
+    success
+    uploadFile {
+      assetUrl
+      filename
+      contentType
+      size
+      uploadUrl
+      headers {
+        key
+        value
+      }
+    }
   }
 }
 

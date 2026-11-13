@@ -13,6 +13,13 @@ foac linear issue create --team <TEAM_UUID> --title "Fix the flux capacitor"
 foac linear --help
 ```
 
+Files go both ways. `attachment create --file` and `comment create --file`
+upload a local file and attach or link it; `file upload` returns the
+`assetUrl` to embed in any Markdown body. `file download URL --output PATH`
+saves a file hosted on `uploads.linear.app` (images in descriptions and
+comments, uploaded attachments) and prints a `{path, size, contentType}`
+summary instead of the bytes.
+
 ## Entity relationships
 
 Entities exposed by the CLI and how they relate. A status update and a

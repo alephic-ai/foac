@@ -29,7 +29,7 @@ description: Use the foac CLI to interact with Jira from the shell. Covers issue
 <!-- /foac-provider:jira -->
 <!-- foac-provider:linear -->
 name: foac-linear
-description: Use the foac CLI to interact with Linear from the shell. Covers issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, attachments, and issue relations (blocking dependencies).
+description: Use the foac CLI to interact with Linear from the shell. Covers issues, projects, teams, users, cycles, labels, workflow states, documents, initiatives, milestones, status updates, attachments, file uploads and downloads (images and files on issues and comments), and issue relations (blocking dependencies).
 <!-- /foac-provider:linear -->
 <!-- foac-provider:neon -->
 name: foac-neon
@@ -121,8 +121,8 @@ foac <provider> <resource> <verb> [flags]
 <!-- /foac-provider:axiom -->
 <!-- foac-provider:linear -->
 - `linear`: issues, projects, teams, users, cycles, labels, workflow states,
-  documents, initiatives, milestones, status updates, attachments, and issue
-  relations (blocking dependencies).
+  documents, initiatives, milestones, status updates, attachments, file
+  uploads and downloads, and issue relations (blocking dependencies).
 <!-- /foac-provider:linear -->
 <!-- foac-provider:github -->
 - `github`: repositories, issues, pull requests, reviews, Actions, branches,
@@ -402,6 +402,18 @@ foac <provider> <resource> <verb> [flags]
 - **Linear sub-issues**: `issue get` includes `parent` and `children` (the
   first 50 sub-issues, with state and assignee). For the full, paginated
   list, or to filter sub-issues, use `issue list --parent ENG-123`.
+- **Linear files**: `attachment create --issue ENG-123 --file PATH` uploads a
+  local file and attaches it to the issue (`--title` defaults to the file
+  name). `comment create --file PATH` (repeatable; `--body` becomes optional)
+  uploads files and links them at the end of the body, images inline.
+  `file upload PATH` only uploads and returns
+  `fileUpload.uploadFile.assetUrl` to embed yourself (`![name](assetUrl)`).
+- **Reading Linear files**: images and files in descriptions and comment
+  bodies, and the `url` of uploaded attachments (`issue get` lists
+  `attachments`), live on `https://uploads.linear.app/...` and need the API
+  key. `file download URL --output PATH` saves one and prints only
+  `{"path", "size", "contentType"}`; open the saved file to see it. Other
+  attachment URLs (GitHub, Slack, ...) are plain links, not Linear files.
 - **Updates are partial**: `update` verbs only change the flags you pass;
   omitted flags keep their value. Fields cannot be cleared to null.
 <!-- /foac-provider:linear -->
@@ -798,6 +810,9 @@ foac linear issue list --team ENG --state "In Progress"
 foac linear issue list --parent ENG-123   # sub-issues of ENG-123
 foac linear issue create --team <TEAM_UUID> --title "Fix login" --description "..."
 foac linear comment create --issue ENG-123 --body "Done, see PR #42"
+foac linear comment create --issue ENG-123 --body "Repro:" --file ./shot.png
+foac linear attachment create --issue ENG-123 --file ./trace.log
+foac linear file download "https://uploads.linear.app/..." --output ./shot.png
 # ENG-1 blocks ENG-2 (ENG-2 depends on ENG-1); `issue get` lists them under
 # relations (outgoing) and inverseRelations (incoming, e.g. blocked by)
 foac linear relation create --issue ENG-1 --type blocks --related ENG-2
