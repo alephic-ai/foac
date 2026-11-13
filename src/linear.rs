@@ -2,6 +2,8 @@ use crate::outdoc;
 use graphql_client::GraphQLQuery;
 
 const API_URL: &str = "https://api.linear.app/graphql";
+/// Where Linear serves uploaded files; downloads send the API key only here.
+const UPLOADS_HOST: &str = "uploads.linear.app";
 
 // Linear custom scalars, mapped to plain strings/JSON since we never compute on them.
 type DateTime = String;
@@ -80,6 +82,7 @@ linear_query!(
     AttachmentGet,
     AttachmentCreate,
     AttachmentDelete,
+    FileUpload,
     RelationDelete,
 );
 
@@ -166,9 +169,12 @@ pub enum Cmd {
     /// Status updates on projects or initiatives
     #[command(subcommand)]
     StatusUpdate(StatusUpdateCmd),
-    /// Issue attachments (links)
+    /// Issue attachments (links or uploaded files)
     #[command(subcommand)]
     Attachment(AttachmentCmd),
+    /// Files in Linear's storage: upload to embed in Markdown, or download
+    #[command(subcommand)]
+    File(FileCmd),
     /// Issue relations (blocks, duplicate, related, similar)
     #[command(subcommand)]
     Relation(RelationCmd),
@@ -297,8 +303,12 @@ pub enum CommentCmd {
         #[arg(long)]
         issue: String,
         /// Markdown body
-        #[arg(long)]
-        body: String,
+        #[arg(long, required_unless_present = "files")]
+        body: Option<String>,
+        /// Local file to upload and link at the end of the body (images
+        /// render inline), repeatable
+        #[arg(long = "file", value_name = "PATH")]
+        files: Vec<std::path::PathBuf>,
         /// Parent comment UUID, to reply in a thread
         #[arg(long)]
         parent: Option<String>,
@@ -721,22 +731,52 @@ pub enum AttachmentCmd {
         #[command(flatten)]
         from: crate::pipe::FromFlag,
     },
-    /// Attach a URL to an issue
+    /// Attach a URL, or upload and attach a local file, to an issue
     #[command(after_long_help = outdoc::linear_mutation("attachmentCreate", "attachment"))]
     Create {
         /// Issue UUID or identifier like ENG-123
         #[arg(long)]
         issue: String,
-        #[arg(long)]
-        url: String,
-        #[arg(long)]
-        title: String,
+        /// URL to attach
+        #[arg(long, required_unless_present = "file", conflicts_with = "file")]
+        url: Option<String>,
+        /// Local file to upload and attach
+        #[arg(long, value_name = "PATH")]
+        file: Option<std::path::PathBuf>,
+        /// Defaults to the file name with --file
+        #[arg(long, required_unless_present = "file")]
+        title: Option<String>,
         #[arg(long)]
         subtitle: Option<String>,
     },
     /// Delete an attachment
     #[command(after_long_help = outdoc::linear_delete("attachmentDelete"))]
     Delete { id: String },
+}
+
+#[derive(clap::Subcommand)]
+pub enum FileCmd {
+    /// Upload a local file; put the returned assetUrl in a Markdown body
+    #[command(after_long_help = outdoc::lines(&[
+        r#"{"fileUpload": {"success": true, "uploadFile": {"assetUrl": "https://uploads.linear.app/...", "filename": "...", "contentType": "...", "size": 1234}}}"#,
+        "Primary identifier: fileUpload.uploadFile.assetUrl; embed it as ![name](assetUrl) for images, [name](assetUrl) otherwise",
+        "Raw Linear GraphQL data, minus the spent uploadUrl and headers foac already used",
+    ]))]
+    Upload {
+        /// Local file to upload
+        path: std::path::PathBuf,
+    },
+    /// Download a Linear-hosted file (https://uploads.linear.app/...)
+    ///
+    /// Use it for images and files linked in issue descriptions and comments,
+    /// and for the url of an attachment created with --file.
+    #[command(after_long_help = outdoc::download())]
+    Download {
+        /// File URL on uploads.linear.app
+        url: String,
+        #[command(flatten)]
+        output: crate::file::OutputPath,
+    },
 }
 
 #[derive(clap::Subcommand)]
@@ -919,9 +959,11 @@ pub fn run(
             CommentCmd::Create {
                 issue,
                 body,
+                files,
                 parent,
             } => {
                 use comment_create::*;
+                let body = with_file_links(instance, body, files)?;
                 exec::<CommentCreate>(
                     instance,
                     Variables {
@@ -1469,10 +1511,21 @@ pub fn run(
             AttachmentCmd::Create {
                 issue,
                 url,
+                file,
                 title,
                 subtitle,
             } => {
                 use attachment_create::*;
+                let (url, title) = match (url, file) {
+                    (Some(url), None) => (url, title),
+                    (None, Some(path)) => {
+                        let file = crate::file::Upload::read(&path)?;
+                        let title = title.unwrap_or_else(|| file.filename.clone());
+                        (asset_url(&upload(instance, file)?)?, Some(title))
+                    }
+                    _ => unreachable!("clap enforces --url xor --file"),
+                };
+                let title = title.expect("clap requires --title without --file");
                 exec::<AttachmentCreate>(
                     instance,
                     Variables {
@@ -1488,6 +1541,17 @@ pub fn run(
             }
             AttachmentCmd::Delete { id } => {
                 exec::<AttachmentDelete>(instance, attachment_delete::Variables { id })
+            }
+        },
+        Cmd::File(cmd) => match cmd {
+            FileCmd::Upload { path } => upload(instance, crate::file::Upload::read(&path)?),
+            FileCmd::Download { url, output } => {
+                let url = linear_upload_url(&url)?;
+                let response = reqwest::blocking::Client::new()
+                    .get(url)
+                    .header("Authorization", crate::auth::linear_token(instance)?)
+                    .send()?;
+                crate::file::save(response, &output.output)
             }
         },
         Cmd::Relation(cmd) => match cmd {
@@ -1548,6 +1612,117 @@ fn auth_identity_at(
         return Err(crate::auth::ValidationError::Failed(body.to_string()));
     }
     Ok(body["data"].clone())
+}
+
+/// Upload a file to Linear's storage in its two steps: `fileUpload` reserves
+/// a signed slot, then the bytes are PUT to it. Returns the `fileUpload` data
+/// minus the spent `uploadUrl` and `headers`, which are single-use and would
+/// let anyone holding them overwrite the file until they expire.
+fn upload(
+    instance: &str,
+    file: crate::file::Upload,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let mut data = exec::<FileUpload>(
+        instance,
+        file_upload::Variables {
+            content_type: file.content_type.clone(),
+            filename: file.filename.clone(),
+            size: i64::try_from(file.bytes.len())?,
+        },
+    )?;
+    if !data["fileUpload"]["uploadFile"].is_object() {
+        return Err(format!("Linear could not prepare an upload: {data}").into());
+    }
+    let slot = data["fileUpload"]["uploadFile"]
+        .as_object_mut()
+        .expect("checked above");
+    let upload_url = slot.remove("uploadUrl");
+    let headers = slot.remove("headers").unwrap_or_default();
+    let upload_url = upload_url
+        .as_ref()
+        .and_then(serde_json::Value::as_str)
+        .ok_or("Linear's upload slot has no uploadUrl")?;
+    put_upload(upload_url, &headers, file)?;
+    Ok(data)
+}
+
+/// PUT the file's bytes to the signed URL with the headers Linear requires.
+fn put_upload(
+    url: &str,
+    headers: &serde_json::Value,
+    file: crate::file::Upload,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut request = reqwest::blocking::Client::new()
+        .put(url)
+        .header(reqwest::header::CONTENT_TYPE, &file.content_type)
+        .header(reqwest::header::CACHE_CONTROL, "public, max-age=31536000");
+    for header in headers.as_array().into_iter().flatten() {
+        if let (Some(key), Some(value)) = (header["key"].as_str(), header["value"].as_str()) {
+            request = request.header(key, value);
+        }
+    }
+    let response = request.body(file.bytes).send()?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!(
+            "uploading {} failed with HTTP {status}: {}",
+            file.filename,
+            response.text()?
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn asset_url(data: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
+    data["fileUpload"]["uploadFile"]["assetUrl"]
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| format!("Linear returned no assetUrl: {data}").into())
+}
+
+/// Upload each file and append a Markdown link to it, one paragraph each,
+/// the way Linear's editor embeds files: images as `![name](url)` so they
+/// render inline, anything else as `[name](url)`.
+fn with_file_links(
+    instance: &str,
+    body: Option<String>,
+    files: Vec<std::path::PathBuf>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut parts: Vec<String> = body.into_iter().collect();
+    for path in files {
+        let file = crate::file::Upload::read(&path)?;
+        let (name, image) = (file.filename.clone(), file.is_image());
+        parts.push(file_link(
+            &name,
+            image,
+            &asset_url(&upload(instance, file)?)?,
+        ));
+    }
+    Ok(parts.join("\n\n"))
+}
+
+fn file_link(name: &str, image: bool, url: &str) -> String {
+    let name = name
+        .replace('\\', "\\\\")
+        .replace('[', "\\[")
+        .replace(']', "\\]");
+    format!("{}[{name}]({url})", if image { "!" } else { "" })
+}
+
+/// Accept only https URLs on Linear's upload host: downloads carry the API
+/// key, which must never reach a third-party URL an attachment points at.
+fn linear_upload_url(url: &str) -> Result<reqwest::Url, Box<dyn std::error::Error>> {
+    let parsed = reqwest::Url::parse(url).map_err(|error| format!("{url}: {error}"))?;
+    if parsed.scheme() == "https" && parsed.host_str() == Some(UPLOADS_HOST) {
+        Ok(parsed)
+    } else {
+        Err(format!(
+            "{url} is not a Linear-hosted file; only https://{UPLOADS_HOST}/... URLs \
+             can be downloaded with the Linear API key, fetch other URLs directly"
+        )
+        .into())
+    }
 }
 
 /// Parse a CLI string into a generated GraphQL enum (e.g. "onTrack") via serde.
@@ -1660,6 +1835,66 @@ mod tests {
         let error = auth_identity_at("token", &url).unwrap_err();
         server.join().unwrap();
         assert!(matches!(error, crate::auth::ValidationError::Failed(_)));
+    }
+
+    #[test]
+    fn file_links_embed_images_and_escape_names() {
+        assert_eq!(
+            file_link("shot.png", true, "https://uploads.linear.app/a/b"),
+            "![shot.png](https://uploads.linear.app/a/b)"
+        );
+        assert_eq!(
+            file_link("log [1].txt", false, "https://uploads.linear.app/c"),
+            "[log \\[1\\].txt](https://uploads.linear.app/c)"
+        );
+    }
+
+    #[test]
+    fn downloads_send_the_key_only_to_linear_uploads() {
+        assert!(linear_upload_url("https://uploads.linear.app/org/file").is_ok());
+        for url in [
+            "http://uploads.linear.app/org/file",
+            "https://uploads.linear.app.evil.example/file",
+            "https://github.com/org/repo/pull/1",
+            "not a url",
+        ] {
+            assert!(linear_upload_url(url).is_err(), "{url} must be refused");
+        }
+    }
+
+    #[test]
+    fn put_upload_sends_bytes_with_linear_headers() {
+        let (url, request_rx, server) = test_api("200 OK", "");
+        let file = crate::file::Upload {
+            filename: "shot.png".into(),
+            content_type: "image/png".into(),
+            bytes: b"png-bytes".to_vec(),
+        };
+        let headers = serde_json::json!([
+            {"key": "x-goog-content-length-range", "value": "9,9"},
+            {"key": "Content-Disposition", "value": "attachment; filename=\"shot.png\""},
+        ]);
+        put_upload(&url, &headers, file).unwrap();
+        server.join().unwrap();
+        let request = request_rx.recv().unwrap();
+        let lower = request.to_ascii_lowercase();
+        assert!(request.starts_with("PUT / "));
+        assert!(lower.contains("content-type: image/png"));
+        assert!(lower.contains("cache-control: public, max-age=31536000"));
+        assert!(lower.contains("x-goog-content-length-range: 9,9"));
+        assert!(lower.contains("content-disposition: attachment; filename=\"shot.png\""));
+        assert!(!lower.contains("authorization"));
+        assert!(request.ends_with("\r\n\r\npng-bytes"));
+
+        let (url, _, server) = test_api("403 Forbidden", "denied");
+        let file = crate::file::Upload {
+            filename: "shot.png".into(),
+            content_type: "image/png".into(),
+            bytes: Vec::new(),
+        };
+        let error = put_upload(&url, &serde_json::json!([]), file).unwrap_err();
+        server.join().unwrap();
+        assert!(error.to_string().contains("403"));
     }
 
     fn test_api(
