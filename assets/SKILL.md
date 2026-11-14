@@ -414,6 +414,9 @@ foac <provider> <resource> <verb> [flags]
   key. `file download URL --output PATH` saves one and prints only
   `{"path", "size", "contentType"}`; open the saved file to see it. Other
   attachment URLs (GitHub, Slack, ...) are plain links, not Linear files.
+- **Linear issue labels**: on `issue update`, `--label` replaces the whole
+  label list; `--remove-label UUID` (repeatable) takes just those labels off
+  and keeps the rest. The two cannot be combined.
 - **Updates are partial**: `update` verbs only change the flags you pass;
   omitted flags keep their value. Fields cannot be cleared to null.
 <!-- /foac-provider:linear -->
@@ -818,6 +821,7 @@ foac axiom annotation create --type deploy --dataset logs --title "v1.2.0" --url
 foac linear issue list --team ENG --state "In Progress"
 foac linear issue list --parent ENG-123   # sub-issues of ENG-123
 foac linear issue create --team <TEAM_UUID> --title "Fix login" --description "..."
+foac linear issue update ENG-123 --remove-label <LABEL_UUID>
 foac linear comment create --issue ENG-123 --body "Done, see PR #42"
 foac linear comment create --issue ENG-123 --body "Repro:" --file ./shot.png
 foac linear attachment create --issue ENG-123 --file ./trace.log

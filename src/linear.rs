@@ -212,7 +212,7 @@ pub struct IssueOpts {
     /// Project UUID
     #[arg(long)]
     project: Option<String>,
-    /// Label UUID, repeatable; on update this replaces all labels
+    /// Label UUID, repeatable; on update this replaces all labels (see --remove-label)
     #[arg(long = "label")]
     labels: Option<Vec<String>>,
     /// Due date, YYYY-MM-DD
@@ -282,6 +282,9 @@ pub enum IssueCmd {
         title: Option<String>,
         #[command(flatten)]
         opts: IssueOpts,
+        /// Label UUID to take off the issue, repeatable; other labels are kept
+        #[arg(long = "remove-label", conflicts_with = "labels")]
+        remove_labels: Option<Vec<String>>,
     },
 }
 
@@ -923,7 +926,12 @@ pub fn run(
                     },
                 )
             }
-            IssueCmd::Update { id, title, opts } => {
+            IssueCmd::Update {
+                id,
+                title,
+                opts,
+                remove_labels,
+            } => {
                 use issue_update::*;
                 exec::<IssueUpdate>(
                     instance,
@@ -938,6 +946,7 @@ pub fn run(
                             parent_id: opts.parent,
                             project_id: opts.project,
                             label_ids: opts.labels,
+                            removed_label_ids: remove_labels,
                             due_date: opts.due_date,
                             estimate: opts.estimate,
                             cycle_id: opts.cycle,
@@ -1794,6 +1803,41 @@ mod tests {
         // null values in update inputs would wipe data server-side.
         assert_eq!(filter.as_object().unwrap().len(), 4);
         assert!(v["variables"].get("after").is_none());
+    }
+
+    #[test]
+    fn remove_label_sends_only_the_labels_to_take_off() {
+        #[derive(clap::Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            cmd: Cmd,
+        }
+        let parse = |args: &[&str]| {
+            <Cli as clap::Parser>::try_parse_from(
+                ["linear", "issue", "update", "ENG-1"].iter().chain(args),
+            )
+        };
+        let Cmd::Issue(IssueCmd::Update { remove_labels, .. }) =
+            parse(&["--remove-label", "a", "--remove-label", "b"])
+                .unwrap()
+                .cmd
+        else {
+            panic!("expected issue update");
+        };
+        let q = IssueUpdate::build_query(issue_update::Variables {
+            id: "ENG-1".into(),
+            input: issue_update::IssueUpdateInput {
+                removed_label_ids: remove_labels,
+                ..Default::default()
+            },
+        });
+        let v = serde_json::to_value(&q).unwrap();
+        assert_eq!(
+            v["variables"]["input"],
+            serde_json::json!({"removedLabelIds": ["a", "b"]})
+        );
+        // Replacing and removing in one call is ambiguous; clap refuses it.
+        assert!(parse(&["--label", "a", "--remove-label", "b"]).is_err());
     }
 
     #[test]
