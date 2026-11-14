@@ -83,6 +83,7 @@ linear_query!(
     AttachmentCreate,
     AttachmentDelete,
     FileUpload,
+    RelationLookup,
     RelationDelete,
 );
 
@@ -798,9 +799,70 @@ pub enum RelationCmd {
         #[arg(long)]
         related: String,
     },
-    /// Delete a relation by its UUID (from `issue get`: relations or inverseRelations)
+    /// Delete a relation, named the same way as on create
+    /// (`--issue ENG-1 --type blocks --related ENG-2`) or by its UUID
+    /// (from `issue get`: relations or inverseRelations)
     #[command(after_long_help = outdoc::linear_delete("issueRelationDelete"))]
-    Delete { id: String },
+    Delete {
+        /// Relation UUID
+        #[arg(
+            required_unless_present = "issue",
+            conflicts_with_all = ["issue", "kind", "related"]
+        )]
+        id: Option<String>,
+        /// Issue UUID or identifier like ENG-123
+        #[arg(long, requires_all = ["kind", "related"])]
+        issue: Option<String>,
+        /// blocks, duplicate, related, or similar
+        #[arg(long = "type", value_name = "TYPE", requires = "issue", value_parser = ["blocks", "duplicate", "related", "similar"])]
+        kind: Option<String>,
+        /// Related issue UUID or identifier like ENG-123
+        #[arg(long, requires = "issue")]
+        related: Option<String>,
+    },
+}
+
+/// Find the id of the `<issue> <kind> <related>` relation in a
+/// `RelationLookup` response for `issue`. `related` and `similar` have no
+/// direction, so they also match a relation created from the other side.
+fn find_relation(
+    data: &serde_json::Value,
+    issue: &str,
+    kind: &str,
+    related: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let is = |node: &serde_json::Value, wanted: &str| {
+        node["id"].as_str() == Some(wanted)
+            || node["identifier"]
+                .as_str()
+                .is_some_and(|i| i.eq_ignore_ascii_case(wanted))
+    };
+    let matching = |list: &str, other_end: &str| {
+        data["issue"][list]["nodes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|r| r["type"] == kind && is(&r[other_end], related))
+            .and_then(|r| r["id"].as_str())
+            .map(str::to_owned)
+    };
+    if let Some(id) = matching("relations", "relatedIssue") {
+        return Ok(id);
+    }
+    let reverse = matching("inverseRelations", "issue");
+    match reverse {
+        Some(id) if matches!(kind, "related" | "similar") => Ok(id),
+        Some(_) => Err(crate::pipe::NotFound(format!(
+            "{issue} has no {kind} relation to {related}, but {related} {kind} {issue}; \
+             swap --issue and --related to delete that one"
+        ))
+        .into()),
+        None => Err(crate::pipe::NotFound(format!(
+            "{issue} has no {kind} relation to {related}; \
+             see relations and inverseRelations in `foac linear issue get {issue}`"
+        ))
+        .into()),
+    }
 }
 
 fn issue_filter(
@@ -1582,7 +1644,24 @@ pub fn run(
                     },
                 )
             }
-            RelationCmd::Delete { id } => {
+            RelationCmd::Delete {
+                id,
+                issue,
+                kind,
+                related,
+            } => {
+                let id = match (id, issue, kind, related) {
+                    (Some(id), ..) => id,
+                    (None, Some(issue), Some(kind), Some(related)) => {
+                        let data = exec::<RelationLookup>(
+                            instance,
+                            relation_lookup::Variables { id: issue.clone() },
+                        )?;
+                        find_relation(&data, &issue, &kind, &related)?
+                    }
+                    // clap requires the UUID or all three of --issue/--type/--related.
+                    _ => unreachable!(),
+                };
                 exec::<RelationDelete>(instance, relation_delete::Variables { id })
             }
         },
@@ -1855,6 +1934,69 @@ mod tests {
             v["variables"]["input"],
             serde_json::json!({"issueId": "ENG-1", "relatedIssueId": "ENG-2", "type": "blocks"})
         );
+    }
+
+    #[test]
+    fn relation_delete_takes_a_uuid_or_the_create_triple() {
+        #[derive(clap::Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            cmd: Cmd,
+        }
+        let parse = |args: &[&str]| {
+            <Cli as clap::Parser>::try_parse_from(
+                ["linear", "relation", "delete"].iter().chain(args),
+            )
+        };
+        assert!(parse(&["some-uuid"]).is_ok());
+        assert!(parse(&["--issue", "ENG-1", "--type", "blocks", "--related", "ENG-2"]).is_ok());
+        // Nothing, a partial triple, or both forms at once are refused.
+        assert!(parse(&[]).is_err());
+        assert!(parse(&["--issue", "ENG-1", "--type", "blocks"]).is_err());
+        assert!(parse(&["--type", "blocks", "--related", "ENG-2"]).is_err());
+        assert!(
+            parse(&[
+                "some-uuid",
+                "--issue",
+                "ENG-1",
+                "--type",
+                "blocks",
+                "--related",
+                "ENG-2"
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn find_relation_matches_the_create_direction() {
+        // ENG-1 blocks ENG-2, ENG-3 blocks ENG-1, ENG-4 is related to ENG-1
+        // (created from ENG-4's side).
+        let node = |id: &str, kind: &str, from: &str, to: &str| {
+            serde_json::json!({"id": id, "type": kind,
+                "issue": {"id": format!("{from}-uuid"), "identifier": from},
+                "relatedIssue": {"id": format!("{to}-uuid"), "identifier": to}})
+        };
+        let data = serde_json::json!({"issue": {
+            "relations": {"nodes": [node("r1", "blocks", "ENG-1", "ENG-2")]},
+            "inverseRelations": {"nodes": [
+                node("r2", "blocks", "ENG-3", "ENG-1"),
+                node("r3", "related", "ENG-4", "ENG-1"),
+            ]},
+        }});
+        let find = |kind, related| find_relation(&data, "ENG-1", kind, related);
+        assert_eq!(find("blocks", "ENG-2").unwrap(), "r1");
+        assert_eq!(find("blocks", "eng-2").unwrap(), "r1");
+        assert_eq!(find("blocks", "ENG-2-uuid").unwrap(), "r1");
+        // Undirected types match from either side.
+        assert_eq!(find("related", "ENG-4").unwrap(), "r3");
+        // A blocks relation running the other way is not deleted, but named.
+        let err = find("blocks", "ENG-3").unwrap_err();
+        assert!(err.is::<crate::pipe::NotFound>());
+        assert!(err.to_string().contains("swap --issue and --related"));
+        // Wrong type or no relation at all.
+        assert!(find("duplicate", "ENG-2").is_err());
+        assert!(find("blocks", "ENG-9").is_err());
     }
 
     #[test]

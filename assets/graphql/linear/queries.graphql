@@ -725,6 +725,23 @@ mutation RelationCreate($input: IssueRelationCreateInput!) {
   }
 }
 
+# Both directions, so `relation delete --issue/--type/--related` can find the
+# relation to remove (or say it runs the other way).
+query RelationLookup($id: String!) {
+  issue(id: $id) {
+    relations(first: 250) {
+      nodes {
+        ...RelationFields
+      }
+    }
+    inverseRelations(first: 250) {
+      nodes {
+        ...RelationFields
+      }
+    }
+  }
+}
+
 mutation RelationDelete($id: String!) {
   issueRelationDelete(id: $id) {
     success
