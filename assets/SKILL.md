@@ -829,6 +829,7 @@ foac linear file download "https://uploads.linear.app/..." --output ./shot.png
 # ENG-1 blocks ENG-2 (ENG-2 depends on ENG-1); `issue get` lists them under
 # relations (outgoing) and inverseRelations (incoming, e.g. blocked by)
 foac linear relation create --issue ENG-1 --type blocks --related ENG-2
+foac linear relation delete --issue ENG-1 --type blocks --related ENG-2
 ```
 
 <!-- /foac-provider:linear -->
