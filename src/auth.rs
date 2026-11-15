@@ -1082,6 +1082,9 @@ fn flatten_accounts_for_table(statuses: &Value) -> Value {
                 json!(account_identity(provider, &account)),
             );
         }
+        if let Some(error) = obj.get("error").and_then(Value::as_str) {
+            obj.insert("error".into(), json!(error_text(error)));
+        }
     }
     Value::Object(out)
 }
@@ -1099,13 +1102,19 @@ pub(crate) fn status_summary(provider: Provider, body: &Value) -> String {
     } else {
         body["error"]
             .as_str()
-            .map(str::to_owned)
+            .map(error_text)
             .filter(|error| !error.is_empty())
     };
     match line2 {
         Some(line2) => format!("{line1}\n{line2}\n"),
         None => format!("{line1}\n"),
     }
+}
+
+/// A status error for a human: the message inside a provider's JSON error
+/// body, or the error itself when it is foac's own text.
+fn error_text(error: &str) -> String {
+    crate::output::error_headline(error).unwrap_or_else(|| error.to_owned())
 }
 
 fn logout_summary(removed: bool) -> String {
@@ -2756,6 +2765,18 @@ pub(crate) mod tests {
             ),
             "unauthenticated via environment\nrejected\n"
         );
+        // A provider's JSON error body is shown as its message.
+        assert_eq!(
+            status_summary(
+                Provider::Notion,
+                &json!({
+                    "status": "unauthenticated",
+                    "source": "config_file",
+                    "error": r#"{"object":"error","status":401,"message":"API token is invalid."}"#,
+                })
+            ),
+            "unauthenticated via config_file\nAPI token is invalid.\n"
+        );
     }
 
     #[test]
@@ -2788,7 +2809,20 @@ pub(crate) mod tests {
             "User <user@example.com>  Workspace"
         );
         assert!(table["github"].get("account").is_none());
+        assert_eq!(table["github"]["error"], "missing");
         assert_eq!(statuses["linear"]["account"]["email"], "user@example.com");
+    }
+
+    #[test]
+    fn flatten_accounts_shows_a_provider_error_body_as_its_message() {
+        let body = r#"{"object":"error","status":401,"message":"API token is invalid."}"#;
+        let statuses = json!({
+            "notion": { "status": "unauthenticated", "source": "config_file", "error": body },
+        });
+        let table = flatten_accounts_for_table(&statuses);
+        assert_eq!(table["notion"]["error"], "API token is invalid.");
+        // The JSON report keeps the body.
+        assert_eq!(statuses["notion"]["error"], body);
     }
 
     #[test]

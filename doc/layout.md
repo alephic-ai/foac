@@ -14,12 +14,25 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   read it whole).
   It can be refreshed from
   <https://raw.githubusercontent.com/linear/linear/master/packages/sdk/src/schema.graphql>.
-- Table-mode details of the shared printer (`src/output.rs`): the table is
-  sized to the terminal width; enable and disable print the same keyed map as
+- Table-mode details of the shared printer (`src/output.rs`; the reader's
+  view is in [output.md](output.md)): the table is sized to the terminal
+  width; list columns and `get` rows sort by `Tier` (lead ID, handle, core,
+  plain, timestamp, ID, URL, opaque; `HANDLE_KEYS` and `CORE_KEYS` are the
+  ranked name lists), `spread_fields` lifts a record's data out of its
+  envelope (Jira and Airtable `fields`, a Notion page's `properties`), a
+  nested record renders through `summary` as the field that names it or,
+  for Notion's typed values, the value its `type` points at, list cells are
+  clipped and `get` text is wrapped before `tabled` draws; enable and disable print the same keyed map as
   `provider list` with the changed provider's values bolded; single-provider
   auth status and login print a two-line summary (logout one line) while JSON
   stays a one-key map; the all-provider auth table flattens `account` to an
-  identity string. Version, update, and skill output bypass the printer.
+  identity string and a provider's JSON error body to its message. Version,
+  update, and skill output bypass the printer.
+- Failures print in one place too: `main.rs` hands the error to
+  `output::print_error`, which leaves it untouched in JSON mode and, in
+  table mode, puts an `error:` headline (`error_headline`, a heuristic over
+  the providers' error shapes) above it. Commands return errors; they do not
+  print them.
 - For Linear, `list` filter flags accept a UUID or a human name (see
   `eq_filter`), while `create`/`update` flags require UUIDs.
 - Linear uploads take two requests: the `fileUpload` mutation reserves a

@@ -320,7 +320,8 @@ foac <provider> <resource> <verb> [flags]
   envelope, record path, `--from` join fields, and pagination paths — check
   it before parsing a response you have not seen.
   Failures print
-  the API's error JSON on stderr and exit non-zero.
+  the API's error JSON on stderr and exit non-zero; table mode puts an
+  `error:` line with its message above that JSON.
 - **Piped joins**: pipe one command's `list` output into a `get` verb that
   takes its identifier as a positional argument (every `get` except
   `github release get`, whose selector is `--id`/`--tag`) and omit that
