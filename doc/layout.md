@@ -35,7 +35,13 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   the providers' error shapes) above it. Commands return errors; they do not
   print them.
 - For Linear, `list` filter flags accept a UUID or a human name (see
-  `eq_filter`), while `create`/`update` flags require UUIDs.
+  `eq_filter`), while `create`/`update` flags require UUIDs. `--team` on
+  `issue list` and `project list` goes through `exact_team_filter` instead:
+  on the root `issues` and `projects` queries Linear expands a team id to
+  the team's sub-teams, while a key matches the team alone, so a UUID also
+  carries `ancestors: { every: { id: { neq } } }` to select the same rows as
+  the key. No test can exercise that Linear behavior; the live comparison in
+  issue #167 does.
 - Linear uploads take two requests: the `fileUpload` mutation reserves a
   signed slot (`uploadUrl` plus required `headers`), then the bytes are PUT
   there with `Content-Type` and `Cache-Control`. foac drops the spent
