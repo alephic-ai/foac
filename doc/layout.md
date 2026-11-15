@@ -22,7 +22,8 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   envelope (Jira and Airtable `fields`, a Notion page's `properties`), a
   nested record renders through `summary` as the field that names it or,
   for Notion's typed values, the value its `type` points at, list cells are
-  clipped and `get` text is wrapped before `tabled` draws; enable and disable print the same keyed map as
+  clipped (`console::truncate_str`) and `get` text is wrapped (`textwrap`)
+  before `tabled` draws; enable and disable print the same keyed map as
   `provider list` with the changed provider's values bolded; single-provider
   auth status and login print a two-line summary (logout one line) while JSON
   stays a one-key map; the all-provider auth table flattens `account` to an

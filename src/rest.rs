@@ -277,6 +277,16 @@ pub(crate) fn is_numeric_id(value: &str) -> bool {
     !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
 }
 
+/// Whether a value is a UUID (`b439481e-60b2-4da2-abcf-28707c7dff22`) rather
+/// than a key or name.
+pub(crate) fn is_uuid(value: &str) -> bool {
+    value.len() == 36
+        && value.bytes().enumerate().all(|(i, byte)| match i {
+            8 | 13 | 18 | 23 => byte == b'-',
+            _ => byte.is_ascii_hexdigit(),
+        })
+}
+
 /// An `id` field as a string, whether the API returned a string or a number.
 pub(crate) fn id_string(value: &Value) -> Option<String> {
     match value {
@@ -389,6 +399,19 @@ mod tests {
     use super::*;
     use reqwest::Method;
     use serde_json::json;
+
+    #[test]
+    fn is_uuid_checks_the_shape_not_just_the_length() {
+        assert!(is_uuid("b439481e-60b2-4da2-abcf-28707c7dff22"));
+        assert!(is_uuid("B439481E-60B2-4DA2-ABCF-28707C7DFF22"));
+        assert!(!is_uuid("ENG"));
+        assert!(!is_uuid("b439481e60b24da2abcf28707c7dff22"));
+        // 36 characters with four hyphens, but a name, not an ID.
+        assert!(!is_uuid(
+            "the-quarterly-planning-review-meeting"[..36].as_ref()
+        ));
+        assert!(!is_uuid("b439481e-60b2-4da2-abcf-28707c7dff2g"));
+    }
 
     fn test_api(url: reqwest::Url, trailing_slash: bool) -> Api {
         Api {

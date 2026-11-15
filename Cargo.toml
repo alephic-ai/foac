@@ -10,6 +10,7 @@ readme = "README.md"
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
+console = "0.16.6" # truncate_str: clip a table cell to its column; already in the tree through self_update
 graphql_client = "0.16"
 mime_guess = { version = "2.0.5", default-features = false }
 parse_link_header = "0.4"
@@ -21,4 +22,5 @@ serde_json = { version = "1", features = ["preserve_order"] }
 tabled = { version = "0.22.0", default-features = false, features = ["std"] }
 tempfile = "3.27.0"
 terminal_size = "0.4.4"
+textwrap = { version = "0.16.2", default-features = false, features = ["unicode-width"] } # wrap `get` text to the terminal width
 toml_edit = "0.25.19"

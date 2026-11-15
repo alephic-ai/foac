@@ -102,7 +102,7 @@ struct RelationCreate;
 macro_rules! eq_filter {
     ($m:ident, $f:ident, $idc:ident, $alt:ident, $v:expr) => {{
         let v: String = $v;
-        if is_uuid(&v) {
+        if crate::rest::is_uuid(&v) {
             $m::$f {
                 id: Some($m::$idc {
                     eq: Some(v),
@@ -120,10 +120,6 @@ macro_rules! eq_filter {
             }
         }
     }};
-}
-
-fn is_uuid(s: &str) -> bool {
-    s.len() == 36 && s.bytes().filter(|b| *b == b'-').count() == 4
 }
 
 #[derive(clap::Subcommand)]
