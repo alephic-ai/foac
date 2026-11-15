@@ -401,8 +401,16 @@ foac <provider> <resource> <verb> [flags]
   with the matching `list` command. Issues are the exception: `get`, `update`,
   and `--issue` flags accept an identifier like `ENG-123` as well.
 - **Linear sub-issues**: `issue get` includes `parent` and `children` (the
-  first 50 sub-issues, with state and assignee). For the full, paginated
-  list, or to filter sub-issues, use `issue list --parent ENG-123`.
+  first 50 sub-issues, with state and assignee, in the order Linear shows
+  them). For the full, paginated list, or to filter sub-issues, use
+  `issue list --parent ENG-123`; it comes in creation order, so sort by
+  `subIssueSortOrder` (ascending) for the shown order.
+- **Ordering Linear sub-issues**: `issue update ENG-5 --after ENG-3` (or
+  `--before`) moves ENG-5 next to its sibling ENG-3. The issue must already
+  be a sub-issue of ENG-3's parent; add `--parent PARENT` to reparent and
+  place it in one step. `issue create --parent PARENT --after ENG-3` creates
+  it in place. To set a whole order, place each issue `--after` the
+  previous one.
 - **Linear files**: `attachment create --issue ENG-123 --file PATH` uploads a
   local file and attaches it to the issue (`--title` defaults to the file
   name). `comment create --file PATH` (repeatable; `--body` becomes optional)
@@ -823,6 +831,7 @@ foac linear issue list --team ENG --state "In Progress"
 foac linear issue list --parent ENG-123   # sub-issues of ENG-123
 foac linear issue create --team <TEAM_UUID> --title "Fix login" --description "..."
 foac linear issue update ENG-123 --remove-label <LABEL_UUID>
+foac linear issue update ENG-125 --after ENG-124   # reorder sub-issues
 foac linear comment create --issue ENG-123 --body "Done, see PR #42"
 foac linear comment create --issue ENG-123 --body "Repro:" --file ./shot.png
 foac linear attachment create --issue ENG-123 --file ./trace.log

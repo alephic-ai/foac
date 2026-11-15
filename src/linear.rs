@@ -41,6 +41,7 @@ linear_query!(
     IssueGet,
     IssueCreate,
     IssueUpdate,
+    SubIssueSiblings,
     CommentList,
     CommentCreate,
     CommentUpdate,
@@ -221,6 +222,14 @@ pub struct IssueOpts {
     /// Cycle UUID
     #[arg(long)]
     cycle: Option<String>,
+    /// Place the issue just before this sibling in its parent's sub-issue
+    /// list (UUID or identifier like ENG-123)
+    #[arg(long, value_name = "ISSUE", conflicts_with = "after")]
+    before: Option<String>,
+    /// Place the issue just after this sibling in its parent's sub-issue
+    /// list (UUID or identifier like ENG-123)
+    #[arg(long, value_name = "ISSUE")]
+    after: Option<String>,
 }
 
 #[derive(clap::Subcommand)]
@@ -818,6 +827,139 @@ pub enum RelationCmd {
     },
 }
 
+/// Whether an issue node (`id` plus `identifier`) is the issue a flag named
+/// by UUID or by identifier like ENG-123 (case-insensitive).
+fn names_issue(node: &serde_json::Value, wanted: &str) -> bool {
+    node["id"].as_str() == Some(wanted)
+        || node["identifier"]
+            .as_str()
+            .is_some_and(|i| i.eq_ignore_ascii_case(wanted))
+}
+
+/// Linear returns `children` in creation order; put `issue get`'s sub-issues
+/// in the order Linear shows them, by `subIssueSortOrder`.
+fn sort_children(data: &mut serde_json::Value) {
+    if let Some(nodes) = data["issue"]["children"]["nodes"].as_array_mut() {
+        nodes.sort_by(|a, b| {
+            let order = |n: &serde_json::Value| n["subIssueSortOrder"].as_f64().unwrap_or(f64::MAX);
+            order(a).total_cmp(&order(b))
+        });
+    }
+}
+
+/// `subIssueSortOrder` for `issue create|update --before/--after`: looks up
+/// the anchor's sub-issue list, then computes the position. `None` when
+/// neither flag is set, so the field stays untouched.
+fn place_sub_issue(
+    instance: &str,
+    issue: Option<&str>,
+    parent: Option<&str>,
+    opts: &IssueOpts,
+) -> Result<Option<f64>, Box<dyn std::error::Error>> {
+    let (anchor, after) = match (&opts.before, &opts.after) {
+        (Some(anchor), _) => (anchor, false),
+        (None, Some(anchor)) => (anchor, true),
+        (None, None) => return Ok(None),
+    };
+    let data = exec::<SubIssueSiblings>(
+        instance,
+        sub_issue_siblings::Variables { id: anchor.clone() },
+    )?;
+    sub_issue_position(&data, issue, parent, anchor, after).map(Some)
+}
+
+/// The `subIssueSortOrder` that puts `issue` (`None` on create) just before
+/// or after `anchor`, from a `SubIssueSiblings` response for `anchor`: the
+/// midpoint between the anchor and its neighbor on that side, or one step
+/// past the anchor at either end of the list. The issue must already be in
+/// the list unless `parent` (the `--parent` flag) names the anchor's parent.
+fn sub_issue_position(
+    data: &serde_json::Value,
+    issue: Option<&str>,
+    parent: Option<&str>,
+    anchor: &str,
+    after: bool,
+) -> Result<f64, Box<dyn std::error::Error>> {
+    let flag = if after { "--after" } else { "--before" };
+    let list_parent = &data["issue"]["parent"];
+    if list_parent.is_null() {
+        return Err(format!("{anchor} has no parent, so it is not in a sub-issue list").into());
+    }
+    let parent_key = list_parent["identifier"].as_str().unwrap_or_default();
+    let children = &list_parent["children"];
+    if children["pageInfo"]["hasNextPage"] == true {
+        return Err(format!(
+            "{parent_key} has more than 250 sub-issues; {flag} cannot see the whole list"
+        )
+        .into());
+    }
+    let nodes = children["nodes"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    if let Some(issue) = issue
+        && names_issue(&data["issue"], issue)
+    {
+        return Err(format!("{flag} names {issue} itself; pass one of its siblings").into());
+    }
+    match parent {
+        Some(parent) if !names_issue(list_parent, parent) => {
+            return Err(format!(
+                "{anchor} is a sub-issue of {parent_key}, not of --parent {parent}"
+            )
+            .into());
+        }
+        Some(_) => {}
+        None => match issue {
+            None => {
+                return Err(format!(
+                    "{flag} {anchor} on create needs --parent {parent_key}, {anchor}'s parent"
+                )
+                .into());
+            }
+            Some(issue) if !nodes.iter().any(|n| names_issue(n, issue)) => {
+                return Err(format!(
+                    "{issue} is not a sub-issue of {parent_key}; \
+                     add --parent {parent_key} to move it next to {anchor}"
+                )
+                .into());
+            }
+            Some(_) => {}
+        },
+    }
+    // The issue's own position is about to change, so it is no neighbor.
+    let mut siblings: Vec<f64> = nodes
+        .iter()
+        .filter(|n| !issue.is_some_and(|i| names_issue(n, i)))
+        .filter_map(|n| n["subIssueSortOrder"].as_f64())
+        .collect();
+    siblings.sort_by(f64::total_cmp);
+    let at = nodes
+        .iter()
+        .find(|n| n["id"] == data["issue"]["id"])
+        .and_then(|n| n["subIssueSortOrder"].as_f64())
+        .ok_or_else(|| format!("{anchor} has no subIssueSortOrder to place next to"))?;
+    let i = siblings.partition_point(|&o| o < at);
+    let neighbor = if after {
+        siblings[i..].iter().find(|&&o| o > at)
+    } else {
+        siblings[..i].last()
+    };
+    let position = match neighbor {
+        Some(&n) => (at + n) / 2.0,
+        None if after => at + 1.0,
+        None => at - 1.0,
+    };
+    if neighbor.is_some_and(|&n| position == at || position == n) {
+        return Err(format!(
+            "no position left between {anchor} and its neighbor; \
+             move one of them elsewhere first"
+        )
+        .into());
+    }
+    Ok(position)
+}
+
 /// Find the id of the `<issue> <kind> <related>` relation in a
 /// `RelationLookup` response for `issue`. `related` and `similar` have no
 /// direction, so they also match a relation created from the other side.
@@ -827,18 +969,12 @@ fn find_relation(
     kind: &str,
     related: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let is = |node: &serde_json::Value, wanted: &str| {
-        node["id"].as_str() == Some(wanted)
-            || node["identifier"]
-                .as_str()
-                .is_some_and(|i| i.eq_ignore_ascii_case(wanted))
-    };
     let matching = |list: &str, other_end: &str| {
         data["issue"][list]["nodes"]
             .as_array()
             .into_iter()
             .flatten()
-            .find(|r| r["type"] == kind && is(&r[other_end], related))
+            .find(|r| r["type"] == kind && names_issue(&r[other_end], related))
             .and_then(|r| r["id"].as_str())
             .map(str::to_owned)
     };
@@ -999,11 +1135,15 @@ pub fn run(
             ),
             IssueCmd::Get { id, from } => {
                 return crate::pipe::run_get(id, from, format, |id| {
-                    exec::<IssueGet>(instance, issue_get::Variables { id })
+                    let mut data = exec::<IssueGet>(instance, issue_get::Variables { id })?;
+                    sort_children(&mut data);
+                    Ok(data)
                 });
             }
             IssueCmd::Create { team, title, opts } => {
                 use issue_create::*;
+                let sub_issue_sort_order =
+                    place_sub_issue(instance, None, opts.parent.as_deref(), &opts)?;
                 exec::<IssueCreate>(
                     instance,
                     Variables {
@@ -1020,6 +1160,7 @@ pub fn run(
                             due_date: opts.due_date,
                             estimate: opts.estimate,
                             cycle_id: opts.cycle,
+                            sub_issue_sort_order,
                             ..Default::default()
                         },
                     },
@@ -1032,6 +1173,8 @@ pub fn run(
                 remove_labels,
             } => {
                 use issue_update::*;
+                let sub_issue_sort_order =
+                    place_sub_issue(instance, Some(&id), opts.parent.as_deref(), &opts)?;
                 exec::<IssueUpdate>(
                     instance,
                     Variables {
@@ -1049,6 +1192,7 @@ pub fn run(
                             due_date: opts.due_date,
                             estimate: opts.estimate,
                             cycle_id: opts.cycle,
+                            sub_issue_sort_order,
                             ..Default::default()
                         },
                     },
@@ -2046,6 +2190,118 @@ mod tests {
         // Wrong type or no relation at all.
         assert!(find("duplicate", "ENG-2").is_err());
         assert!(find("blocks", "ENG-9").is_err());
+    }
+
+    /// A `SubIssueSiblings` response for `anchor` under ENG-1, whose children
+    /// are listed in creation order, not position order.
+    fn siblings(anchor: &str, children: &[(&str, f64)]) -> serde_json::Value {
+        let nodes: Vec<_> = children
+            .iter()
+            .map(|(key, order)| {
+                serde_json::json!({"id": format!("{key}-uuid"), "identifier": key,
+                    "subIssueSortOrder": order})
+            })
+            .collect();
+        serde_json::json!({"issue": {
+            "id": format!("{anchor}-uuid"), "identifier": anchor,
+            "parent": {"id": "ENG-1-uuid", "identifier": "ENG-1", "children": {
+                "nodes": nodes, "pageInfo": {"hasNextPage": false}}},
+        }})
+    }
+
+    #[test]
+    fn sub_issue_position_lands_between_the_anchor_and_its_neighbor() {
+        // Shown order: ENG-3 (-1), ENG-2 (0), ENG-5 (10), ENG-4 (20).
+        let list = [
+            ("ENG-2", 0.0),
+            ("ENG-3", -1.0),
+            ("ENG-4", 20.0),
+            ("ENG-5", 10.0),
+        ];
+        let place = |issue, anchor: &str, after| {
+            sub_issue_position(&siblings(anchor, &list), issue, None, anchor, after).unwrap()
+        };
+        assert_eq!(place(Some("ENG-4"), "ENG-2", true), 5.0);
+        assert_eq!(place(Some("ENG-4"), "ENG-2", false), -0.5);
+        // At either end, one step past the anchor.
+        assert_eq!(place(Some("ENG-2"), "ENG-4", true), 21.0);
+        assert_eq!(place(Some("ENG-2"), "ENG-3", false), -2.0);
+        // The moved issue is not its own neighbor: ENG-5 sits right after
+        // ENG-2 already, so after ENG-2 means before ENG-4.
+        assert_eq!(place(Some("eng-5"), "ENG-2", true), 10.0);
+        assert_eq!(place(Some("ENG-5-uuid"), "ENG-2", true), 10.0);
+    }
+
+    #[test]
+    fn sub_issue_position_checks_the_parent() {
+        let list = [("ENG-2", 0.0), ("ENG-3", 1.0)];
+        let data = siblings("ENG-2", &list);
+        let place = |issue, parent| sub_issue_position(&data, issue, parent, "ENG-2", true);
+        // Not in the list: refused unless --parent names the anchor's parent.
+        let err = place(Some("ENG-9"), None).unwrap_err().to_string();
+        assert!(err.contains("add --parent ENG-1"), "{err}");
+        assert_eq!(place(Some("ENG-9"), Some("ENG-1")).unwrap(), 0.5);
+        assert_eq!(place(Some("ENG-9"), Some("ENG-1-uuid")).unwrap(), 0.5);
+        assert!(place(Some("ENG-9"), Some("ENG-7")).is_err());
+        // On create the issue is in no list yet, so --parent is required.
+        let err = place(None, None).unwrap_err().to_string();
+        assert!(err.contains("on create needs --parent ENG-1"), "{err}");
+        assert_eq!(place(None, Some("ENG-1")).unwrap(), 0.5);
+        // Relative to itself, to an issue without a parent, or to a list
+        // larger than one page: refused.
+        assert!(place(Some("ENG-2"), None).is_err());
+        let mut orphan = data.clone();
+        orphan["issue"]["parent"] = serde_json::Value::Null;
+        assert!(sub_issue_position(&orphan, Some("ENG-3"), None, "ENG-2", true).is_err());
+        let mut long = data.clone();
+        long["issue"]["parent"]["children"]["pageInfo"]["hasNextPage"] = true.into();
+        assert!(sub_issue_position(&long, Some("ENG-3"), None, "ENG-2", true).is_err());
+    }
+
+    #[test]
+    fn before_and_after_set_only_the_sub_issue_sort_order() {
+        #[derive(clap::Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            cmd: Cmd,
+        }
+        let parse = |args: &[&str]| {
+            <Cli as clap::Parser>::try_parse_from(
+                ["linear", "issue", "update", "ENG-4"].iter().chain(args),
+            )
+        };
+        assert!(parse(&["--after", "ENG-2"]).is_ok());
+        assert!(parse(&["--before", "ENG-2"]).is_ok());
+        assert!(parse(&["--before", "ENG-2", "--after", "ENG-3"]).is_err());
+        let q = IssueUpdate::build_query(issue_update::Variables {
+            id: "ENG-4".into(),
+            input: issue_update::IssueUpdateInput {
+                sub_issue_sort_order: Some(5.0),
+                ..Default::default()
+            },
+        });
+        let v = serde_json::to_value(&q).unwrap();
+        assert_eq!(
+            v["variables"]["input"],
+            serde_json::json!({"subIssueSortOrder": 5.0})
+        );
+    }
+
+    #[test]
+    fn issue_get_lists_children_in_sub_issue_order() {
+        let mut data = serde_json::json!({"issue": {"children": {"nodes": [
+            {"identifier": "ENG-2", "subIssueSortOrder": 3.0},
+            {"identifier": "ENG-3", "subIssueSortOrder": null},
+            {"identifier": "ENG-4", "subIssueSortOrder": -1.5},
+        ]}}});
+        sort_children(&mut data);
+        let order: Vec<_> = data["issue"]["children"]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|n| n["identifier"].as_str().unwrap())
+            .collect();
+        assert_eq!(order, ["ENG-4", "ENG-2", "ENG-3"]);
     }
 
     #[test]

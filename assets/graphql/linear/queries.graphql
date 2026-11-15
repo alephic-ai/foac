@@ -13,6 +13,7 @@ fragment IssueFields on Issue {
   dueDate
   createdAt
   updatedAt
+  subIssueSortOrder
   state {
     id
     name
@@ -234,6 +235,7 @@ query IssueGet($id: String!) {
         id
         identifier
         title
+        subIssueSortOrder
         state {
           id
           name
@@ -290,6 +292,29 @@ mutation IssueUpdate($id: String!, $input: IssueUpdateInput!) {
     success
     issue {
       ...IssueFields
+    }
+  }
+}
+
+# The sub-issue list `--before`/`--after` place an issue in: the anchor's
+# parent's children, with the positions foac computes the new one from.
+query SubIssueSiblings($id: String!) {
+  issue(id: $id) {
+    id
+    identifier
+    parent {
+      id
+      identifier
+      children(first: 250) {
+        nodes {
+          id
+          identifier
+          subIssueSortOrder
+        }
+        pageInfo {
+          hasNextPage
+        }
+      }
     }
   }
 }

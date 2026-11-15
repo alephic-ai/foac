@@ -42,6 +42,12 @@ meant to grow. Read it first; this file keeps the mechanics it doesn't cover.
   carries `ancestors: { every: { id: { neq } } }` to select the same rows as
   the key. No test can exercise that Linear behavior; the live comparison in
   issue #167 does.
+- Linear has no move mutation for sub-issues: a sub-issue's place is its
+  `subIssueSortOrder` float. `issue create|update --before/--after ISSUE`
+  reads the anchor's parent's children (`SubIssueSiblings`, up to 250) and
+  sends the midpoint between the anchor and its neighbor on that side, or
+  one step past the anchor at either end. `children` come back in creation
+  order, so `issue get` sorts them by `subIssueSortOrder` before printing.
 - Linear uploads take two requests: the `fileUpload` mutation reserves a
   signed slot (`uploadUrl` plus required `headers`), then the bytes are PUT
   there with `Content-Type` and `Cache-Control`. foac drops the spent
