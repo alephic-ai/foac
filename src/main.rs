@@ -8,16 +8,26 @@ use foac::{
 #[derive(Parser)]
 #[command(about, version, arg_required_else_help = true)]
 struct Cli {
-    /// Output format for JSON command output (version, update, and skill ignore it)
-    #[arg(long, global = true, value_enum, default_value = "auto")]
+    /// Output format; auto prints a table at a terminal and JSON otherwise
+    #[arg(
+        long,
+        global = true,
+        value_enum,
+        default_value = "auto",
+        help_heading = GLOBAL_OPTIONS
+    )]
     format: output::FormatArg,
     /// Provider instance to use (from `foac auth <provider> login --instance <name>`);
     /// defaults to the nearest [defaults] setting
-    #[arg(short = 'i', long, global = true)]
+    #[arg(short = 'i', long, global = true, help_heading = GLOBAL_OPTIONS)]
     instance: Option<String>,
     #[command(subcommand)]
     command: Command,
 }
+
+/// The flags every command takes get their own help section, so a command's
+/// `--help` lists its own flags first instead of interleaving the two.
+const GLOBAL_OPTIONS: &str = "Global options";
 
 const SKILL_MD: &str = include_str!("../assets/SKILL.md");
 
@@ -83,32 +93,46 @@ enum Command {
 }
 
 fn main() {
-    if let Err(err) = run() {
-        eprintln!("{err}");
-        std::process::exit(1);
+    let cli =
+        parse().unwrap_or_else(|err| fail(err.as_ref(), resolve_format(output::FormatArg::Auto)));
+    // A failure is rendered for the same reader as a success would be.
+    let format = resolve_format(cli.format);
+    if let Err(err) = run(cli, format) {
+        fail(err.as_ref(), format);
     }
 }
 
-fn run() -> Result<(), Box<dyn std::error::Error>> {
-    // Probing auth (keychain reads, possible `gh` subprocess) is only needed to
-    // hide providers in help/error output and to render the skill, so parse
-    // with the plain command first and probe only on those cold paths.
-    let cli = match Cli::try_parse_from(std::env::args_os()) {
-        Ok(cli) => cli,
-        Err(_) => {
-            let providers = providers()?;
-            match try_parse_from(&providers, std::env::args_os()) {
-                Ok(cli) => cli,
-                Err(error) => error.exit(),
-            }
-        }
-    };
-    let format = output::resolve(
-        cli.format,
+fn fail(error: &dyn std::error::Error, format: output::Format) -> ! {
+    output::print_error(error, format);
+    std::process::exit(1)
+}
+
+fn resolve_format(flag: output::FormatArg) -> output::Format {
+    output::resolve(
+        flag,
         std::env::var("FOAC_FORMAT").ok().as_deref(),
         std::env::var_os("CI").is_some(),
         std::io::IsTerminal::is_terminal(&std::io::stdout()),
-    );
+    )
+}
+
+fn parse() -> Result<Cli, Box<dyn std::error::Error>> {
+    // Probing auth (keychain reads, possible `gh` subprocess) is only needed to
+    // hide providers in help/error output and to render the skill, so parse
+    // with the plain command first and probe only on those cold paths.
+    match Cli::try_parse_from(std::env::args_os()) {
+        Ok(cli) => Ok(cli),
+        Err(_) => {
+            let providers = providers()?;
+            match try_parse_from(&providers, std::env::args_os()) {
+                Ok(cli) => Ok(cli),
+                Err(error) => error.exit(),
+            }
+        }
+    }
+}
+
+fn run(cli: Cli, format: output::Format) -> Result<(), Box<dyn std::error::Error>> {
     let command = cli.command;
     let instance_flag = cli.instance;
     // The instance a provider command targets: --instance flag, then the
@@ -555,6 +579,24 @@ mod tests {
         assert!(help.contains("{\"issueCreate\": {\"success\": true, \"issue\": {...}}}"));
         let help = long_help(&["foac", "github", "comment", "delete", "--help"]);
         assert!(help.contains("{} on success"));
+    }
+
+    #[test]
+    fn global_flags_get_their_own_help_section() {
+        // A command's own flags come first, clear of --format and --instance.
+        for help in [
+            long_help(&["foac", "linear", "issue", "list", "--help"]),
+            long_help(&["foac", "github", "issue", "list", "--help"]),
+        ] {
+            let (own, global) = help.split_once("Global options:").unwrap();
+            let global = global.split("Output:").next().unwrap();
+            assert!(own.contains("--limit"));
+            assert!(!own.contains("--format <FORMAT>"));
+            assert!(!own.contains("--instance <INSTANCE>"));
+            assert!(global.contains("--format <FORMAT>"));
+            assert!(global.contains("--instance <INSTANCE>"));
+            assert!(!global.contains("--limit"));
+        }
     }
 
     #[test]

@@ -71,7 +71,7 @@ src/
 ├── auth.rs      # Credential resolution (env > credentials file > gh CLI), validation, auth commands
 ├── provider.rs  # Comment-preserving TOML settings + private JSON credentials
 ├── outdoc.rs    # Rendered Output sections for --help: one template per response-shape family
-├── output.rs    # The one success printer: compact JSON, or shape-heuristic tables on a TTY
+├── output.rs    # The one printer: compact JSON, or shape-heuristic tables on a TTY; failures on stderr
 ├── pipe.rs      # get pipe mode: piped list output joins into one get per extracted value
 ├── update.rs    # Self-update from GitHub Releases + once-a-day version check
 └── lib.rs       # Library target so tests/ and doc tests can link; main.rs is the only consumer
@@ -162,7 +162,9 @@ not duplication.
   error/help path, never on the hot parse path.
 - Commands never print success output. They return response JSON to their
   `run`, which prints once through `output.rs`. Table rendering is a heuristic
-  over JSON shapes in one place, never per-command formatting.
+  over JSON shapes in one place, never per-command formatting. Failures take
+  the same road: a command returns its error, and `output.rs` prints it,
+  untouched in JSON mode and under a one-line `error:` headline for a human.
 - Files never touch stdout. Uploads take a local path; downloads write to a
   required `--output` and print foac's own `{path, size, contentType}`
   summary, so every command still prints exactly one JSON document and an
