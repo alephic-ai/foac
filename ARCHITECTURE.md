@@ -195,8 +195,9 @@ not duplication.
 1. `foac linear issue list --team ENG --format json` → `main.rs` parses (plain
    parse, no auth probe) → resolves the instance (flag > `[defaults]` >
    `default`) → `provider::ensure_enabled` → `linear::run`.
-2. `linear.rs` builds the compile-time-checked `IssueList` query; `eq_filter!`
-   turns `ENG` into a key filter (a UUID would become an id filter). Token
+2. `linear.rs` builds the compile-time-checked `IssueList` query;
+   `exact_team_filter!` turns `ENG` into a key filter (a UUID would become an
+   id filter that also leaves out the team's sub-teams). Token
    from `auth::linear_token` for the resolved instance (env, else credentials
    file, for `default`; stored only for a named instance).
 3. Response `data` JSON returns to `run` → `output::print` → compact JSON on

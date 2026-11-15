@@ -861,6 +861,47 @@ fn find_relation(
     }
 }
 
+/// Build the `TeamFilter` for a `--team` value on the root `issues` and
+/// `projects` queries. There Linear expands a team id to the team's
+/// descendants, while a key matches the team alone, so the id filter
+/// `eq_filter!` builds would return every sub-team's rows as well. A UUID
+/// therefore also requires that no ancestor of the row's team is that team:
+/// a team is never its own ancestor, so the team stays and its sub-teams go.
+macro_rules! exact_team_filter {
+    ($m:ident, $v:expr) => {{
+        let v: String = $v;
+        let no_ancestor_is_the_team = crate::rest::is_uuid(&v).then(|| $m::TeamCollectionFilter {
+            every: Box::new(Some($m::TeamFilter {
+                id: Some($m::IDComparator {
+                    neq: Some(v.clone()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })),
+            ..Default::default()
+        });
+        $m::TeamFilter {
+            ancestors: Box::new(no_ancestor_is_the_team),
+            ..eq_filter!($m, TeamFilter, IDComparator, key, v)
+        }
+    }};
+}
+
+fn project_filter(team: Option<String>, query: Option<String>) -> project_list::ProjectFilter {
+    use project_list::*;
+    ProjectFilter {
+        accessible_teams: Box::new(team.map(|v| TeamCollectionFilter {
+            some: Box::new(Some(exact_team_filter!(project_list, v))),
+            ..Default::default()
+        })),
+        searchable_content: query.map(|v| ContentComparator {
+            contains: Some(v),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
 fn issue_filter(
     team: Option<String>,
     assignee: Option<String>,
@@ -872,7 +913,7 @@ fn issue_filter(
 ) -> issue_list::IssueFilter {
     use issue_list::*;
     IssueFilter {
-        team: Box::new(team.map(|v| eq_filter!(issue_list, TeamFilter, IDComparator, key, v))),
+        team: Box::new(team.map(|v| exact_team_filter!(issue_list, v))),
         assignee: Box::new(assignee.map(|v| {
             if v.contains('@') {
                 NullableUserFilter {
@@ -1061,34 +1102,14 @@ pub fn run(
             }
         },
         Cmd::Project(cmd) => match cmd {
-            ProjectCmd::List { team, query, page } => {
-                use project_list::*;
-                let filter = ProjectFilter {
-                    accessible_teams: Box::new(team.map(|v| TeamCollectionFilter {
-                        some: Box::new(Some(eq_filter!(
-                            project_list,
-                            TeamFilter,
-                            IDComparator,
-                            key,
-                            v
-                        ))),
-                        ..Default::default()
-                    })),
-                    searchable_content: query.map(|v| ContentComparator {
-                        contains: Some(v),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                };
-                exec::<ProjectList>(
-                    instance,
-                    Variables {
-                        first: Some(page.limit),
-                        after: page.after,
-                        filter: Some(filter),
-                    },
-                )
-            }
+            ProjectCmd::List { team, query, page } => exec::<ProjectList>(
+                instance,
+                project_list::Variables {
+                    first: Some(page.limit),
+                    after: page.after,
+                    filter: Some(project_filter(team, query)),
+                },
+            ),
             ProjectCmd::Get { id, from } => {
                 return crate::pipe::run_get(id, from, format, |id| {
                     exec::<ProjectGet>(instance, project_get::Variables { id })
@@ -1878,6 +1899,38 @@ mod tests {
         // null values in update inputs would wipe data server-side.
         assert_eq!(filter.as_object().unwrap().len(), 4);
         assert!(v["variables"].get("after").is_none());
+    }
+
+    #[test]
+    fn team_uuid_filters_leave_out_sub_teams() {
+        // On the root `issues` and `projects` queries Linear expands a team
+        // id to the team's descendants, while a key matches the team alone.
+        // A UUID therefore carries a clause that removes the descendants, so
+        // both spellings of a team select the same rows.
+        let uuid = "4b5c0c3e-9d1f-4c8e-8f0a-2d6b7e1a9c55";
+        let exact = serde_json::json!({
+            "id": {"eq": uuid},
+            "ancestors": {"every": {"id": {"neq": uuid}}},
+        });
+        let issues = serde_json::to_value(issue_filter(
+            Some(uuid.into()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ))
+        .unwrap();
+        assert_eq!(issues["team"], exact);
+        let projects = serde_json::to_value(project_filter(Some(uuid.into()), None)).unwrap();
+        assert_eq!(projects["accessibleTeams"]["some"], exact);
+        // A key is exact already and is sent as before.
+        let projects = serde_json::to_value(project_filter(Some("ENG".into()), None)).unwrap();
+        assert_eq!(
+            projects["accessibleTeams"]["some"],
+            serde_json::json!({"key": {"eq": "ENG"}})
+        );
     }
 
     #[test]
