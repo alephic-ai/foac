@@ -6,7 +6,7 @@ use std::io::IsTerminal;
 
 use serde_json::{Map, Value};
 use tabled::builder::Builder;
-use tabled::grid::util::string::{get_char_width, get_line_width};
+use tabled::grid::util::string::get_line_width;
 use tabled::settings::object::Rows;
 use tabled::settings::peaker::Priority;
 use tabled::settings::{Color, Style, Width};
@@ -402,16 +402,20 @@ fn tier<'a>(key: &str, values: impl Iterator<Item = &'a Value> + Clone, has_hand
         // A short ID with letters in it (Slack's C..., Neon's br-...,
         // Airtable's rec...) is what commands take; a UUID or a database
         // number (GitHub's, Jira's "10042") is only ever copied.
-        let named = texts.iter().all(|text| {
-            text.chars().count() <= 24 && !text.bytes().all(|byte| byte.is_ascii_digit())
-        });
+        let named = texts
+            .iter()
+            .all(|text| text.chars().count() <= 24 && !crate::rest::is_numeric_id(text));
         return if named || !has_handle {
             Tier::LeadId
         } else {
             Tier::Id
         };
     }
-    if key.ends_with("_id") || key.ends_with("Id") || key.ends_with("ID") || all(is_uuid) {
+    if key.ends_with("_id")
+        || key.ends_with("Id")
+        || key.ends_with("ID")
+        || all(crate::rest::is_uuid)
+    {
         Tier::Id
     } else if all(is_url) {
         Tier::Url
@@ -435,15 +439,6 @@ fn is_timestamp(text: &str) -> bool {
             _ => byte.is_ascii_digit(),
         })
         && bytes.get(10).is_none_or(|byte| matches!(byte, b'T' | b' '))
-}
-
-/// `b439481e-60b2-4da2-abcf-28707c7dff22`.
-fn is_uuid(text: &str) -> bool {
-    text.len() == 36
-        && text.bytes().enumerate().all(|(i, byte)| match i {
-            8 | 13 | 18 | 23 => byte == b'-',
-            _ => byte.is_ascii_hexdigit(),
-        })
 }
 
 /// Some providers keep a record's data one level down: Jira issues and
@@ -567,7 +562,7 @@ fn render_list(rows: &[Value], page: &Map<String, Value>, look: Look) -> String 
             columns
                 .iter()
                 .zip(&widths)
-                .map(|(column, width)| clip(&column.cells[row], *width)),
+                .map(|(column, width)| console::truncate_str(&column.cells[row], *width, "…")),
         );
     }
     format!("{}\n\n{footer}\n", table(builder, look, &[]))
@@ -622,25 +617,6 @@ fn column_widths(columns: &[Column], width: usize) -> Vec<usize> {
         spare -= extra;
     }
     widths
-}
-
-/// `text` cut to `width` terminal columns, the last one an ellipsis when cut.
-fn clip(text: &str, width: usize) -> String {
-    if get_line_width(text) <= width {
-        return text.to_owned();
-    }
-    let mut clipped = String::new();
-    // One column is the ellipsis's.
-    let mut used = 1;
-    for c in text.chars() {
-        used += get_char_width(c);
-        if used > width {
-            break;
-        }
-        clipped.push(c);
-    }
-    clipped.push('…');
-    clipped
 }
 
 fn render_keyed(entries: &Map<String, Value>, look: Look) -> String {
@@ -712,7 +688,7 @@ fn render_object(fields: &Map<String, Value>, look: Look) -> String {
                 wrap(text.trim_end(), value_width)
             }
             // A nested value with no short form stays one clipped line.
-            None => clip(&value.to_string(), value_width),
+            None => console::truncate_str(&value.to_string(), value_width, "…").into_owned(),
         };
         builder.push_record([key, text.as_str()]);
     }
@@ -728,45 +704,11 @@ fn render_object(fields: &Map<String, Value>, look: Look) -> String {
 }
 
 /// `text` wrapped to `width` terminal columns, keeping its own line breaks.
-/// A line breaks at its last space that fits; a word longer than a line is
-/// split.
 fn wrap(text: &str, width: usize) -> String {
-    // No glyph is wider than two columns, so every line makes progress.
-    let width = width.max(2);
-    let mut wrapped = Vec::new();
-    for line in text.lines() {
-        let mut rest = line;
-        // `limit`: the byte offset of the first character past `width`.
-        while let Some((limit, next)) = overflow(rest, width) {
-            let space = if next == ' ' {
-                Some(limit)
-            } else {
-                // Not a space inside the indentation: breaking there would
-                // leave a blank line.
-                rest[..limit]
-                    .rfind(' ')
-                    .filter(|space| !rest[..*space].trim().is_empty())
-            };
-            let (head, tail) = match space {
-                Some(space) => (&rest[..space], &rest[space + 1..]),
-                None => rest.split_at(limit),
-            };
-            wrapped.push(head.trim_end());
-            rest = tail;
-        }
-        wrapped.push(rest);
-    }
-    wrapped.join("\n")
-}
-
-/// Where `line` first runs past `width` terminal columns: the byte offset
-/// and the character there. `None` when it fits.
-fn overflow(line: &str, width: usize) -> Option<(usize, char)> {
-    let mut used = 0;
-    line.char_indices().find(|(_, c)| {
-        used += get_char_width(*c);
-        used > width
-    })
+    // A file path or an identifier must not break at its hyphens.
+    let options =
+        textwrap::Options::new(width).word_splitter(textwrap::WordSplitter::NoHyphenation);
+    textwrap::wrap(text, options).join("\n")
 }
 
 /// The keys that name a nested record, most specific first. The last two
@@ -1651,16 +1593,31 @@ mod tests {
         assert_eq!(wrap("one two three", 7), "one two\nthree");
         assert_eq!(wrap("one two three", 8), "one two\nthree");
         assert_eq!(wrap("abcdefghij", 4), "abcd\nefgh\nij");
-        // Indentation is not a break point.
-        assert_eq!(wrap("  abcdefghij", 6), "  abcd\nefghij");
-        assert_eq!(wrap("  - one two", 8), "  - one\ntwo");
         assert_eq!(wrap("a\n\nb", 10), "a\n\nb");
         assert_eq!(wrap("", 10), "");
+        // A doubled space at the break does not indent the next line.
+        assert_eq!(wrap("ab  cd", 3), "ab\ncd");
+        // A file path stays whole: hyphens are not break points.
+        assert_eq!(wrap("see check-run.ts now", 12), "see\ncheck-run.ts\nnow");
         // Counted in terminal columns, not bytes: an accented letter takes
         // one, an emoji or a CJK glyph two.
         assert_eq!(wrap("ééé ééé", 3), "ééé\nééé");
         assert_eq!(wrap("日本語日本語", 6), "日本語\n日本語");
         assert_eq!(wrap("日本", 1), "日\n本");
+    }
+
+    #[test]
+    fn wrap_keeps_a_lines_indentation() {
+        assert_eq!(wrap("  - one two", 8), "  - one\ntwo");
+        assert_eq!(wrap("top\n    nested item", 20), "top\n    nested item");
+        // An indented word longer than the line, or indentation deeper than
+        // the line is wide: where textwrap breaks is its business, but
+        // nothing is lost and nothing overflows.
+        for (text, width) in [("  abcdefghij", 6), ("            ab cd", 8)] {
+            let wrapped = wrap(text, width);
+            assert_eq!(wrapped.replace([' ', '\n'], ""), text.replace(' ', ""));
+            assert!(wrapped.lines().all(|line| get_line_width(line) <= width));
+        }
     }
 
     #[test]

@@ -587,6 +587,7 @@ name = "foac"
 version = "2.35.0"
 dependencies = [
  "clap",
+ "console",
  "graphql_client",
  "mime_guess",
  "parse_link_header",
@@ -598,6 +599,7 @@ dependencies = [
  "tabled",
  "tempfile",
  "terminal_size",
+ "textwrap",
  "toml_edit",
 ]
 
@@ -2003,6 +2005,15 @@ name = "testing_table"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0f8daae29995a24f65619e19d8d31dea5b389f3d853d8bf297bbf607cd0014cc"
+dependencies = [
+ "unicode-width",
+]
+
+[[package]]
+name = "textwrap"
+version = "0.16.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ecfad6c3abc80a577f2b91c1e412ee57e7a060d430b553c1b0c940974ebcd49"
 dependencies = [
  "unicode-width",
 ]
